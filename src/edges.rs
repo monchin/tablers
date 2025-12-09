@@ -1,6 +1,6 @@
 use pdfium_render::prelude::*;
 use std::collections::HashMap;
-
+use std::cmp;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum EdgeType {
     VerticalLine,
@@ -126,10 +126,10 @@ fn obj2edge(
                 let edge_type = get_edge_type(x1, y1, x2, y2, obj_shape);
                 edges.entry(edge_type).or_default().push(Edge {
                     edge_type,
-                    x1,
-                    y1,
-                    x2,
-                    y2,
+                    x1: cmp::min(x1, x2),
+                    y1: cmp::min(y1, y2),
+                    x2: cmp::max(x1, x2),
+                    y2: cmp::max(y1, y2),
                     width: line_width,
                     color: line_color,
                 });
