@@ -1,1 +1,34 @@
 use crate::edges::*;
+use pdfium_render::prelude::*;
+use std::rc::Rc;
+use std::collections::HashMap;
+struct Cell {
+    text: String,
+    bbox: PdfRect
+}
+struct Table {
+    page: PdfPage,
+    cells: Vec<Cell>,
+    bbox: PdfRect,
+}
+
+enum StrategyType {
+    Lines,
+    LinesStrict,
+    Text,
+}
+struct TfSettings { 
+    vertiacl_strategy: StrategyType,
+    horizontal_strategy: StrategyType,
+}
+
+struct TableFinder { 
+    bottom_origin: bool,
+    settings: Rc<TfSettings>,
+}
+
+impl TableFinder {
+    fn get_edges(&self, page: &PdfPage) ->HashMap<EdgeType, Vec<Edge>> {
+        make_edges(page, self.bottom_origin)
+    }
+}

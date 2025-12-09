@@ -17,8 +17,15 @@ if hasattr(tablers, "__all__"):
 
 
 class Document:
-    def __init__(self, path: Path | str):
-        self.doc = RsDoc(PDFIUM_RT, str(path))
+    def __init__(
+        self,
+        path: Path | str | None = None,
+        bytes: bytes | None = None,
+        password: str | None = None,
+    ):
+        self.doc = RsDoc(
+            PDFIUM_RT, path=str(path) if path is not None else None, bytes=bytes, password=password
+        )
 
     @property
     def page_count(self) -> int:
