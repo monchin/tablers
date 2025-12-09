@@ -1,0 +1,37 @@
+[build-system]
+requires = ["maturin>=1.10,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "tablers"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dynamic = ["version"]
+
+[tool.maturin]
+python-source = "python"
+
+[tool.pdm.scripts]
+fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}
+
+[tool.ruff]
+line-length = 100
+include = ["python/**.py", "python/**.pyi"]
+
+[tool.ruff.lint]
+select = ["I"]
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 100
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
