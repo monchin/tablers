@@ -1,6 +1,9 @@
 use pdfium_render::prelude::*;
-use std::collections::HashMap;
 use std::cmp;
+use std::collections::HashMap;
+
+use crate::clusters::cluster_objects;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum EdgeType {
     VerticalLine,
@@ -139,6 +142,92 @@ fn obj2edge(
             _ => {} // Impossible after filter ObjShape::NoNeed
         }
     }
+}
+#[derive(Debug, Clone, Copy)]
+pub enum Orientation {
+    Vertical,
+    Horizontal,
+}
+#[derive(Debug, Clone, Copy)]
+enum EdgeAttr {
+    X1,
+    Y1,
+    X2,
+    Y2,
+}
+
+fn move_edge(edge: Edge, orient: Orientation, value: f32) -> Edge {
+    match orient {
+        Orientation::Vertical => Edge {
+            x1: edge.x1 + value,
+            x2: edge.x2 + value,
+            ..edge
+        },
+        Orientation::Horizontal => Edge {
+            y1: edge.y1 + value,
+            y2: edge.y2 + value,
+            ..edge
+        },
+    }
+}
+
+fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: f32) -> Vec<Edge> {
+    let orient = match attr {
+        EdgeAttr::X1 => Orientation::Vertical,
+        EdgeAttr::Y1 => Orientation::Horizontal,
+        EdgeAttr::X2 => Orientation::Vertical,
+        EdgeAttr::Y2 => Orientation::Horizontal,
+    };
+    let attr_getter = match attr {
+        EdgeAttr::X1 => |edge: &Edge| edge.x1,
+        EdgeAttr::Y1 => |edge: &Edge| edge.y1,
+        EdgeAttr::X2 => |edge: &Edge| edge.x2,
+        EdgeAttr::Y2 => |edge: &Edge| edge.y2,
+    };
+    let clusters = cluster_objects(edges, attr_getter, tolerance, false);
+    let mut result = Vec::new();
+    for cluster in clusters {
+        avg = cluster.iter().map(|edge| attr_getter(edge)).sum::<f32>() / cluster.len() as f32;
+        for edge in cluster {
+            result.push(move_edge(edge, orient, avg - attr_getter(edge)));
+        }
+    }
+    result
+}
+
+fn snap_edges(
+    edges: HashMap<Orientation, Vec<Edge>>,
+    x_tolerance: f32,
+    y_tolerance: f32,
+) -> HashMap<Orientation, Vec<Edge>> {
+    snapped_v = snap_objects(edges[Orientation::Vertical], EdgeAttr::X1, x_tolerance);
+    snapped_h = snap_objects(edges[Orientation::Horizontal], EdgeAttr::Y1, y_tolerance);
+    HashMap::from([
+        (Orientation::Vertical, snapped_v),
+        (Orientation::Horizontal, snapped_h),
+    ])
+}
+
+fn merge_edges(edges: HashMap<Orientation, Vec<Edge>>) -> HashMap<Orientation, Vec<Edge>> {
+    let mut result = HashMap::new();
+    for (edge_type, edges) in edges {
+        let mut edges = edges;
+        edges.sort_by(|a, b| a.x1.partial_cmp(&b.x1).unwrap());
+        let mut i = 0;
+        while i < edges.len() - 1 {}
+    }
+}
+
+fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: f32) -> Vec<Edge> {
+    let (min_prop, max_prop) = match orient {
+        Orientation::Vertical => (EdgeAttr::X1, EdgeAttr::X2),
+        Orientation::Horizontal => (EdgeAttr::Y1, EdgeAttr::Y2),
+    };
+    let sorted_edges = edges
+        .into_iter()
+        .sorted_by(|a, b| a.min_prop.partial_cmp(&b.min_prop).unwrap());
+    let mut result = Vec::new();
+    // TODO: finish this
 }
 pub(crate) fn make_edges(page: &PdfPage, bottom_origin: bool) -> HashMap<EdgeType, Vec<Edge>> {
     let page_height = page.height().value;

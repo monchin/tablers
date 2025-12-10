@@ -2,7 +2,8 @@ use pdfium_render::prelude::*;
 use pyo3::prelude::*;
 use std::path::Path;
 use std::rc::Rc;
-
+mod clusters;
+mod edges;
 #[pyclass(unsendable)]
 pub struct PdfiumRuntime {
     inner: Rc<Pdfium>,
