@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import platform
 from pathlib import Path
 from typing import Final
 
 from .tablers import Document as RsDoc
-from .tablers import PdfiumRuntime
+from .tablers import Page, PdfiumRuntime
 
 SYSTEM: Final = platform.system()
 
@@ -30,3 +32,15 @@ class Document:
     @property
     def page_count(self) -> int:
         return self.doc.page_count()
+
+    def get_page(self, page_num: int) -> Page:
+        return self.doc.get_page(page_num)
+
+    def pages(self) -> list[Page]:
+        return self.doc.pages()
+
+    def close(self) -> None:
+        self.doc.close()
+
+    def is_closed(self) -> bool:
+        return self.doc.is_closed()
