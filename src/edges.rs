@@ -1,3 +1,4 @@
+use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
@@ -23,6 +24,8 @@ impl EdgeType {
         ]
     }
 }
+
+#[derive(Debug, Clone)]
 pub(crate) struct Edge {
     edge_type: EdgeType,
     x1: f32,
@@ -219,16 +222,101 @@ fn merge_edges(edges: HashMap<Orientation, Vec<Edge>>) -> HashMap<Orientation, V
 }
 
 fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: f32) -> Vec<Edge> {
+    if edges.is_empty() {
+        vec![]
+    }
     let (min_prop, max_prop) = match orient {
         Orientation::Vertical => (EdgeAttr::X1, EdgeAttr::X2),
         Orientation::Horizontal => (EdgeAttr::Y1, EdgeAttr::Y2),
     };
-    let sorted_edges = edges
+    let (get_min_prop, get_max_prop): (fn(&Edge) -> f32, fn(&Edge) -> f32) = match orient {
+        Orientation::Vertical => (|e| e.x1, |e| e.x2),
+        Orientation::Horizontal => (|e| e.y1, |e| e.y2),
+    };
+    let update_last_edge = match orient {
+        Orientation::Vertical => |last_edge: &mut Edge, edge: &Edge| {
+            last_edge.x2 = edge.x2;
+        },
+        Orientation::Horizontal => |last_edge: &mut Edge, edge: &Edge| {
+            last_edge.y2 = edge.y2;
+        },
+    };
+    let sorted_edges: Vec<Edge> = edges
         .into_iter()
-        .sorted_by(|a, b| a.min_prop.partial_cmp(&b.min_prop).unwrap());
-    let mut result = Vec::new();
-    // TODO: finish this
+        .sorted_by(|a, b| get_min_prop(a).partial_cmp(&get_min_prop(b)).unwrap())
+        .collect();
+    let mut result = vec![sorted_edges[0].clone()];
+    for edge in sorted_edges.iter_mut().skip(1) {
+        let last_edge = result.last_mut().unwrap();
+        if (get_min_prop(edge) <= get_max_prop(last_edge) + tolerance)
+            && get_max_prop(edge) > get_max_prop(last_edge)
+        {
+            update_last_edge(last_edge, edge);
+        } else {
+            result.push(edge.clone());
+        }
+    }
+    result
 }
+
+fn merge_one_kind_edges(
+    mut edges: Vec<Edge>,
+    orient: Orientation,
+    snap_tolerance: f32,
+    join_tolerance: f32,
+) -> Vec<Edge> {
+    let get_prop: (fn(&Edge) -> OrderedFloat<f32>) = match orient {
+        Orientation::Vertical => |e| OrderedFloat(e.x1),
+        Orientation::Horizontal => |e| OrderedFloat(e.y1),
+    };
+    let attr = match orient {
+        Orientation::Vertical => EdgeAttr::X1,
+        Orientation::Horizontal => EdgeAttr::Y1,
+    };
+
+    if snap_tolerance > 0.0 {
+        edges = snap_objects(edges, attr, snap_tolerance);
+    }
+    edges.sort_by_key(&get_prop);
+    use itertools::Itertools;
+    edges
+        .into_iter()
+        .group_by(|edge| get_prop(edge))
+        .into_iter()
+        .map(|(_, group)| join_edge_group(group.collect(), orient, join_tolerance))
+        .flatten()
+        .collect()
+}
+
+pub(crate) fn merge_edges(
+    edges: HashMap<Orientation, Vec<Edge>>,
+    snap_x_tolerance: f32,
+    snap_y_tolerance: f32,
+    join_x_tolerance: f32,
+    join_y_tolerance: f32,
+) -> HashMap<Orientation, Vec<Edge>> {
+    HashMap::from([
+        (
+            Orientation::Vertical,
+            merge_one_kind_edges(
+                edges[Orientation::Vertical],
+                Orientation::Vertical,
+                snap_x_tolerance,
+                join_x_tolerance,
+            ),
+        ),
+        (
+            Orientation::Horizontal,
+            merge_one_kind_edges(
+                edges[Orientation::Horizontal],
+                Orientation::Horizontal,
+                snap_y_tolerance,
+                join_y_tolerance,
+            )
+        )
+    ])
+}
+
 pub(crate) fn make_edges(page: &PdfPage, bottom_origin: bool) -> HashMap<EdgeType, Vec<Edge>> {
     let page_height = page.height().value;
     let mut edges = HashMap::new();
