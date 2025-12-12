@@ -1,7 +1,7 @@
 use crate::edges::*;
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 // use crate::edges::*;
@@ -43,13 +43,13 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
-type Vertex = (OrderedFloat<f32>, OrderedFloat<f32>);
+type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
 fn edges_to_intersections(
     edges: &mut HashMap<Orientation, Vec<Edge>>,
     intersection_x_tolerance: OrderedFloat<f32>,
     intersection_y_tolerance: OrderedFloat<f32>,
-) -> HashMap<Vertex, HashMap<Orientation, Vec<Edge>>> {
-    let mut intersections: HashMap<Vertex, HashMap<Orientation, Vec<Edge>>> = HashMap::new();
+) -> HashMap<Point, HashMap<Orientation, Vec<Edge>>> {
+    let mut intersections: HashMap<Point, HashMap<Orientation, Vec<Edge>>> = HashMap::new();
 
     edges
         .get_mut(&Orientation::Vertical)
@@ -87,6 +87,90 @@ fn edges_to_intersections(
     intersections
 }
 
+#[inline]
+fn edges_to_set(edges: &[Edge]) -> HashSet<BboxKey> {
+    edges.iter().map(|e| e.to_bbox_key()).collect()
+}
+
+fn intersections_to_cells(
+    intersections: HashMap<Point, HashMap<Orientation, Vec<Edge>>>,
+) -> Vec<BboxKey> {
+    let edge_connects = |p1: &Point, p2: &Point| -> bool {
+        let inter1 = match intersections.get(p1) {
+            Some(i) => i,
+            None => return false,
+        };
+        let inter2 = match intersections.get(p2) {
+            Some(i) => i,
+            None => return false,
+        };
+
+        if p1.0 == p2.0 {
+            let set1 = edges_to_set(&inter1.get(&Orientation::Vertical).unwrap());
+            let set2 = edges_to_set(&inter2.get(&Orientation::Vertical).unwrap());
+            if !set1.is_disjoint(&set2) {
+                return true;
+            }
+        }
+
+        if p1.1 == p2.1 {
+            let set1 = edges_to_set(&inter1.get(&Orientation::Horizontal).unwrap());
+            let set2 = edges_to_set(&inter1.get(&Orientation::Horizontal).unwrap());
+            if !set1.is_disjoint(&set2) {
+                return true;
+            }
+        }
+
+        false
+    };
+
+    let mut points: Vec<Point> = intersections.keys().cloned().collect();
+    points.sort();
+    let n_points = points.len();
+
+    let mut points: Vec<Point> = intersections.keys().cloned().collect();
+    points.sort();
+    let n_points = points.len();
+
+    let find_smallest_cell = |i: usize| -> Option<BboxKey> {
+        if i == n_points - 1 {
+            return None;
+        }
+
+        let pt1 = &points[i];
+        let rest = &points[i + 1..];
+
+        let v_after: Vec<&Point> = rest.iter().filter(|x| x.0 == pt1.0).collect();
+        let h_after: Vec<&Point> = rest.iter().filter(|x| x.1 == pt1.1).collect();
+
+        for v_after_pt in &v_after {
+            if !edge_connects(pt1, v_after_pt) {
+                continue;
+            }
+
+            for h_after_pt in &h_after {
+                if !edge_connects(pt1, h_after_pt) {
+                    continue;
+                }
+
+                let pt2: Point = (h_after_pt.0, v_after_pt.1);
+
+                if intersections.contains_key(&pt2)
+                    && edge_connects(&pt2, h_after_pt)
+                    && edge_connects(&pt2, v_after_pt)
+                {
+                    return Some((pt1.0, pt1.1, pt2.0, pt2.1));
+                }
+            }
+        }
+
+        None
+    };
+
+    (0..n_points)
+        .filter_map(|i| find_smallest_cell(i))
+        .collect()
+}
 struct TableFinder {
     bottom_origin: bool,
     settings: Rc<TfSettings>,

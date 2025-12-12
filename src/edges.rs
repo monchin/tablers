@@ -36,6 +36,18 @@ pub(crate) struct Edge {
     pub color: PdfColor, // Stroke color
 }
 
+pub type BboxKey = (
+    OrderedFloat<f32>,
+    OrderedFloat<f32>,
+    OrderedFloat<f32>,
+    OrderedFloat<f32>,
+);
+impl Edge {
+    pub(crate) fn to_bbox_key(&self) -> BboxKey {
+        (self.x1, self.y1, self.x2, self.y2)
+    }
+}
+
 #[inline]
 fn get_y_with_bottom_origin(y: f32, bottom_origin: bool, page_height: f32) -> f32 {
     match bottom_origin {
