@@ -3,15 +3,15 @@ use pdfium_render::prelude::*;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::edges::*;
+// use crate::edges::*;
 struct Cell {
     text: String,
     bbox: PdfRect,
 }
 struct Table {
-    page: PdfPage,
     cells: Vec<Cell>,
     bbox: PdfRect,
+    page_index: usize, 
 }
 
 enum StrategyType {
@@ -36,7 +36,7 @@ impl TableFinder {
             settings: settings.clone(),
         }
     }
-    fn get_edges(&self, page: &PdfPage) -> HashMap<EdgeType, Vec<Edge>> {
-        // make_edges(page, self.bottom_origin);
-    }
+//     fn get_edges(&self, page: &PdfPage) -> HashMap<EdgeType, Vec<Edge>> {
+//         // make_edges(page, self.bottom_origin);
+//     }
 }

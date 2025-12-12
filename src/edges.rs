@@ -2,7 +2,7 @@ use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
-
+use itertools::Itertools;
 use crate::clusters::cluster_objects;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,10 +28,10 @@ impl EdgeType {
 #[derive(Debug, Clone)]
 pub(crate) struct Edge {
     edge_type: EdgeType,
-    x1: f32,
-    y1: f32,
-    x2: f32,
-    y2: f32,
+    x1: OrderedFloat<f32>,
+    y1: OrderedFloat<f32>,
+    x2: OrderedFloat<f32>,
+    y2: OrderedFloat<f32>,
     width: f32,      // Stroke width
     color: PdfColor, // Stroke color
 }
@@ -51,7 +51,8 @@ enum ObjShape {
     NoNeed,
 }
 fn get_obj_shape(obj: &PdfPagePathObject) -> ObjShape {
-    let (mut x1, mut y1, mut x2, mut y2) = (0f32, 0f32, 0f32, 0f32);
+    let (mut x1, mut y1) = (0f32, 0f32);
+    let (mut x2, mut y2);  
     let mut edges = Vec::new();
     for seg in obj.segments().iter() {
         match seg.segment_type() {
@@ -114,7 +115,8 @@ fn obj2edge(
     if obj_shape == ObjShape::NoNeed {
         return;
     }
-    let (mut x1, mut y1, mut x2, mut y2) = (0f32, 0f32, 0f32, 0f32);
+    let (mut x1, mut y1) = (0f32, 0f32);
+    let (mut x2, mut y2);  
     let (line_width, line_color) = (
         obj.stroke_width().unwrap().value,
         obj.stroke_color().unwrap(),
@@ -132,10 +134,10 @@ fn obj2edge(
                 let edge_type = get_edge_type(x1, y1, x2, y2, obj_shape);
                 edges.entry(edge_type).or_default().push(Edge {
                     edge_type,
-                    x1: cmp::min(x1, x2),
-                    y1: cmp::min(y1, y2),
-                    x2: cmp::max(x1, x2),
-                    y2: cmp::max(y1, y2),
+                    x1: cmp::min(OrderedFloat(x1), OrderedFloat(x2)),
+                    y1: cmp::min(OrderedFloat(y1), OrderedFloat(y2)),
+                    x2: cmp::max(OrderedFloat(x1), OrderedFloat(x2)),
+                    y2: cmp::max(OrderedFloat(y1), OrderedFloat(y2)),
                     width: line_width,
                     color: line_color,
                 });
@@ -146,7 +148,7 @@ fn obj2edge(
         }
     }
 }
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
 pub enum Orientation {
     Vertical,
     Horizontal,
@@ -159,7 +161,7 @@ enum EdgeAttr {
     Y2,
 }
 
-fn move_edge(edge: Edge, orient: Orientation, value: f32) -> Edge {
+fn move_edge(edge: Edge, orient: Orientation, value: OrderedFloat<f32>) -> Edge {
     match orient {
         Orientation::Vertical => Edge {
             x1: edge.x1 + value,
@@ -174,7 +176,7 @@ fn move_edge(edge: Edge, orient: Orientation, value: f32) -> Edge {
     }
 }
 
-fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: f32) -> Vec<Edge> {
+fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: OrderedFloat<f32>) -> Vec<Edge> {
     let orient = match attr {
         EdgeAttr::X1 => Orientation::Vertical,
         EdgeAttr::Y1 => Orientation::Horizontal,
@@ -182,54 +184,42 @@ fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: f32) -> Vec<Edge> {
         EdgeAttr::Y2 => Orientation::Horizontal,
     };
     let attr_getter = match attr {
-        EdgeAttr::X1 => |edge: &Edge| edge.x1,
-        EdgeAttr::Y1 => |edge: &Edge| edge.y1,
-        EdgeAttr::X2 => |edge: &Edge| edge.x2,
-        EdgeAttr::Y2 => |edge: &Edge| edge.y2,
+        EdgeAttr::X1 => |edge: &Edge|edge.x1,
+        EdgeAttr::Y1 => |edge: &Edge|edge.y1,
+        EdgeAttr::X2 => |edge: &Edge|edge.x2,
+        EdgeAttr::Y2 => |edge: &Edge|edge.y2,
     };
     let clusters = cluster_objects(edges, attr_getter, tolerance, false);
     let mut result = Vec::new();
     for cluster in clusters {
-        avg = cluster.iter().map(|edge| attr_getter(edge)).sum::<f32>() / cluster.len() as f32;
+        let avg = cluster.iter().map(|edge| attr_getter(edge)).sum::<OrderedFloat<f32>>() / OrderedFloat(cluster.len() as f32);
         for edge in cluster {
-            result.push(move_edge(edge, orient, avg - attr_getter(edge)));
+            let move_value = avg - attr_getter(&edge);
+            result.push(move_edge(edge, orient, move_value));
         }
     }
     result
 }
 
 fn snap_edges(
-    edges: HashMap<Orientation, Vec<Edge>>,
-    x_tolerance: f32,
-    y_tolerance: f32,
+    mut edges: HashMap<Orientation, Vec<Edge>>,
+    x_tolerance: OrderedFloat<f32>,
+    y_tolerance: OrderedFloat<f32>,
 ) -> HashMap<Orientation, Vec<Edge>> {
-    snapped_v = snap_objects(edges[Orientation::Vertical], EdgeAttr::X1, x_tolerance);
-    snapped_h = snap_objects(edges[Orientation::Horizontal], EdgeAttr::Y1, y_tolerance);
+    let snapped_v = snap_objects(edges.remove(&Orientation::Vertical).unwrap_or_default(), EdgeAttr::X1, x_tolerance);
+    let snapped_h = snap_objects(edges.remove(&Orientation::Horizontal).unwrap_or_default(), EdgeAttr::Y1, y_tolerance);
     HashMap::from([
         (Orientation::Vertical, snapped_v),
         (Orientation::Horizontal, snapped_h),
     ])
 }
 
-fn merge_edges(edges: HashMap<Orientation, Vec<Edge>>) -> HashMap<Orientation, Vec<Edge>> {
-    let mut result = HashMap::new();
-    for (edge_type, edges) in edges {
-        let mut edges = edges;
-        edges.sort_by(|a, b| a.x1.partial_cmp(&b.x1).unwrap());
-        let mut i = 0;
-        while i < edges.len() - 1 {}
-    }
-}
 
-fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: f32) -> Vec<Edge> {
+fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: OrderedFloat<f32>) -> Vec<Edge> {
     if edges.is_empty() {
-        vec![]
+        return vec![];
     }
-    let (min_prop, max_prop) = match orient {
-        Orientation::Vertical => (EdgeAttr::X1, EdgeAttr::X2),
-        Orientation::Horizontal => (EdgeAttr::Y1, EdgeAttr::Y2),
-    };
-    let (get_min_prop, get_max_prop): (fn(&Edge) -> f32, fn(&Edge) -> f32) = match orient {
+    let (get_min_prop, get_max_prop): (fn(&Edge) -> OrderedFloat<f32>, fn(&Edge) -> OrderedFloat<f32>) = match orient {
         Orientation::Vertical => (|e| e.x1, |e| e.x2),
         Orientation::Horizontal => (|e| e.y1, |e| e.y2),
     };
@@ -241,7 +231,7 @@ fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: f32) -> Vec
             last_edge.y2 = edge.y2;
         },
     };
-    let sorted_edges: Vec<Edge> = edges
+    let mut sorted_edges: Vec<Edge> = edges
         .into_iter()
         .sorted_by(|a, b| get_min_prop(a).partial_cmp(&get_min_prop(b)).unwrap())
         .collect();
@@ -262,26 +252,25 @@ fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: f32) -> Vec
 fn merge_one_kind_edges(
     mut edges: Vec<Edge>,
     orient: Orientation,
-    snap_tolerance: f32,
-    join_tolerance: f32,
+    snap_tolerance: OrderedFloat<f32>,
+    join_tolerance: OrderedFloat<f32>,
 ) -> Vec<Edge> {
-    let get_prop: (fn(&Edge) -> OrderedFloat<f32>) = match orient {
-        Orientation::Vertical => |e| OrderedFloat(e.x1),
-        Orientation::Horizontal => |e| OrderedFloat(e.y1),
+    let get_prop: fn(&Edge) -> OrderedFloat<f32> = match orient {
+        Orientation::Vertical => |e| e.x1,
+        Orientation::Horizontal => |e|e.y1,
     };
     let attr = match orient {
         Orientation::Vertical => EdgeAttr::X1,
         Orientation::Horizontal => EdgeAttr::Y1,
     };
 
-    if snap_tolerance > 0.0 {
+    if snap_tolerance > OrderedFloat(0.0) {
         edges = snap_objects(edges, attr, snap_tolerance);
     }
     edges.sort_by_key(&get_prop);
-    use itertools::Itertools;
     edges
         .into_iter()
-        .group_by(|edge| get_prop(edge))
+        .chunk_by(|edge| get_prop(edge))
         .into_iter()
         .map(|(_, group)| join_edge_group(group.collect(), orient, join_tolerance))
         .flatten()
@@ -289,17 +278,17 @@ fn merge_one_kind_edges(
 }
 
 pub(crate) fn merge_edges(
-    edges: HashMap<Orientation, Vec<Edge>>,
-    snap_x_tolerance: f32,
-    snap_y_tolerance: f32,
-    join_x_tolerance: f32,
-    join_y_tolerance: f32,
+    mut edges: HashMap<Orientation, Vec<Edge>>,
+    snap_x_tolerance: OrderedFloat<f32>,
+    snap_y_tolerance: OrderedFloat<f32>,
+    join_x_tolerance: OrderedFloat<f32>,
+    join_y_tolerance: OrderedFloat<f32>,
 ) -> HashMap<Orientation, Vec<Edge>> {
     HashMap::from([
         (
             Orientation::Vertical,
             merge_one_kind_edges(
-                edges[Orientation::Vertical],
+                edges.remove(&Orientation::Vertical).unwrap_or_default(),
                 Orientation::Vertical,
                 snap_x_tolerance,
                 join_x_tolerance,
@@ -308,7 +297,7 @@ pub(crate) fn merge_edges(
         (
             Orientation::Horizontal,
             merge_one_kind_edges(
-                edges[Orientation::Horizontal],
+                edges.remove(&Orientation::Horizontal).unwrap_or_default(),
                 Orientation::Horizontal,
                 snap_y_tolerance,
                 join_y_tolerance,

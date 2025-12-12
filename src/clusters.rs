@@ -48,15 +48,14 @@ fn cluster_list(
 ///
 /// # Returns
 /// A HashMap mapping each value to its cluster index
-fn make_cluster_dict(values: Vec<f32>, tolerance: f32) -> HashMap<OrderedFloat<f32>, usize> {
+fn make_cluster_dict(values: Vec<OrderedFloat<f32>>, tolerance: OrderedFloat<f32>) -> HashMap<OrderedFloat<f32>, usize> {
     let unique_values: Vec<OrderedFloat<f32>> = values
         .into_iter()
-        .map(OrderedFloat)
         .collect::<HashSet<_>>()
         .into_iter()
         .collect();
 
-    let clusters = cluster_list(unique_values, OrderedFloat(tolerance));
+    let clusters = cluster_list(unique_values, tolerance);
 
     let mut result = HashMap::new();
     for (cluster_index, cluster) in clusters.into_iter().enumerate() {
@@ -70,18 +69,17 @@ fn make_cluster_dict(values: Vec<f32>, tolerance: f32) -> HashMap<OrderedFloat<f
 pub(crate) fn cluster_objects<T, F>(
     xs: Vec<T>,
     key_fn: F,
-    tolerance: f32,
+    tolerance: OrderedFloat<f32>,
     preserve_order: bool,
 ) -> Vec<Vec<T>>
 where
-    T: Clone,
-    F: Fn(&T) -> f32,
+    F: Fn(&T) -> OrderedFloat<f32>,
 {
     if xs.is_empty() {
         return vec![];
     }
 
-    let values: Vec<f32> = xs.iter().map(&key_fn).collect();
+    let values: Vec<OrderedFloat<f32>> = xs.iter().map(&key_fn).collect();
     let cluster_dict = make_cluster_dict(values, tolerance);
 
     let mut cluster_tuples: Vec<(T, usize)> = xs
@@ -99,7 +97,7 @@ where
 
     cluster_tuples
         .into_iter()
-        .group_by(|(_, cluster_id)| *cluster_id)
+        .chunk_by(|(_, cluster_id)| *cluster_id)
         .into_iter()
         .map(|(_, group)| group.map(|(item, _)| item).collect())
         .collect()
