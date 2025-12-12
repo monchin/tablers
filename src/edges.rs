@@ -312,8 +312,8 @@ pub(crate) fn merge_edges(
                 Orientation::Horizontal,
                 snap_y_tolerance,
                 join_y_tolerance,
-            )
-        )
+            ),
+        ),
     ])
 }
 
