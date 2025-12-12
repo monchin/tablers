@@ -43,6 +43,50 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
+type Vertex = (OrderedFloat<f32>, OrderedFloat<f32>);
+fn edges_to_intersections(
+    edges: &mut HashMap<Orientation, Vec<Edge>>,
+    intersection_x_tolerance: OrderedFloat<f32>,
+    intersection_y_tolerance: OrderedFloat<f32>,
+) -> HashMap<Vertex, HashMap<Orientation, Vec<Edge>>> {
+    let mut intersections: HashMap<Vertex, HashMap<Orientation, Vec<Edge>>> = HashMap::new();
+
+    edges
+        .get_mut(&Orientation::Vertical)
+        .unwrap()
+        .sort_by_key(|e| (e.x1, e.y1));
+    edges
+        .get_mut(&Orientation::Horizontal)
+        .unwrap()
+        .sort_by_key(|e| (e.y1, e.x1));
+
+    let v_edges = edges.get(&Orientation::Vertical).unwrap();
+    let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+
+    for v in v_edges.iter() {
+        for h in h_edges.iter() {
+            if v.y1 <= h.y1 + intersection_y_tolerance
+                && v.y2 >= h.y1 - intersection_y_tolerance
+                && v.x1 >= h.x1 - intersection_x_tolerance
+                && v.x1 <= h.x2 + intersection_x_tolerance
+            {
+                let vertex = (v.x1, h.y1);
+
+                let intersection = intersections.entry(vertex).or_default();
+                intersection
+                    .entry(Orientation::Vertical)
+                    .or_default()
+                    .push((*v).clone());
+                intersection
+                    .entry(Orientation::Horizontal)
+                    .or_default()
+                    .push((*v).clone());
+            }
+        }
+    }
+    intersections
+}
+
 struct TableFinder {
     bottom_origin: bool,
     settings: Rc<TfSettings>,
