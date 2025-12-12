@@ -48,7 +48,10 @@ fn cluster_list(
 ///
 /// # Returns
 /// A HashMap mapping each value to its cluster index
-fn make_cluster_dict(values: Vec<OrderedFloat<f32>>, tolerance: OrderedFloat<f32>) -> HashMap<OrderedFloat<f32>, usize> {
+fn make_cluster_dict(
+    values: Vec<OrderedFloat<f32>>,
+    tolerance: OrderedFloat<f32>,
+) -> HashMap<OrderedFloat<f32>, usize> {
     let unique_values: Vec<OrderedFloat<f32>> = values
         .into_iter()
         .collect::<HashSet<_>>()

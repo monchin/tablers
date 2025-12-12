@@ -1,9 +1,9 @@
+use crate::clusters::cluster_objects;
+use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
-use itertools::Itertools;
-use crate::clusters::cluster_objects;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum EdgeType {
@@ -27,13 +27,13 @@ impl EdgeType {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Edge {
-    edge_type: EdgeType,
-    x1: OrderedFloat<f32>,
-    y1: OrderedFloat<f32>,
-    x2: OrderedFloat<f32>,
-    y2: OrderedFloat<f32>,
-    width: f32,      // Stroke width
-    color: PdfColor, // Stroke color
+    pub edge_type: EdgeType,
+    pub x1: OrderedFloat<f32>,
+    pub y1: OrderedFloat<f32>,
+    pub x2: OrderedFloat<f32>,
+    pub y2: OrderedFloat<f32>,
+    pub width: f32,      // Stroke width
+    pub color: PdfColor, // Stroke color
 }
 
 #[inline]
@@ -52,7 +52,7 @@ enum ObjShape {
 }
 fn get_obj_shape(obj: &PdfPagePathObject) -> ObjShape {
     let (mut x1, mut y1) = (0f32, 0f32);
-    let (mut x2, mut y2);  
+    let (mut x2, mut y2);
     let mut edges = Vec::new();
     for seg in obj.segments().iter() {
         match seg.segment_type() {
@@ -116,7 +116,7 @@ fn obj2edge(
         return;
     }
     let (mut x1, mut y1) = (0f32, 0f32);
-    let (mut x2, mut y2);  
+    let (mut x2, mut y2);
     let (line_width, line_color) = (
         obj.stroke_width().unwrap().value,
         obj.stroke_color().unwrap(),
@@ -184,15 +184,19 @@ fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: OrderedFloat<f32>) 
         EdgeAttr::Y2 => Orientation::Horizontal,
     };
     let attr_getter = match attr {
-        EdgeAttr::X1 => |edge: &Edge|edge.x1,
-        EdgeAttr::Y1 => |edge: &Edge|edge.y1,
-        EdgeAttr::X2 => |edge: &Edge|edge.x2,
-        EdgeAttr::Y2 => |edge: &Edge|edge.y2,
+        EdgeAttr::X1 => |edge: &Edge| edge.x1,
+        EdgeAttr::Y1 => |edge: &Edge| edge.y1,
+        EdgeAttr::X2 => |edge: &Edge| edge.x2,
+        EdgeAttr::Y2 => |edge: &Edge| edge.y2,
     };
     let clusters = cluster_objects(edges, attr_getter, tolerance, false);
     let mut result = Vec::new();
     for cluster in clusters {
-        let avg = cluster.iter().map(|edge| attr_getter(edge)).sum::<OrderedFloat<f32>>() / OrderedFloat(cluster.len() as f32);
+        let avg = cluster
+            .iter()
+            .map(|edge| attr_getter(edge))
+            .sum::<OrderedFloat<f32>>()
+            / OrderedFloat(cluster.len() as f32);
         for edge in cluster {
             let move_value = avg - attr_getter(&edge);
             result.push(move_edge(edge, orient, move_value));
@@ -206,20 +210,34 @@ fn snap_edges(
     x_tolerance: OrderedFloat<f32>,
     y_tolerance: OrderedFloat<f32>,
 ) -> HashMap<Orientation, Vec<Edge>> {
-    let snapped_v = snap_objects(edges.remove(&Orientation::Vertical).unwrap_or_default(), EdgeAttr::X1, x_tolerance);
-    let snapped_h = snap_objects(edges.remove(&Orientation::Horizontal).unwrap_or_default(), EdgeAttr::Y1, y_tolerance);
+    let snapped_v = snap_objects(
+        edges.remove(&Orientation::Vertical).unwrap_or_default(),
+        EdgeAttr::X1,
+        x_tolerance,
+    );
+    let snapped_h = snap_objects(
+        edges.remove(&Orientation::Horizontal).unwrap_or_default(),
+        EdgeAttr::Y1,
+        y_tolerance,
+    );
     HashMap::from([
         (Orientation::Vertical, snapped_v),
         (Orientation::Horizontal, snapped_h),
     ])
 }
 
-
-fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: OrderedFloat<f32>) -> Vec<Edge> {
+fn join_edge_group(
+    edges: Vec<Edge>,
+    orient: Orientation,
+    tolerance: OrderedFloat<f32>,
+) -> Vec<Edge> {
     if edges.is_empty() {
         return vec![];
     }
-    let (get_min_prop, get_max_prop): (fn(&Edge) -> OrderedFloat<f32>, fn(&Edge) -> OrderedFloat<f32>) = match orient {
+    let (get_min_prop, get_max_prop): (
+        fn(&Edge) -> OrderedFloat<f32>,
+        fn(&Edge) -> OrderedFloat<f32>,
+    ) = match orient {
         Orientation::Vertical => (|e| e.x1, |e| e.x2),
         Orientation::Horizontal => (|e| e.y1, |e| e.y2),
     };
@@ -257,7 +275,7 @@ fn merge_one_kind_edges(
 ) -> Vec<Edge> {
     let get_prop: fn(&Edge) -> OrderedFloat<f32> = match orient {
         Orientation::Vertical => |e| e.x1,
-        Orientation::Horizontal => |e|e.y1,
+        Orientation::Horizontal => |e| e.y1,
     };
     let attr = match orient {
         Orientation::Vertical => EdgeAttr::X1,
