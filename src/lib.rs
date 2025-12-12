@@ -8,6 +8,7 @@ use std::rc::Rc;
 mod clusters;
 mod edges;
 
+mod tables;
 #[pyclass(unsendable)]
 pub struct PdfiumRuntime {
     inner: Rc<Pdfium>,
