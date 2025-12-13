@@ -9,14 +9,71 @@ static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
 static DEFAULT_JOIN_TOLERANCE: f32 = 3.0;
 static DEFAULT_INTERSECTION_TOLERANCE: f32 = 3.0;
 // use crate::edges::*;
-struct Cell {
+pub struct Cell {
     text: String,
     bbox: BboxKey,
 }
-struct Table {
+pub struct Table {
     cells: Vec<Cell>,
     bbox: BboxKey,
     page_index: usize,
+    text_extracted: bool,
+}
+
+fn get_table_bbox(cells_bbox: &[BboxKey]) -> BboxKey {
+    let x1 = cells_bbox
+        .iter()
+        .map(|c| OrderedFloat(c.0))
+        .min()
+        .unwrap()
+        .into_inner();
+
+    let y1 = cells_bbox
+        .iter()
+        .map(|c| OrderedFloat(c.1))
+        .min()
+        .unwrap()
+        .into_inner();
+
+    let x2 = cells_bbox
+        .iter()
+        .map(|c| OrderedFloat(c.2))
+        .max()
+        .unwrap()
+        .into_inner();
+
+    let y2 = cells_bbox
+        .iter()
+        .map(|c| OrderedFloat(c.3))
+        .max()
+        .unwrap()
+        .into_inner();
+
+    (x1, y1, x2, y2)
+}
+
+impl Table {
+    pub fn new(page_idx: usize, cells_bbox: &[BboxKey], extract_text: bool) -> Self {
+        let bbox = get_table_bbox(cells_bbox);
+        let cells;
+        if !extract_text {
+            cells = cells_bbox
+                .iter()
+                .map(|bbox| Cell {
+                    text: "".to_string(),
+                    bbox: *bbox,
+                })
+                .collect();
+            Self {
+                cells,
+                bbox,
+                page_index: page_idx,
+                text_extracted: false,
+            }
+        } else {
+            panic!("extract_text = true not implemented");
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

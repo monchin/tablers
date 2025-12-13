@@ -2,6 +2,7 @@ use crate::clusters::cluster_objects;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
+use pyo3::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
 
@@ -25,8 +26,9 @@ impl EdgeType {
     }
 }
 
+#[pyclass]
 #[derive(Debug, Clone)]
-pub(crate) struct Edge {
+pub struct Edge {
     pub edge_type: EdgeType,
     pub x1: OrderedFloat<f32>,
     pub y1: OrderedFloat<f32>,
@@ -120,9 +122,6 @@ fn obj2edge(
     page_height: f32,
     edges: &mut HashMap<EdgeType, Vec<Edge>>,
 ) {
-    if obj.is_stroked().unwrap() == false {
-        return; // We don't need non-stroked objects
-    }
     let obj_shape = get_obj_shape(obj);
     if obj_shape == ObjShape::NoNeed {
         return;
