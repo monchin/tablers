@@ -3,15 +3,19 @@ use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
 
+static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
+static DEFAULT_JOIN_TOLERANCE: f32 = 3.0;
+static DEFAULT_INTERSECTION_TOLERANCE: f32 = 3.0;
 // use crate::edges::*;
 struct Cell {
     text: String,
-    bbox: PdfRect,
+    bbox: BboxKey,
 }
 struct Table {
     cells: Vec<Cell>,
-    bbox: PdfRect,
+    bbox: BboxKey,
     page_index: usize,
 }
 
@@ -34,6 +38,23 @@ struct TfSettings {
     intersection_x_tolerance: OrderedFloat<f32>,
     intersection_y_tolerance: OrderedFloat<f32>,
 }
+impl Default for TfSettings {
+    fn default() -> Self {
+        TfSettings {
+            vertiacl_strategy: StrategyType::Lines,
+            horizontal_strategy: StrategyType::Lines,
+            snap_x_tolerance: OrderedFloat::from(DEFAULT_SNAP_TOLERANCE),
+            snap_y_tolerance: OrderedFloat::from(DEFAULT_SNAP_TOLERANCE),
+            join_x_tolerance: OrderedFloat::from(DEFAULT_JOIN_TOLERANCE),
+            join_y_tolerance: OrderedFloat::from(DEFAULT_JOIN_TOLERANCE),
+            edge_min_length: OrderedFloat::from(3.0),
+            edge_min_length_prefilter: OrderedFloat::from(1.0),
+            intersection_x_tolerance: OrderedFloat::from(DEFAULT_INTERSECTION_TOLERANCE),
+            intersection_y_tolerance: OrderedFloat::from(DEFAULT_INTERSECTION_TOLERANCE),
+        }
+    }
+}
+
 fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     edges.retain(|edge| match edge.edge_type {
         EdgeType::HorizontalLine => (edge.x2 - edge.x1) >= min_len,
@@ -43,7 +64,6 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
-type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
 fn edges_to_intersections(
     edges: &mut HashMap<Orientation, Vec<Edge>>,
     intersection_x_tolerance: OrderedFloat<f32>,
@@ -128,10 +148,6 @@ fn intersections_to_cells(
     points.sort();
     let n_points = points.len();
 
-    let mut points: Vec<Point> = intersections.keys().cloned().collect();
-    points.sort();
-    let n_points = points.len();
-
     let find_smallest_cell = |i: usize| -> Option<BboxKey> {
         if i == n_points - 1 {
             return None;
@@ -171,7 +187,77 @@ fn intersections_to_cells(
         .filter_map(|i| find_smallest_cell(i))
         .collect()
 }
-struct TableFinder {
+
+fn bbox_to_corners(bbox: &BboxKey) -> [Point; 4] {
+    let (x1, y1, x2, y2) = *bbox;
+    [(x1, y1), (x1, y2), (x2, y1), (x2, y2)]
+}
+
+pub fn cells_to_tables(cells: &Vec<BboxKey>) -> Vec<Vec<BboxKey>> {
+    let n = cells.len();
+    let mut used = vec![false; n];
+    let mut tables: Vec<Vec<BboxKey>> = Vec::new();
+    let mut current_corners: HashSet<Point> = HashSet::new();
+    let mut current_cells: Vec<BboxKey> = Vec::new();
+
+    loop {
+        let initial_count = current_cells.len();
+
+        for (i, cell) in cells.iter().enumerate() {
+            if used[i] {
+                continue;
+            }
+
+            let cell_corners = bbox_to_corners(cell);
+
+            if current_cells.is_empty() {
+                current_corners.extend(cell_corners);
+                current_cells.push(*cell);
+                used[i] = true;
+            } else {
+                let corner_count = cell_corners
+                    .iter()
+                    .filter(|c| current_corners.contains(c))
+                    .count();
+
+                if corner_count > 0 {
+                    current_corners.extend(cell_corners);
+                    current_cells.push(*cell);
+                    used[i] = true;
+                }
+            }
+        }
+
+        if current_cells.len() == initial_count {
+            if current_cells.is_empty() {
+                break;
+            }
+            tables.push(std::mem::take(&mut current_cells));
+            current_corners.clear();
+        }
+    }
+
+    if !current_cells.is_empty() {
+        tables.push(current_cells);
+    }
+
+    tables.sort_by(|a, b| {
+        let min_a = a
+            .iter()
+            .map(|c| (OrderedFloat(c.1), OrderedFloat(c.0)))
+            .min()
+            .unwrap();
+        let min_b = b
+            .iter()
+            .map(|c| (OrderedFloat(c.1), OrderedFloat(c.0)))
+            .min()
+            .unwrap();
+        min_a.cmp(&min_b)
+    });
+
+    tables.into_iter().filter(|t| t.len() > 1).collect()
+}
+pub(crate) struct TableFinder {
     bottom_origin: bool,
     settings: Rc<TfSettings>,
 }
@@ -183,7 +269,7 @@ impl TableFinder {
             settings: settings.clone(),
         }
     }
-    fn get_edges(&self, page: &PdfPage) -> HashMap<Orientation, Vec<Edge>> {
+    pub(crate) fn get_edges(&self, page: &PdfPage) -> HashMap<Orientation, Vec<Edge>> {
         let settings = self.settings.as_ref();
         if (settings.vertiacl_strategy == StrategyType::Text)
             || (settings.horizontal_strategy == StrategyType::Text)
@@ -244,4 +330,15 @@ impl TableFinder {
         }
         edges_merged
     }
+
+    // pub fn get_all_cells_bbox(&self, page: &PdfPage) -> Vec<BboxKey> {
+    //     let mut edges = self.get_edges(page);
+    //     let intersections = edges_to_intersections(
+    //         &mut edges,
+    //         self.settings.intersection_x_tolerance,
+    //         self.settings.intersection_y_tolerance,
+    //     );
+    //     let cells = intersections_to_cells(intersections);
+    //     let cell_groups = cells_to_tables(&cells);
+    // }
 }
