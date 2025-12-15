@@ -6,8 +6,10 @@ use pyo3::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
 
+use crate::pages::PdfPage;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum EdgeType {
+pub enum EdgeType {
     VerticalLine,
     HorizontalLine,
     VerticalRect,
@@ -216,27 +218,6 @@ fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: OrderedFloat<f32>) 
     result
 }
 
-fn snap_edges(
-    mut edges: HashMap<Orientation, Vec<Edge>>,
-    x_tolerance: OrderedFloat<f32>,
-    y_tolerance: OrderedFloat<f32>,
-) -> HashMap<Orientation, Vec<Edge>> {
-    let snapped_v = snap_objects(
-        edges.remove(&Orientation::Vertical).unwrap_or_default(),
-        EdgeAttr::X1,
-        x_tolerance,
-    );
-    let snapped_h = snap_objects(
-        edges.remove(&Orientation::Horizontal).unwrap_or_default(),
-        EdgeAttr::Y1,
-        y_tolerance,
-    );
-    HashMap::from([
-        (Orientation::Vertical, snapped_v),
-        (Orientation::Horizontal, snapped_h),
-    ])
-}
-
 fn join_edge_group(
     edges: Vec<Edge>,
     orient: Orientation,
@@ -336,12 +317,12 @@ pub(crate) fn merge_edges(
 }
 
 pub(crate) fn make_edges(page: &PdfPage, bottom_origin: bool) -> HashMap<EdgeType, Vec<Edge>> {
-    let page_height = page.height().value;
+    let page_height = page.height();
     let mut edges = HashMap::new();
     for each_type in EdgeType::all() {
         edges.insert(each_type, Vec::new());
     }
-    for obj in page.objects().iter() {
+    for obj in page.inner.objects().iter() {
         if let Some(obj) = obj.as_path_object() {
             obj2edge(obj, bottom_origin, page_height, &mut edges);
         }

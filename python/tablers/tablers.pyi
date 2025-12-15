@@ -1,4 +1,7 @@
 from pathlib import Path
+from typing import TypeAlias, TypedDict
+
+BBox: TypeAlias = tuple[float, float, float, float]
 
 class PdfiumRuntime:
     def __init__(self, dll_path: Path | str): ...
@@ -15,6 +18,8 @@ class Document:
     def page_count(self) -> int: ...
     def get_page(self, page_num: int) -> Page: ...
     def pages(self) -> list[Page]: ...
+    def close(self) -> None: ...
+    def is_closed(self) -> bool: ...
 
 class Page:
     width: float
@@ -32,3 +37,30 @@ class Edge:
     width: float
     color: tuple[int, int, int, int]
     edge_type: str
+
+class TableCell:
+    bbox: BBox
+    text: str
+
+class Table:
+    bbox: BBox
+    cells: list[TableCell]
+
+class TfSettingItems(TypedDict, total=False):
+    vertical_strategy: str
+    horizontal_strategy: str
+    snap_x_tolerance: float
+    snap_y_tolerance: float
+    join_x_tolerance: float
+    join_y_tolerance: float
+    edge_min_length: float
+    edge_min_length_prefilter: float
+    intersection_x_tolerance: float
+    intersection_y_tolerance: float
+
+def find_tables(
+    page: Page,
+    extract_text: bool,
+    bottom_origin: bool = False,
+    **kwargs: TfSettingItems,
+) -> tuple[list[BBox], list[Table]]: ...

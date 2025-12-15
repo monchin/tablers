@@ -1,6 +1,7 @@
 use crate::edges::*;
+use crate::pages::PdfPage;
 use ordered_float::OrderedFloat;
-use pdfium_render::prelude::*;
+use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
@@ -8,16 +9,20 @@ type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
 static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
 static DEFAULT_JOIN_TOLERANCE: f32 = 3.0;
 static DEFAULT_INTERSECTION_TOLERANCE: f32 = 3.0;
-// use crate::edges::*;
-pub struct Cell {
-    text: String,
-    bbox: BboxKey,
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct TableCell {
+    pub text: String,
+    pub bbox: BboxKey,
 }
+
+#[pyclass]
 pub struct Table {
-    cells: Vec<Cell>,
-    bbox: BboxKey,
-    page_index: usize,
-    text_extracted: bool,
+    pub cells: Vec<TableCell>,
+    pub bbox: BboxKey,
+    pub page_index: usize,
+    pub text_extracted: bool,
 }
 
 fn get_table_bbox(cells_bbox: &[BboxKey]) -> BboxKey {
@@ -59,7 +64,7 @@ impl Table {
         if !extract_text {
             cells = cells_bbox
                 .iter()
-                .map(|bbox| Cell {
+                .map(|bbox| TableCell {
                     text: "".to_string(),
                     bbox: *bbox,
                 })
@@ -77,23 +82,25 @@ impl Table {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StrategyType {
+pub enum StrategyType {
     Lines,
     LinesStrict,
     Text,
 }
 
-struct TfSettings {
-    vertiacl_strategy: StrategyType,
-    horizontal_strategy: StrategyType,
-    snap_x_tolerance: OrderedFloat<f32>,
-    snap_y_tolerance: OrderedFloat<f32>,
-    join_x_tolerance: OrderedFloat<f32>,
-    join_y_tolerance: OrderedFloat<f32>,
-    edge_min_length: OrderedFloat<f32>,
-    edge_min_length_prefilter: OrderedFloat<f32>,
-    intersection_x_tolerance: OrderedFloat<f32>,
-    intersection_y_tolerance: OrderedFloat<f32>,
+#[derive(Debug, Clone)]
+#[pyclass]
+pub struct TfSettings {
+    pub vertiacl_strategy: StrategyType,
+    pub horizontal_strategy: StrategyType,
+    pub snap_x_tolerance: OrderedFloat<f32>,
+    pub snap_y_tolerance: OrderedFloat<f32>,
+    pub join_x_tolerance: OrderedFloat<f32>,
+    pub join_y_tolerance: OrderedFloat<f32>,
+    pub edge_min_length: OrderedFloat<f32>,
+    pub edge_min_length_prefilter: OrderedFloat<f32>,
+    pub intersection_x_tolerance: OrderedFloat<f32>,
+    pub intersection_y_tolerance: OrderedFloat<f32>,
 }
 impl Default for TfSettings {
     fn default() -> Self {
@@ -387,15 +394,26 @@ impl TableFinder {
         }
         edges_merged
     }
+}
 
-    // pub fn get_all_cells_bbox(&self, page: &PdfPage) -> Vec<BboxKey> {
-    //     let mut edges = self.get_edges(page);
-    //     let intersections = edges_to_intersections(
-    //         &mut edges,
-    //         self.settings.intersection_x_tolerance,
-    //         self.settings.intersection_y_tolerance,
-    //     );
-    //     let cells = intersections_to_cells(intersections);
-    //     let cell_groups = cells_to_tables(&cells);
-    // }
+pub fn find_tables(
+    pdf_page: &PdfPage,
+    tf_settings: Rc<TfSettings>,
+    bottom_origin: bool,
+    extract_text: bool,
+) -> (Vec<BboxKey>, Vec<Table>) {
+    let table_finder = TableFinder::new(tf_settings.clone(), bottom_origin);
+    let edges = table_finder.get_edges(pdf_page);
+    let intersections = edges_to_intersections(
+        &mut edges.clone(),
+        table_finder.settings.intersection_x_tolerance,
+        table_finder.settings.intersection_y_tolerance,
+    );
+    let cells = intersections_to_cells(intersections);
+    let tables_bbox = cells_to_tables(&cells);
+    let tables = tables_bbox
+        .iter()
+        .map(|table_cells_bbox| Table::new(pdf_page.page_idx, table_cells_bbox, extract_text))
+        .collect();
+    return (cells, tables);
 }

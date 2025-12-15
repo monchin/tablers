@@ -1,8 +1,10 @@
 use crate::edges::{Edge, EdgeType};
 use crate::pages::PdfPage;
+use crate::tables::{StrategyType, Table, TableCell, TfSettings, find_tables};
+use ordered_float::OrderedFloat;
 use pdfium_render::prelude::{PdfDocument, PdfPageIndex, Pdfium, PdfiumError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList, PyString};
+use pyo3::types::{PyDict, PyList};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -134,23 +136,24 @@ impl Document {
         Ok(doc.pages().len().into())
     }
 
-    fn get_page(&self, page_num: usize) -> PyResult<Page> {
+    fn get_page(&self, page_idx: usize) -> PyResult<Page> {
         let inner = self.inner.borrow();
         let doc = inner.doc.as_ref().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
         })?;
         let page_count: usize = doc.pages().len().into();
-        if page_num >= page_count {
+        if page_idx >= page_count {
             return Err(PyErr::new::<pyo3::exceptions::PyIndexError, _>(format!(
                 "Page index {} out of range (0..{})",
-                page_num, page_count
+                page_idx, page_count
             )));
         }
 
         Ok(Page {
             doc_inner: Rc::clone(&self.inner),
             inner: PdfPage::new(
-                doc.pages().get(page_num as PdfPageIndex).unwrap(),
+                doc.pages().get(page_idx as PdfPageIndex).unwrap(),
+                page_idx,
                 self.bottom_origin,
             ),
         })
@@ -167,6 +170,7 @@ impl Document {
                 doc_inner: Rc::clone(&self.inner),
                 inner: PdfPage::new(
                     doc.pages().get(i as PdfPageIndex).unwrap(),
+                    i,
                     self.bottom_origin,
                 ),
             })
@@ -326,11 +330,153 @@ impl Edge {
     }
 }
 
+#[pymethods]
+impl TableCell {
+    #[getter]
+    fn text(&self) -> &str {
+        &self.text
+    }
+
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
+        )
+    }
+}
+
+#[pymethods]
+impl Table {
+    #[getter]
+    fn cells(&self) -> Vec<TableCell> {
+        self.cells.clone()
+    }
+
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
+        )
+    }
+
+    #[getter]
+    fn page_idx(&self) -> usize {
+        self.page_index
+    }
+
+    #[getter]
+    fn text_extracted(&self) -> bool {
+        self.text_extracted
+    }
+}
+
+#[pymethods]
+impl TfSettings {
+    #[new]
+    #[pyo3(signature = (**kwargs))]
+    fn py_new(kwargs: Option<&Bound<'_, PyDict>>) -> Self {
+        let strategy_str_to_enum = |strategy_str: &str| -> StrategyType {
+            match strategy_str {
+                "lines" => StrategyType::Lines,
+                "lines_strict" => StrategyType::LinesStrict,
+                "text" => StrategyType::Text,
+                _ => panic!("Invalid strategy: {}", strategy_str),
+            }
+        };
+        let mut settings = TfSettings::default();
+
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                let key = key.to_string();
+                match key.as_str() {
+                    "vertical_strategy" => {
+                        settings.vertiacl_strategy = strategy_str_to_enum(value.extract().unwrap())
+                    }
+                    "horizontal_strategy" => {
+                        settings.horizontal_strategy =
+                            strategy_str_to_enum(value.extract().unwrap())
+                    }
+                    "snap_x_tolerance" => {
+                        settings.snap_x_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "snap_y_tolerance" => {
+                        settings.snap_y_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "join_x_tolerance" => {
+                        settings.join_x_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "join_y_tolerance" => {
+                        settings.join_y_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "edge_min_length" => {
+                        settings.edge_min_length =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "edge_min_length_prefilter" => {
+                        settings.edge_min_length_prefilter =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "intersection_x_tolerance" => {
+                        settings.intersection_x_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "intersection_y_tolerance" => {
+                        settings.intersection_y_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    _ => (), // Ignore unknown settings
+                }
+            }
+        }
+        settings
+    }
+}
+
+#[pyfunction]
+#[pyo3(name = "find_tables")]
+#[pyo3(signature = (page, extract_text, bottom_origin=false, **kwargs))]
+fn py_find_tables(
+    page: &Page,
+    extract_text: bool,
+    bottom_origin: bool,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<(Vec<(f32, f32, f32, f32)>, Vec<Table>)> {
+    let settings = Rc::new(TfSettings::py_new(kwargs));
+    let (cell_bboxes, tables) =
+        find_tables(&page.inner, settings.clone(), bottom_origin, extract_text);
+    let cell_bboxes = cell_bboxes
+        .into_iter()
+        .map(|bbox| {
+            (
+                bbox.0.into_inner(),
+                bbox.1.into_inner(),
+                bbox.2.into_inner(),
+                bbox.3.into_inner(),
+            )
+        })
+        .collect();
+    Ok((cell_bboxes, tables))
+}
+
 #[pymodule]
 fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PdfiumRuntime>()?;
     m.add_class::<Document>()?;
     m.add_class::<Page>()?;
     m.add_class::<Edge>()?;
+    m.add_class::<TableCell>()?;
+    m.add_class::<Table>()?;
+    m.add_class::<TfSettings>()?;
+    m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
     Ok(())
 }
