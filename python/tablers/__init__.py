@@ -11,6 +11,12 @@ SYSTEM: Final = platform.system()
 
 if SYSTEM == "Windows":
     PDFIUM_RT = PdfiumRuntime(str(Path(__file__).parent / "pdfium.dll"))
+elif SYSTEM == "Linux":
+    PDFIUM_RT = PdfiumRuntime(str(Path(__file__).parent / "libpdfium.so"))
+elif SYSTEM == "Darwin":
+    PDFIUM_RT = PdfiumRuntime(str(Path(__file__).parent / "libpdfium.dylib"))
+else:
+    raise RuntimeError(f"Unsupported system: {SYSTEM}")
 
 
 __doc__ = tablers.__doc__

@@ -7,6 +7,8 @@ __pycache__/
 
 # C extensions
 *.so
+# exclude pdfium dynamic library
+!*libpdfium.so
 
 # Distribution / packaging
 .Python
