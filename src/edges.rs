@@ -170,8 +170,6 @@ pub enum Orientation {
 enum EdgeAttr {
     X1,
     Y1,
-    X2,
-    Y2,
 }
 
 fn move_edge(edge: Edge, orient: Orientation, value: OrderedFloat<f32>) -> Edge {
@@ -193,14 +191,10 @@ fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: OrderedFloat<f32>) 
     let orient = match attr {
         EdgeAttr::X1 => Orientation::Vertical,
         EdgeAttr::Y1 => Orientation::Horizontal,
-        EdgeAttr::X2 => Orientation::Vertical,
-        EdgeAttr::Y2 => Orientation::Horizontal,
     };
     let attr_getter = match attr {
         EdgeAttr::X1 => |edge: &Edge| edge.x1,
         EdgeAttr::Y1 => |edge: &Edge| edge.y1,
-        EdgeAttr::X2 => |edge: &Edge| edge.x2,
-        EdgeAttr::Y2 => |edge: &Edge| edge.y2,
     };
     let clusters = cluster_objects(edges, attr_getter, tolerance, false);
     let mut result = Vec::new();
@@ -230,15 +224,15 @@ fn join_edge_group(
         fn(&Edge) -> OrderedFloat<f32>,
         fn(&Edge) -> OrderedFloat<f32>,
     ) = match orient {
-        Orientation::Vertical => (|e| e.x1, |e| e.x2),
-        Orientation::Horizontal => (|e| e.y1, |e| e.y2),
+        Orientation::Vertical => (|e| e.y1, |e| e.y2),
+        Orientation::Horizontal => (|e| e.x1, |e| e.x2),
     };
     let update_last_edge = match orient {
         Orientation::Vertical => |last_edge: &mut Edge, edge: &Edge| {
-            last_edge.x2 = edge.x2;
+            last_edge.y2 = edge.y2;
         },
         Orientation::Horizontal => |last_edge: &mut Edge, edge: &Edge| {
-            last_edge.y2 = edge.y2;
+            last_edge.x2 = edge.x2;
         },
     };
     let mut sorted_edges: Vec<Edge> = edges
@@ -248,10 +242,10 @@ fn join_edge_group(
     let mut result = vec![sorted_edges[0].clone()];
     for edge in sorted_edges.iter_mut().skip(1) {
         let last_edge = result.last_mut().unwrap();
-        if (get_min_prop(edge) <= get_max_prop(last_edge) + tolerance)
-            && get_max_prop(edge) > get_max_prop(last_edge)
-        {
-            update_last_edge(last_edge, edge);
+        if get_min_prop(edge) <= get_max_prop(last_edge) + tolerance {
+            if get_max_prop(edge) > get_max_prop(last_edge) {
+                update_last_edge(last_edge, edge);
+            }
         } else {
             result.push(edge.clone());
         }
@@ -279,12 +273,21 @@ fn merge_one_kind_edges(
     }
     edges.sort_by_key(&get_prop);
     edges
-        .into_iter()
-        .chunk_by(|edge| get_prop(edge))
-        .into_iter()
-        .map(|(_, group)| join_edge_group(group.collect(), orient, join_tolerance))
-        .flatten()
+        .chunk_by(|e1, e2| get_prop(e1) == get_prop(e2))
+        .map(|slice| slice.to_vec())
+        .flat_map(|group| {
+            let joined = join_edge_group(group, orient, join_tolerance);
+            joined
+        })
         .collect()
+
+    // // 2. 逐个查看 join_edge_group 的结果
+    // let result: Vec<Edge> = chunks
+    //     .into_iter()
+
+    // // let lenres = result.len();
+    // // println!("res len {}", lenres);
+    // result
 }
 
 pub(crate) fn merge_edges(
@@ -301,7 +304,7 @@ pub(crate) fn merge_edges(
                 edges.remove(&Orientation::Vertical).unwrap_or_default(),
                 Orientation::Vertical,
                 snap_x_tolerance,
-                join_x_tolerance,
+                join_y_tolerance,
             ),
         ),
         (
@@ -310,7 +313,7 @@ pub(crate) fn merge_edges(
                 edges.remove(&Orientation::Horizontal).unwrap_or_default(),
                 Orientation::Horizontal,
                 snap_y_tolerance,
-                join_y_tolerance,
+                join_x_tolerance,
             ),
         ),
     ])
@@ -328,4 +331,138 @@ pub(crate) fn make_edges(page: &PdfPage, bottom_origin: bool) -> HashMap<EdgeTyp
         }
     }
     edges
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ordered_float::OrderedFloat;
+    use pdfium_render::prelude::PdfColor;
+
+    fn make_test_edge(x1: f32, y1: f32, x2: f32, y2: f32) -> Edge {
+        Edge {
+            edge_type: EdgeType::VerticalLine,
+            x1: OrderedFloat(x1),
+            y1: OrderedFloat(y1),
+            x2: OrderedFloat(x2),
+            y2: OrderedFloat(y2),
+            width: 1.0,
+            color: PdfColor::new(0, 0, 0, 255),
+        }
+    }
+
+    #[test]
+    fn test_snap_objects() {
+        // 使用 tolerance=1 对齐后，三者的 x1 应该相等
+        let a = make_test_edge(5.0, 20.0, 10.0, 30.0);
+        let b = make_test_edge(6.0, 20.0, 11.0, 30.0);
+        let c = make_test_edge(7.0, 20.0, 12.0, 30.0);
+
+        let result = snap_objects(vec![a, b, c], EdgeAttr::X1, OrderedFloat(1.0));
+
+        assert_eq!(result.len(), 3);
+        // 对齐后，三个边的 x1 应该相等（取平均值 (5+6+7)/3 = 6）
+        assert_eq!(result[0].x1, result[1].x1);
+        assert_eq!(result[1].x1, result[2].x1);
+        // 验证平均值
+        assert_eq!(result[0].x1, OrderedFloat(6.0));
+    }
+
+    #[test]
+    fn test_edge_merging() {
+        use pdfium_render::prelude::Pdfium;
+
+        let project_root = env!("CARGO_MANIFEST_DIR");
+
+        #[cfg(target_os = "windows")]
+        let pdfium = Pdfium::new(
+            Pdfium::bind_to_library(&format!("{}/python/tablers/pdfium.dll", project_root))
+                .unwrap(),
+        );
+        #[cfg(target_os = "macos")]
+        let pdfium = Pdfium::new(
+            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.dylib", project_root))
+                .unwrap(),
+        );
+        #[cfg(target_os = "linux")]
+        let pdfium = Pdfium::new(
+            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.so", project_root))
+                .unwrap(),
+        );
+
+        let pdf_path = format!("{}/tests/data/edge-test.pdf", project_root);
+        let doc = pdfium.load_pdf_from_file(&pdf_path, None).unwrap();
+        let page = doc.pages().get(0).unwrap();
+        let pdf_page = crate::pages::PdfPage::new(unsafe { std::mem::transmute(page) }, 0, false);
+
+        let edges_by_type = make_edges(&pdf_page, true);
+
+        // 原始边数 364
+        let total: usize = edges_by_type.values().map(|v| v.len()).sum();
+        assert_eq!(total, 364);
+
+        // 辅助函数：EdgeType -> Orientation
+        let to_orient = |mut e: HashMap<EdgeType, Vec<Edge>>| -> HashMap<Orientation, Vec<Edge>> {
+            HashMap::from([
+                (
+                    Orientation::Vertical,
+                    [
+                        e.remove(&EdgeType::VerticalLine).unwrap_or_default(),
+                        e.remove(&EdgeType::VerticalRect).unwrap_or_default(),
+                    ]
+                    .concat(),
+                ),
+                (
+                    Orientation::Horizontal,
+                    [
+                        e.remove(&EdgeType::HorizontalLine).unwrap_or_default(),
+                        e.remove(&EdgeType::HorizontalRect).unwrap_or_default(),
+                    ]
+                    .concat(),
+                ),
+            ])
+        };
+        let count =
+            |e: &HashMap<Orientation, Vec<Edge>>| -> usize { e.values().map(|v| v.len()).sum() };
+
+        // 测试1: snap_x=3, snap_y=3, join_x=3, join_y=3 => 46
+        let merged = merge_edges(
+            to_orient(edges_by_type.clone()),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+        );
+        assert_eq!(count(&merged), 46);
+
+        // 测试2: snap_x=3, snap_y=3, join_x=3, join_y=0 => 52
+        let merged = merge_edges(
+            to_orient(edges_by_type.clone()),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(0.0),
+        );
+        assert_eq!(count(&merged), 52);
+
+        // 测试3: snap_x=0, snap_y=3, join_x=3, join_y=3 => 94
+        let merged = merge_edges(
+            to_orient(edges_by_type.clone()),
+            OrderedFloat(0.0001),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+        );
+        assert_eq!(count(&merged), 56);
+
+        // 测试4: snap_x=3, snap_y=0, join_x=3, join_y=3 => 174
+        let merged = merge_edges(
+            to_orient(edges_by_type.clone()),
+            OrderedFloat(3.0),
+            OrderedFloat(0.0001),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+        );
+        assert_eq!(count(&merged), 166);
+    }
 }

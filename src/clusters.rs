@@ -105,3 +105,113 @@ where
         .map(|(_, group)| group.map(|(item, _)| item).collect())
         .collect()
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ordered_float::OrderedFloat;
+
+    #[test] 
+    fn test_cluster_list() {
+        // 测试1: tolerance=0 时，每个元素单独成组
+        let a: Vec<OrderedFloat<f32>> = vec![1.0, 2.0, 3.0, 4.0]
+            .into_iter()
+            .map(OrderedFloat)
+            .collect();
+        let expected: Vec<Vec<OrderedFloat<f32>>> = a.iter().map(|&x| vec![x]).collect();
+        assert_eq!(cluster_list(a.clone(), OrderedFloat(0.0)), expected);
+
+        // 测试2: tolerance=1 时，所有相邻元素合并成一组
+        let a: Vec<OrderedFloat<f32>> = vec![1.0, 2.0, 3.0, 4.0]
+            .into_iter()
+            .map(OrderedFloat)
+            .collect();
+        assert_eq!(cluster_list(a.clone(), OrderedFloat(1.0)), vec![a]);
+
+        // 测试3: tolerance=1 时，间隔大于1的元素分开
+        let a: Vec<OrderedFloat<f32>> = vec![1.0, 2.0, 5.0, 6.0]
+            .into_iter()
+            .map(OrderedFloat)
+            .collect();
+        let expected: Vec<Vec<OrderedFloat<f32>>> = vec![
+            vec![OrderedFloat(1.0), OrderedFloat(2.0)],
+            vec![OrderedFloat(5.0), OrderedFloat(6.0)],
+        ];
+        assert_eq!(cluster_list(a, OrderedFloat(1.0)), expected);
+    }
+
+        #[test]
+    fn test_cluster_objects() {
+        // 测试1: 使用字符串长度作为key
+        let a: Vec<String> = vec!["a", "ab", "abc", "b"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        
+        let result = cluster_objects(
+            a.clone(),
+            |s: &String| OrderedFloat(s.len() as f32),
+            OrderedFloat(0.0),
+            false,
+        );
+        // 按长度分组: ["a", "b"] (长度1), ["ab"] (长度2), ["abc"] (长度3)
+        assert_eq!(
+            result,
+            vec![
+                vec!["a".to_string(), "b".to_string()],
+                vec!["ab".to_string()],
+                vec!["abc".to_string()],
+            ]
+        );
+
+        // 测试2: 使用结构体字段作为key
+        #[derive(Debug, Clone, PartialEq)]
+        struct Item {
+            x: f32,
+            label: String,
+        }
+
+        let b = vec![
+            Item { x: 1.0, label: "a".to_string() },
+            Item { x: 1.0, label: "b".to_string() },
+            Item { x: 2.0, label: "b".to_string() },
+            Item { x: 2.0, label: "b".to_string() },
+        ];
+
+        // 按 x 字段分组
+        let result = cluster_objects(
+            b.clone(),
+            |item: &Item| OrderedFloat(item.x),
+            OrderedFloat(0.0),
+            false,
+        );
+        assert_eq!(
+            result,
+            vec![
+                vec![b[0].clone(), b[1].clone()],
+                vec![b[2].clone(), b[3].clone()],
+            ]
+        );
+
+        let result = cluster_objects(
+            b.clone(),
+            |item: &Item| {
+                match item.label.as_str() {
+                    "a" => OrderedFloat(1.0),
+                    "b" => OrderedFloat(2.0),
+                    _ => OrderedFloat(0.0),
+                }
+            },
+            OrderedFloat(0.0),
+            false,
+        );
+        assert_eq!(
+            result,
+            vec![
+                vec![b[0].clone()],
+                vec![b[1].clone(), b[2].clone(), b[3].clone()],
+            ]
+        );
+    }
+}
