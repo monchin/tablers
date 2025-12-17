@@ -118,6 +118,26 @@ fn get_edge_type(x1: f32, y1: f32, x2: f32, y2: f32, obj_shape: ObjShape) -> Edg
         panic!();
     }
 }
+fn proc_x_obj_form_obj(
+    obj: &PdfPageXObjectFormObject,
+    bottom_origin: bool,
+    page_height: f32,
+    edges: &mut HashMap<EdgeType, Vec<Edge>>,
+) {
+    if !obj.is_empty() {
+        for sub_obj in obj.iter() {
+            match &sub_obj {
+                PdfPageObject::XObjectForm(x_obj_form) => {
+                    proc_x_obj_form_obj(&x_obj_form, bottom_origin, page_height, edges);
+                }
+                PdfPageObject::Path(path_obj) => {
+                    obj2edge(&path_obj, bottom_origin, page_height, edges);
+                }
+                _ => {}
+            }
+        }
+    }
+}
 fn obj2edge(
     obj: &PdfPagePathObject,
     bottom_origin: bool,
@@ -280,14 +300,6 @@ fn merge_one_kind_edges(
             joined
         })
         .collect()
-
-    // // 2. 逐个查看 join_edge_group 的结果
-    // let result: Vec<Edge> = chunks
-    //     .into_iter()
-
-    // // let lenres = result.len();
-    // // println!("res len {}", lenres);
-    // result
 }
 
 pub(crate) fn merge_edges(
@@ -328,6 +340,8 @@ pub(crate) fn make_edges(page: &PdfPage, bottom_origin: bool) -> HashMap<EdgeTyp
     for obj in page.inner.objects().iter() {
         if let Some(obj) = obj.as_path_object() {
             obj2edge(obj, bottom_origin, page_height, &mut edges);
+        } else if let Some(obj) = obj.as_x_object_form_object() {
+            proc_x_obj_form_obj(obj, bottom_origin, page_height, &mut edges);
         }
     }
     edges

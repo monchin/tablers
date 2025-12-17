@@ -106,13 +106,12 @@ where
         .collect()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use ordered_float::OrderedFloat;
 
-    #[test] 
+    #[test]
     fn test_cluster_list() {
         // 测试1: tolerance=0 时，每个元素单独成组
         let a: Vec<OrderedFloat<f32>> = vec![1.0, 2.0, 3.0, 4.0]
@@ -141,14 +140,14 @@ mod tests {
         assert_eq!(cluster_list(a, OrderedFloat(1.0)), expected);
     }
 
-        #[test]
+    #[test]
     fn test_cluster_objects() {
         // 测试1: 使用字符串长度作为key
         let a: Vec<String> = vec!["a", "ab", "abc", "b"]
             .into_iter()
             .map(String::from)
             .collect();
-        
+
         let result = cluster_objects(
             a.clone(),
             |s: &String| OrderedFloat(s.len() as f32),
@@ -173,10 +172,22 @@ mod tests {
         }
 
         let b = vec![
-            Item { x: 1.0, label: "a".to_string() },
-            Item { x: 1.0, label: "b".to_string() },
-            Item { x: 2.0, label: "b".to_string() },
-            Item { x: 2.0, label: "b".to_string() },
+            Item {
+                x: 1.0,
+                label: "a".to_string(),
+            },
+            Item {
+                x: 1.0,
+                label: "b".to_string(),
+            },
+            Item {
+                x: 2.0,
+                label: "b".to_string(),
+            },
+            Item {
+                x: 2.0,
+                label: "b".to_string(),
+            },
         ];
 
         // 按 x 字段分组
@@ -196,12 +207,10 @@ mod tests {
 
         let result = cluster_objects(
             b.clone(),
-            |item: &Item| {
-                match item.label.as_str() {
-                    "a" => OrderedFloat(1.0),
-                    "b" => OrderedFloat(2.0),
-                    _ => OrderedFloat(0.0),
-                }
+            |item: &Item| match item.label.as_str() {
+                "a" => OrderedFloat(1.0),
+                "b" => OrderedFloat(2.0),
+                _ => OrderedFloat(0.0),
             },
             OrderedFloat(0.0),
             false,
