@@ -1,5 +1,11 @@
+import sys
 from pathlib import Path
 from typing import TypeAlias, TypedDict
+
+if sys.version_info < (3, 11):
+    from typing_extensions import Unpack
+else:
+    from typing import Unpack
 
 BBox: TypeAlias = tuple[float, float, float, float]
 
@@ -62,5 +68,5 @@ def find_tables(
     page: Page,
     extract_text: bool,
     bottom_origin: bool = False,
-    **kwargs: TfSettingItems,
+    **kwargs: Unpack[TfSettingItems],
 ) -> tuple[list[BBox], list[Table]]: ...
