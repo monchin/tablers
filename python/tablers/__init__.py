@@ -20,7 +20,7 @@ else:
 
 
 __doc__ = tablers.__doc__
-__all__ =["Document", "Page", "PdfiumRuntime", "find_tables"]
+__all__ = ["Document", "Page", "PdfiumRuntime", "find_tables"]
 
 
 class Document:

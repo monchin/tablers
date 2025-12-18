@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import TypeAlias, TypedDict, Literal
+from typing import Literal, TypeAlias, TypedDict
 
 if sys.version_info < (3, 11):
     from typing_extensions import Unpack
