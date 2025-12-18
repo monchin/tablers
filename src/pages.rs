@@ -1,37 +1,31 @@
-use crate::chars::Char;
-use crate::edges::{Edge, EdgeType, make_edges};
+use crate::objects::*;
+use ordered_float::OrderedFloat;
 use pdfium_render::prelude::PdfPage as PdfiumPage;
+use pdfium_render::prelude::*;
 use std::cell::RefCell;
-use std::collections::HashMap;
 
-pub struct PdfPage {
+pub struct Page {
     pub inner: PdfiumPage<'static>,
     pub page_idx: usize,
-    pub edges: RefCell<Option<HashMap<EdgeType, Vec<Edge>>>>,
-    pub chars: RefCell<Option<Vec<Char>>>,
+    pub objects: RefCell<Option<Objects>>,
     bottom_origin: bool,
 }
 
-impl PdfPage {
+impl Page {
     pub fn new(inner: PdfiumPage<'static>, page_idx: usize, bottom_origin: bool) -> Self {
-        Self {
+        let page = Self {
             inner,
             page_idx,
-            edges: RefCell::new(None),
-            chars: RefCell::new(None),
+            objects: RefCell::new(None),
             bottom_origin,
-        }
-    }
-    pub fn extract_edges(&self) {
-        if self.edges.borrow().is_none() {
-            let edges = make_edges(&self, self.bottom_origin);
-            self.edges.replace(Some(edges));
-        }
+        };
+        page.extract_objects();
+        page
     }
 
+
     pub fn clear(&self) {
-        self.edges.replace(None);
-        self.chars.replace(None);
+        self.objects.replace(None);
     }
 
     pub fn width(&self) -> f32 {
@@ -41,4 +35,85 @@ impl PdfPage {
     pub fn height(&self) -> f32 {
         self.inner.height().value
     }
+
+    pub fn extract_objects(&self) {
+        if self.objects.borrow().is_none() {
+            let objects = self.extract_objects_from_page();
+            self.objects.replace(Some(objects));
+        }
+    }
+
+    fn extract_objects_from_page(&self) -> Objects {
+        let mut objects = Objects {
+            rects: vec![],
+            lines: vec![],
+        };
+        for obj in self.inner.objects().iter() {
+            if let Some(obj) = obj.as_path_object() {
+                self.process_path_obj(&mut objects, obj);
+            } else if let Some(obj) = obj.as_x_object_form_object() {
+                self.process_x_object_form_obj(&mut objects, obj);
+            }
+        }
+
+        objects
+    }
+
+    fn process_path_obj(&self, objects: &mut Objects, obj: &PdfPagePathObject) {
+        let n_segs = obj.segments().len();
+        let mut points = Vec::with_capacity(n_segs as usize);
+        let mut line_type = LineType::Curve;
+        for seg in obj.segments().iter() {
+            let x = OrderedFloat::from(seg.x().value);
+            let y = match self.bottom_origin {
+                true=>OrderedFloat::from(seg.y().value) ,
+                false=> OrderedFloat::from(self.height() - seg.y().value),
+            };
+
+            points.push((x, y));
+            if seg.segment_type() == PdfPathSegmentType::LineTo && n_segs == 2 {
+                line_type = LineType::Straight;
+            }
+        }
+
+        if is_rect(&points) {
+            let bbox = {
+                let x_values: Vec<OrderedFloat<f32>> = points.iter().map(|p| p.0).collect();
+                let y_values: Vec<OrderedFloat<f32>> = points.iter().map(|p| p.1).collect();
+                (
+                    *x_values.iter().min().unwrap(),
+                    *y_values.iter().min().unwrap(),
+                    *x_values.iter().max().unwrap(),
+                    *y_values.iter().max().unwrap(),
+                )
+            };
+            objects.rects.push(Rect {
+                bbox: bbox,
+                fill_color: obj.fill_color().unwrap(),
+                stroke_color: obj.stroke_color().unwrap(),
+                stroke_width: obj.stroke_width().unwrap().value,
+            });
+        } else if points[0] != points[points.len() - 1] {
+            objects.lines.push(Line {
+                points: points,
+                line_type: line_type,
+                color: obj.stroke_color().unwrap(),
+                width: obj.stroke_width().unwrap().value * 2.0,
+            });
+        }
+    }
+
+    fn process_x_object_form_obj(&self, objects:&mut Objects, obj: &PdfPageXObjectFormObject) { 
+        if !obj.is_empty() {
+            for sub_obj in obj.iter() {
+                if let Some(sub_obj) = sub_obj.as_path_object() {
+                    self.process_path_obj(objects, sub_obj);
+                } else if let Some(sub_obj) = sub_obj.as_x_object_form_object() {
+                    self.process_x_object_form_obj(objects, sub_obj);
+                }
+            }
+        }
+    }
+
+
 }

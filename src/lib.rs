@@ -1,6 +1,7 @@
-use crate::edges::{Edge, EdgeType};
-use crate::pages::PdfPage;
+use crate::pages::Page;
+use crate::objects::Objects;
 use crate::tables::{StrategyType, Table, TableCell, TfSettings, find_tables};
+use crate::edges::Edge;
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::{PdfDocument, PdfPageIndex, Pdfium, PdfiumError};
 use pyo3::prelude::*;
@@ -8,11 +9,10 @@ use pyo3::types::{PyDict, PyList};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-
-mod chars;
+mod objects;
 mod clusters;
-mod edges;
 mod pages;
+mod edges;
 mod tables;
 #[pyclass(unsendable)]
 pub struct PdfiumRuntime {
@@ -136,7 +136,7 @@ impl Document {
         Ok(doc.pages().len().into())
     }
 
-    fn get_page(&self, page_idx: usize) -> PyResult<Page> {
+    fn get_page(&self, page_idx: usize) -> PyResult<PyPage> {
         let inner = self.inner.borrow();
         let doc = inner.doc.as_ref().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
@@ -148,10 +148,10 @@ impl Document {
                 page_idx, page_count
             )));
         }
-
-        Ok(Page {
+        println!("sgsdfsd");
+        Ok(PyPage {
             doc_inner: Rc::clone(&self.inner),
-            inner: PdfPage::new(
+            inner: Page::new(
                 doc.pages().get(page_idx as PdfPageIndex).unwrap(),
                 page_idx,
                 self.bottom_origin,
@@ -165,10 +165,10 @@ impl Document {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
         })?;
         let page_count = self.page_count()?;
-        let pages: Vec<Page> = (0..page_count)
-            .map(|i| Page {
+        let pages: Vec<PyPage> = (0..page_count)
+            .map(|i| PyPage {
                 doc_inner: Rc::clone(&self.inner),
-                inner: PdfPage::new(
+                inner: Page::new(
                     doc.pages().get(i as PdfPageIndex).unwrap(),
                     i,
                     self.bottom_origin,
@@ -180,13 +180,13 @@ impl Document {
     }
 }
 
-#[pyclass(unsendable)]
-pub struct Page {
+#[pyclass(unsendable, name="Page")]
+pub struct PyPage {
     doc_inner: Rc<RefCell<DocumentInner>>,
-    inner: PdfPage,
+    inner: Page,
 }
 
-impl Page {
+impl PyPage {
     fn check_valid(&self) -> PyResult<()> {
         if self.doc_inner.borrow().doc.is_none() {
             return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
@@ -198,7 +198,7 @@ impl Page {
 }
 
 #[pymethods]
-impl Page {
+impl PyPage {
     #[getter]
     fn width(&self) -> PyResult<f32> {
         self.check_valid()?;
@@ -215,44 +215,53 @@ impl Page {
         self.doc_inner.borrow().doc.is_some()
     }
 
-    fn extract_edges(&self) -> PyResult<()> {
+    fn extract_objects(&self) -> PyResult<()> {
         self.check_valid()?;
-        self.inner.extract_edges();
+        self.inner.extract_objects();
         Ok(())
     }
 
     #[getter]
-    fn edges(&self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
+    fn objects(&self) -> PyResult<Option<Objects>> {
         self.check_valid()?;
-
-        let key_namer = |edge_type: &EdgeType| -> &str {
-            match edge_type {
-                EdgeType::HorizontalLine => "h_line",
-                EdgeType::HorizontalRect => "h_rect",
-                EdgeType::VerticalLine => "v_line",
-                EdgeType::VerticalRect => "v_rect",
-            }
-        };
-
-        self.inner.extract_edges();
-
-        let edges_ref = self.inner.edges.borrow();
-
-        let edges_map = match edges_ref.as_ref() {
-            Some(map) => map,
-            None => return Ok(None), // 返回 Python None
-        };
-
-        let result = PyDict::new(py);
-
-        for (edge_type, edge_list) in edges_map.iter() {
-            let key = key_namer(edge_type);
-            let py_list = PyList::new(py, edge_list.clone())?;
-            result.set_item(key, py_list)?;
+        if self.inner.objects.borrow().is_none() {
+            return Ok(None);
         }
-
-        Ok(Some(result.into())) // 返回 Some(dict)
+        Ok(self.inner.objects.borrow().clone())
     }
+
+    // #[getter]
+    // fn edges(&self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
+    //     self.check_valid()?;
+
+    //     let key_namer = |edge_type: &EdgeType| -> &str {
+    //         match edge_type {
+    //             EdgeType::HorizontalLine => "h_line",
+    //             EdgeType::HorizontalRect => "h_rect",
+    //             EdgeType::VerticalLine => "v_line",
+    //             EdgeType::VerticalRect => "v_rect",
+    //         }
+    //     };
+
+    //     self.inner.extract_edges();
+
+    //     let edges_ref = self.inner.edges.borrow();
+
+    //     let edges_map = match edges_ref.as_ref() {
+    //         Some(map) => map,
+    //         None => return Ok(None), // 返回 Python None
+    //     };
+
+    //     let result = PyDict::new(py);
+
+    //     for (edge_type, edge_list) in edges_map.iter() {
+    //         let key = key_namer(edge_type);
+    //         let py_list = PyList::new(py, edge_list.clone())?;
+    //         result.set_item(key, py_list)?;
+    //     }
+
+    //     Ok(Some(result.into())) // 返回 Some(dict)
+    // }
 
     fn clear_cache(&self) -> PyResult<()> {
         self.check_valid()?;
@@ -261,192 +270,17 @@ impl Page {
     }
 }
 
-#[pymethods]
-impl Edge {
-    // Getter 手动转换类型
-    #[getter]
-    fn x1(&self) -> f32 {
-        self.x1.into_inner()
-    }
 
-    #[getter]
-    fn y1(&self) -> f32 {
-        self.y1.into_inner()
-    }
 
-    #[getter]
-    fn x2(&self) -> f32 {
-        self.x2.into_inner()
-    }
 
-    #[getter]
-    fn y2(&self) -> f32 {
-        self.y2.into_inner()
-    }
 
-    #[getter]
-    fn width(&self) -> f32 {
-        self.width
-    }
 
-    #[getter]
-    fn color(&self) -> (u8, u8, u8, u8) {
-        (
-            self.color.red(),
-            self.color.green(),
-            self.color.blue(),
-            self.color.alpha(),
-        )
-    }
-
-    #[getter]
-    fn edge_type(&self) -> &str {
-        match self.edge_type {
-            EdgeType::HorizontalLine => "h_line",
-            EdgeType::HorizontalRect => "h_rect",
-            EdgeType::VerticalLine => "v_line",
-            EdgeType::VerticalRect => "v_rect",
-        }
-    }
-
-    fn __repr__(&self) -> String {
-        format!(
-            "Edge(type={}, x1={}, y1={}, x2={}, y2={}, width={}, color=(R{}, G{}, B{}, A{}))",
-            self.edge_type(),
-            self.x1(),
-            self.y1(),
-            self.x2(),
-            self.y2(),
-            self.width(),
-            self.color.red(),
-            self.color.green(),
-            self.color.blue(),
-            self.color.alpha(),
-        )
-    }
-
-    fn __eq__(&self, other: &Self) -> bool {
-        self.x1 == other.x1 && self.y1 == other.y1 && self.x2 == other.x2 && self.y2 == other.y2
-    }
-}
-
-#[pymethods]
-impl TableCell {
-    #[getter]
-    fn text(&self) -> &str {
-        &self.text
-    }
-
-    #[getter]
-    fn bbox(&self) -> (f32, f32, f32, f32) {
-        (
-            self.bbox.0.into_inner(),
-            self.bbox.1.into_inner(),
-            self.bbox.2.into_inner(),
-            self.bbox.3.into_inner(),
-        )
-    }
-}
-
-#[pymethods]
-impl Table {
-    #[getter]
-    fn cells(&self) -> Vec<TableCell> {
-        self.cells.clone()
-    }
-
-    #[getter]
-    fn bbox(&self) -> (f32, f32, f32, f32) {
-        (
-            self.bbox.0.into_inner(),
-            self.bbox.1.into_inner(),
-            self.bbox.2.into_inner(),
-            self.bbox.3.into_inner(),
-        )
-    }
-
-    #[getter]
-    fn page_idx(&self) -> usize {
-        self.page_index
-    }
-
-    #[getter]
-    fn text_extracted(&self) -> bool {
-        self.text_extracted
-    }
-}
-
-#[pymethods]
-impl TfSettings {
-    #[new]
-    #[pyo3(signature = (**kwargs))]
-    fn py_new(kwargs: Option<&Bound<'_, PyDict>>) -> Self {
-        let strategy_str_to_enum = |strategy_str: &str| -> StrategyType {
-            match strategy_str {
-                "lines" => StrategyType::Lines,
-                "lines_strict" => StrategyType::LinesStrict,
-                "text" => StrategyType::Text,
-                _ => panic!("Invalid strategy: {}", strategy_str),
-            }
-        };
-        let mut settings = TfSettings::default();
-
-        if let Some(kwargs) = kwargs {
-            for (key, value) in kwargs.iter() {
-                let key = key.to_string();
-                match key.as_str() {
-                    "vertical_strategy" => {
-                        settings.vertiacl_strategy = strategy_str_to_enum(value.extract().unwrap())
-                    }
-                    "horizontal_strategy" => {
-                        settings.horizontal_strategy =
-                            strategy_str_to_enum(value.extract().unwrap())
-                    }
-                    "snap_x_tolerance" => {
-                        settings.snap_x_tolerance =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    "snap_y_tolerance" => {
-                        settings.snap_y_tolerance =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    "join_x_tolerance" => {
-                        settings.join_x_tolerance =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    "join_y_tolerance" => {
-                        settings.join_y_tolerance =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    "edge_min_length" => {
-                        settings.edge_min_length =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    "edge_min_length_prefilter" => {
-                        settings.edge_min_length_prefilter =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    "intersection_x_tolerance" => {
-                        settings.intersection_x_tolerance =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    "intersection_y_tolerance" => {
-                        settings.intersection_y_tolerance =
-                            OrderedFloat::from(value.extract::<f32>().unwrap())
-                    }
-                    _ => (), // Ignore unknown settings
-                }
-            }
-        }
-        settings
-    }
-}
 
 #[pyfunction]
 #[pyo3(name = "find_tables")]
 #[pyo3(signature = (page, extract_text, bottom_origin=false, **kwargs))]
 fn py_find_tables(
-    page: &Page,
+    page: &PyPage,
     extract_text: bool,
     bottom_origin: bool,
     kwargs: Option<&Bound<'_, PyDict>>,
@@ -472,7 +306,7 @@ fn py_find_tables(
 fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PdfiumRuntime>()?;
     m.add_class::<Document>()?;
-    m.add_class::<Page>()?;
+    m.add_class::<PyPage>()?;
     m.add_class::<Edge>()?;
     m.add_class::<TableCell>()?;
     m.add_class::<Table>()?;

@@ -1,11 +1,13 @@
+use crate::objects::*;
+use crate::pages::Page;
 use crate::edges::*;
-use crate::pages::PdfPage;
 use ordered_float::OrderedFloat;
+use pdfium_render::prelude::PdfColor;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
-
+use std::cmp;
 static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
 static DEFAULT_JOIN_TOLERANCE: f32 = 3.0;
 static DEFAULT_INTERSECTION_TOLERANCE: f32 = 3.0;
@@ -16,7 +18,23 @@ pub struct TableCell {
     pub text: String,
     pub bbox: BboxKey,
 }
+#[pymethods]
+impl TableCell {
+    #[getter]
+    fn text(&self) -> &str {
+        &self.text
+    }
 
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
+        )
+    }
+}
 #[pyclass]
 pub struct Table {
     pub cells: Vec<TableCell>,
@@ -24,7 +42,33 @@ pub struct Table {
     pub page_index: usize,
     pub text_extracted: bool,
 }
+#[pymethods]
+impl Table {
+    #[getter]
+    fn cells(&self) -> Vec<TableCell> {
+        self.cells.clone()
+    }
 
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
+        )
+    }
+
+    #[getter]
+    fn page_idx(&self) -> usize {
+        self.page_index
+    }
+
+    #[getter]
+    fn text_extracted(&self) -> bool {
+        self.text_extracted
+    }
+}
 fn get_table_bbox(cells_bbox: &[BboxKey]) -> BboxKey {
     let x1 = cells_bbox
         .iter()
@@ -91,7 +135,7 @@ pub enum StrategyType {
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct TfSettings {
-    pub vertiacl_strategy: StrategyType,
+    pub vertical_strategy: StrategyType,
     pub horizontal_strategy: StrategyType,
     pub snap_x_tolerance: OrderedFloat<f32>,
     pub snap_y_tolerance: OrderedFloat<f32>,
@@ -105,7 +149,7 @@ pub struct TfSettings {
 impl Default for TfSettings {
     fn default() -> Self {
         TfSettings {
-            vertiacl_strategy: StrategyType::Lines,
+            vertical_strategy: StrategyType::Lines,
             horizontal_strategy: StrategyType::Lines,
             snap_x_tolerance: OrderedFloat::from(DEFAULT_SNAP_TOLERANCE),
             snap_y_tolerance: OrderedFloat::from(DEFAULT_SNAP_TOLERANCE),
@@ -119,12 +163,76 @@ impl Default for TfSettings {
     }
 }
 
+#[pymethods]
+impl TfSettings {
+    #[new]
+    #[pyo3(signature = (**kwargs))]
+    pub fn py_new(kwargs: Option<&Bound<'_, PyDict>>) -> Self {
+        let strategy_str_to_enum = |strategy_str: &str| -> StrategyType {
+            match strategy_str {
+                "lines" => StrategyType::Lines,
+                "lines_strict" => StrategyType::LinesStrict,
+                "text" => StrategyType::Text,
+                _ => panic!("Invalid strategy: {}", strategy_str),
+            }
+        };
+        let mut settings = TfSettings::default();
+
+        if let Some(kwargs) = kwargs {
+            for (key, value) in kwargs.iter() {
+                let key = key.to_string();
+                match key.as_str() {
+                    "vertical_strategy" => {
+                        settings.vertical_strategy = strategy_str_to_enum(value.extract().unwrap())
+                    }
+                    "horizontal_strategy" => {
+                        settings.horizontal_strategy =
+                            strategy_str_to_enum(value.extract().unwrap())
+                    }
+                    "snap_x_tolerance" => {
+                        settings.snap_x_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "snap_y_tolerance" => {
+                        settings.snap_y_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "join_x_tolerance" => {
+                        settings.join_x_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "join_y_tolerance" => {
+                        settings.join_y_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "edge_min_length" => {
+                        settings.edge_min_length =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "edge_min_length_prefilter" => {
+                        settings.edge_min_length_prefilter =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "intersection_x_tolerance" => {
+                        settings.intersection_x_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "intersection_y_tolerance" => {
+                        settings.intersection_y_tolerance =
+                            OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    _ => (), // Ignore unknown settings
+                }
+            }
+        }
+        settings
+    }
+}
+
 fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
-    edges.retain(|edge| match edge.edge_type {
-        EdgeType::HorizontalLine => (edge.x2 - edge.x1) >= min_len,
-        EdgeType::HorizontalRect => (edge.x2 - edge.x1) >= min_len,
-        EdgeType::VerticalLine => (edge.y2 - edge.y1) >= min_len,
-        EdgeType::VerticalRect => (edge.y2 - edge.y1) >= min_len,
+    edges.retain(|edge| match edge.orientation {
+        Orientation::Horizontal => (edge.x2 - edge.x1) >= min_len,
+        Orientation::Vertical => (edge.y2 - edge.y1) >= min_len,
     });
 }
 
@@ -333,46 +441,24 @@ impl TableFinder {
             settings: settings.clone(),
         }
     }
-    pub(crate) fn get_edges(&self, page: &PdfPage) -> HashMap<Orientation, Vec<Edge>> {
+    pub(crate) fn get_edges(&self, page: &Page) -> HashMap<Orientation, Vec<Edge>> {
         let settings = self.settings.as_ref();
-        if (settings.vertiacl_strategy == StrategyType::Text)
+        if (settings.vertical_strategy == StrategyType::Text)
             || (settings.horizontal_strategy == StrategyType::Text)
         {
             panic!("Text strategy not implemented")
         }
 
-        let mut edges_all = make_edges(page, self.bottom_origin);
-        let mut v_edges = match settings.vertiacl_strategy {
-            StrategyType::LinesStrict => edges_all
-                .remove(&EdgeType::VerticalLine)
-                .unwrap_or_default(),
-            StrategyType::Lines => [
-                edges_all
-                    .remove(&EdgeType::VerticalLine)
-                    .unwrap_or_default(),
-                edges_all
-                    .remove(&EdgeType::VerticalRect)
-                    .unwrap_or_default(),
-            ]
-            .concat(),
-            _ => panic!("Text strategy not implemented"),
-        };
+        let objects_opt = page.objects.borrow();
+        let objects = objects_opt.as_ref().expect("Objects should be extracted");
+        let mut edges_all = make_edges(objects, self.settings.clone());
+        let mut v_edges = edges_all
+                    .remove(&Orientation::Vertical)
+                    .unwrap_or_default();
         filter_edges_by_min_len(&mut v_edges, settings.edge_min_length_prefilter);
-        let mut h_edges = match settings.horizontal_strategy {
-            StrategyType::LinesStrict => edges_all
-                .remove(&EdgeType::HorizontalLine)
-                .unwrap_or_default(),
-            StrategyType::Lines => [
-                edges_all
-                    .remove(&EdgeType::HorizontalLine)
-                    .unwrap_or_default(),
-                edges_all
-                    .remove(&EdgeType::HorizontalRect)
-                    .unwrap_or_default(),
-            ]
-            .concat(),
-            _ => panic!("Text strategy not implemented"),
-        };
+         let mut h_edges = edges_all
+                    .remove(&Orientation::Horizontal)
+                    .unwrap_or_default();
         filter_edges_by_min_len(&mut h_edges, settings.edge_min_length_prefilter);
 
         let edges_prefiltered = HashMap::from([
@@ -397,7 +483,7 @@ impl TableFinder {
 }
 
 pub fn find_tables(
-    pdf_page: &PdfPage,
+    pdf_page: &Page,
     tf_settings: Rc<TfSettings>,
     bottom_origin: bool,
     extract_text: bool,
@@ -416,4 +502,118 @@ pub fn find_tables(
         .map(|table_cells_bbox| Table::new(pdf_page.page_idx, table_cells_bbox, extract_text))
         .collect();
     return (cells, tables);
+}
+
+
+
+
+fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orientation, Vec<Edge>> {
+    let (snap_x_tol, snap_y_tol) = (tf_settings.snap_x_tolerance, tf_settings.snap_y_tolerance);
+    let lines = &objects.lines;
+    let rects = &objects.rects;
+    let mut edges = HashMap::new();
+    edges.insert(Orientation::Horizontal, Vec::new());
+    edges.insert(Orientation::Vertical, Vec::new());
+
+    let (h_strat, v_strat) = (tf_settings.horizontal_strategy, tf_settings.vertical_strategy); 
+    if h_strat == StrategyType::Text || v_strat == StrategyType::Text {
+        panic!("Text strategy not implemented yet");
+    }
+
+    for line in lines {
+        if line.line_type == LineType::Straight {
+            let (p1, p2) = (line.points[0], line.points[1]);
+            if (p1.0 - p2.0).abs() < snap_x_tol.into_inner() {
+                edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                    orientation: Orientation::Vertical,
+                    x1: p1.0,
+                    y1: cmp::min(p1.1, p2.1),
+                    x2: p1.0,
+                    y2: cmp::max(p1.1, p2.1),
+                    width: line.width,
+                    color: line.color,
+                });
+            } else if (p1.1 - p2.1).abs() < snap_y_tol.into_inner() {
+                edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: cmp::min(p1.0, p2.0),
+                    y1: p1.1,
+                    x2: cmp::max(p1.0, p2.0),
+                    y2: p1.1,
+                    width: line.width,
+                    color: line.color,
+                })
+            }
+        }
+    }
+
+    for rect in rects {
+        if rect.bbox.2 - rect.bbox.0 < snap_x_tol {
+            let x = (rect.bbox.0 + rect.bbox.2) / 2.0;
+            edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                orientation: Orientation::Vertical,
+                x1: x,
+                y1: rect.bbox.1,
+                x2: x,
+                y2: rect.bbox.3,
+                width: (rect.bbox.2 - rect.bbox.0).into_inner(),
+                color: rect.fill_color,
+            });
+        } else if rect.bbox.3 - rect.bbox.1 < snap_y_tol {
+            let y = (rect.bbox.1 + rect.bbox.3) / 2.0;
+            edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                orientation: Orientation::Horizontal,
+                x1: rect.bbox.0,
+                y1: y,
+                x2: rect.bbox.2,
+                y2: y,
+                width: (rect.bbox.3 - rect.bbox.1).into_inner(),
+                color: rect.fill_color,
+            })
+        } else {
+            if h_strat == StrategyType::Lines {
+                edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: rect.bbox.0,
+                    y1: rect.bbox.1,
+                    x2: rect.bbox.2,
+                    y2: rect.bbox.1,
+                    width: rect.stroke_width,
+                    color: rect.stroke_color,
+                }
+                );
+                edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: rect.bbox.0,
+                    y1: rect.bbox.3,
+                    x2: rect.bbox.2,
+                    y2: rect.bbox.3,
+                    width: rect.stroke_width,
+                    color: rect.stroke_color,
+                });
+            }
+            if v_strat == StrategyType::Lines {
+                edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                    orientation: Orientation::Vertical,
+                    x1: rect.bbox.0,
+                    y1: rect.bbox.1,
+                    x2: rect.bbox.0,
+                    y2: rect.bbox.3,
+                    width: rect.stroke_width,
+                    color: rect.stroke_color,
+                });
+                edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                    orientation: Orientation::Vertical,
+                    x1: rect.bbox.2,
+                    y1: rect.bbox.1,
+                    x2: rect.bbox.2,
+                    y2: rect.bbox.3,
+                    width: rect.stroke_width,
+                    color: rect.stroke_color
+                });
+            }
+        }
+    }
+
+    edges
 }

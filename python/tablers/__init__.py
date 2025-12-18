@@ -20,8 +20,7 @@ else:
 
 
 __doc__ = tablers.__doc__
-if hasattr(tablers, "__all__"):
-    __all__ = tablers.__all__
+__all__ =["Document", "Page", "PdfiumRuntime", "find_tables"]
 
 
 class Document:
