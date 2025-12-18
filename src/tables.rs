@@ -1,13 +1,12 @@
+use crate::edges::*;
 use crate::objects::*;
 use crate::pages::Page;
-use crate::edges::*;
 use ordered_float::OrderedFloat;
-use pdfium_render::prelude::PdfColor;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::cmp;
 static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
 static DEFAULT_JOIN_TOLERANCE: f32 = 3.0;
 static DEFAULT_INTERSECTION_TOLERANCE: f32 = 3.0;
@@ -430,14 +429,12 @@ pub fn cells_to_tables(cells: &Vec<BboxKey>) -> Vec<Vec<BboxKey>> {
     tables.into_iter().filter(|t| t.len() > 1).collect()
 }
 pub(crate) struct TableFinder {
-    bottom_origin: bool,
     settings: Rc<TfSettings>,
 }
 
 impl TableFinder {
-    fn new(settings: Rc<TfSettings>, bottom_origin: bool) -> Self {
+    fn new(settings: Rc<TfSettings>) -> Self {
         TableFinder {
-            bottom_origin: bottom_origin,
             settings: settings.clone(),
         }
     }
@@ -452,13 +449,11 @@ impl TableFinder {
         let objects_opt = page.objects.borrow();
         let objects = objects_opt.as_ref().expect("Objects should be extracted");
         let mut edges_all = make_edges(objects, self.settings.clone());
-        let mut v_edges = edges_all
-                    .remove(&Orientation::Vertical)
-                    .unwrap_or_default();
+        let mut v_edges = edges_all.remove(&Orientation::Vertical).unwrap_or_default();
         filter_edges_by_min_len(&mut v_edges, settings.edge_min_length_prefilter);
-         let mut h_edges = edges_all
-                    .remove(&Orientation::Horizontal)
-                    .unwrap_or_default();
+        let mut h_edges = edges_all
+            .remove(&Orientation::Horizontal)
+            .unwrap_or_default();
         filter_edges_by_min_len(&mut h_edges, settings.edge_min_length_prefilter);
 
         let edges_prefiltered = HashMap::from([
@@ -485,10 +480,9 @@ impl TableFinder {
 pub fn find_tables(
     pdf_page: &Page,
     tf_settings: Rc<TfSettings>,
-    bottom_origin: bool,
     extract_text: bool,
 ) -> (Vec<BboxKey>, Vec<Table>) {
-    let table_finder = TableFinder::new(tf_settings.clone(), bottom_origin);
+    let table_finder = TableFinder::new(tf_settings.clone());
     let edges = table_finder.get_edges(pdf_page);
     let intersections = edges_to_intersections(
         &mut edges.clone(),
@@ -504,9 +498,6 @@ pub fn find_tables(
     return (cells, tables);
 }
 
-
-
-
 fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orientation, Vec<Edge>> {
     let (snap_x_tol, snap_y_tol) = (tf_settings.snap_x_tolerance, tf_settings.snap_y_tolerance);
     let lines = &objects.lines;
@@ -515,7 +506,10 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
     edges.insert(Orientation::Horizontal, Vec::new());
     edges.insert(Orientation::Vertical, Vec::new());
 
-    let (h_strat, v_strat) = (tf_settings.horizontal_strategy, tf_settings.vertical_strategy); 
+    let (h_strat, v_strat) = (
+        tf_settings.horizontal_strategy,
+        tf_settings.vertical_strategy,
+    );
     if h_strat == StrategyType::Text || v_strat == StrategyType::Text {
         panic!("Text strategy not implemented yet");
     }
@@ -580,8 +574,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                     y2: rect.bbox.1,
                     width: rect.stroke_width,
                     color: rect.stroke_color,
-                }
-                );
+                });
                 edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
                     orientation: Orientation::Horizontal,
                     x1: rect.bbox.0,
@@ -609,7 +602,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                     x2: rect.bbox.2,
                     y2: rect.bbox.3,
                     width: rect.stroke_width,
-                    color: rect.stroke_color
+                    color: rect.stroke_color,
                 });
             }
         }

@@ -1,18 +1,17 @@
-use crate::pages::Page;
-use crate::objects::Objects;
-use crate::tables::{StrategyType, Table, TableCell, TfSettings, find_tables};
 use crate::edges::Edge;
-use ordered_float::OrderedFloat;
+use crate::objects::Objects;
+use crate::pages::Page;
+use crate::tables::{Table, TableCell, TfSettings, find_tables};
 use pdfium_render::prelude::{PdfDocument, PdfPageIndex, Pdfium, PdfiumError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-mod objects;
 mod clusters;
-mod pages;
 mod edges;
+mod objects;
+mod pages;
 mod tables;
 #[pyclass(unsendable)]
 pub struct PdfiumRuntime {
@@ -179,7 +178,7 @@ impl Document {
     }
 }
 
-#[pyclass(unsendable, name="Page")]
+#[pyclass(unsendable, name = "Page")]
 pub struct PyPage {
     doc_inner: Rc<RefCell<DocumentInner>>,
     inner: Page,
@@ -269,24 +268,16 @@ impl PyPage {
     }
 }
 
-
-
-
-
-
-
 #[pyfunction]
 #[pyo3(name = "find_tables")]
-#[pyo3(signature = (page, extract_text, bottom_origin=false, **kwargs))]
+#[pyo3(signature = (page, extract_text, **kwargs))]
 fn py_find_tables(
     page: &PyPage,
     extract_text: bool,
-    bottom_origin: bool,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<(Vec<(f32, f32, f32, f32)>, Vec<Table>)> {
     let settings = Rc::new(TfSettings::py_new(kwargs));
-    let (cell_bboxes, tables) =
-        find_tables(&page.inner, settings.clone(), bottom_origin, extract_text);
+    let (cell_bboxes, tables) = find_tables(&page.inner, settings.clone(), extract_text);
     let cell_bboxes = cell_bboxes
         .into_iter()
         .map(|bbox| {

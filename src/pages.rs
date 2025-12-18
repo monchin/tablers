@@ -23,7 +23,6 @@ impl Page {
         page
     }
 
-
     pub fn clear(&self) {
         self.objects.replace(None);
     }
@@ -66,8 +65,8 @@ impl Page {
         for seg in obj.segments().transform(obj.matrix().unwrap()).iter() {
             let x = OrderedFloat::from(seg.x().value);
             let y = match self.bottom_origin {
-                true=>OrderedFloat::from(seg.y().value) ,
-                false=> OrderedFloat::from(self.height() - seg.y().value),
+                true => OrderedFloat::from(seg.y().value),
+                false => OrderedFloat::from(self.height() - seg.y().value),
             };
 
             points.push((x, y));
@@ -103,7 +102,7 @@ impl Page {
         }
     }
 
-    fn process_x_object_form_obj(&self, objects:&mut Objects, obj: &PdfPageXObjectFormObject) { 
+    fn process_x_object_form_obj(&self, objects: &mut Objects, obj: &PdfPageXObjectFormObject) {
         if !obj.is_empty() {
             for sub_obj in obj.iter() {
                 if let Some(sub_obj) = sub_obj.as_path_object() {
@@ -114,6 +113,4 @@ impl Page {
             }
         }
     }
-
-
 }

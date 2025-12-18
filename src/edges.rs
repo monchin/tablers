@@ -1,15 +1,10 @@
 use crate::clusters::cluster_objects;
+use crate::objects::*;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
 use pyo3::prelude::*;
-use std::cmp;
 use std::collections::HashMap;
-use std::rc::Rc;
-use crate::pages::Page;
-use crate::objects::*;
-
-
 
 #[derive(Debug, Clone, Copy)]
 enum EdgeAttr {
@@ -239,7 +234,6 @@ impl Edge {
         self.x1 == other.x1 && self.y1 == other.y1 && self.x2 == other.x2 && self.y2 == other.y2
     }
 }
-
 
 // #[cfg(test)]
 // mod tests {
