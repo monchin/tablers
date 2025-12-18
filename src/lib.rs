@@ -148,7 +148,6 @@ impl Document {
                 page_idx, page_count
             )));
         }
-        println!("sgsdfsd");
         Ok(PyPage {
             doc_inner: Rc::clone(&self.inner),
             inner: Page::new(
