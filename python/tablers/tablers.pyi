@@ -1,12 +1,13 @@
 import sys
 from pathlib import Path
-from typing import TypeAlias, TypedDict
+from typing import TypeAlias, TypedDict, Literal
 
 if sys.version_info < (3, 11):
     from typing_extensions import Unpack
 else:
     from typing import Unpack
 
+Point: TypeAlias = tuple[float, float]
 BBox: TypeAlias = tuple[float, float, float, float]
 
 class PdfiumRuntime:
@@ -31,18 +32,35 @@ class Page:
     width: float
     height: float
     def is_valid(self) -> bool: ...
-    def extract_edges(self) -> None: ...
+    def extract_objects(self) -> None: ...
+    def clear(self): ...
     @property
-    def edges(self) -> dict[str, list[Edge]]: ...
+    def objects(self) -> Objects | None: ...
+
+class Objects:
+    rects: list[Rect]
+    lines: list[Line]
+
+class Rect:
+    bbox: BBox
+    fill_color: tuple[int, int, int, int]
+    stroke_color: tuple[int, int, int, int]
+    stroke_width: float
+
+class Line:
+    line_type: Literal["straight", "curve"]
+    points: list[Point]
+    color: tuple[int, int, int, int]
+    width: float
 
 class Edge:
+    orietation: Literal["h", "v"]
     x1: float
     y1: float
     x2: float
     y2: float
     width: float
     color: tuple[int, int, int, int]
-    edge_type: str
 
 class TableCell:
     bbox: BBox
