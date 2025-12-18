@@ -95,7 +95,7 @@ pub enum LineType {
 }
 
 pub(crate) fn is_rect(points: &[Point]) -> bool {
-    if !points.len() == 5 || points[0] != points[4] { return false; }
+    if (!(points.len() == 5)) || points[0] != points[4] { return false; }
     if points[0].0 == points[1].0 && points[1].1 == points[2].1 && points[2].0 == points[3].0 && points[3].1 == points[0].1 {
         return true;
     }

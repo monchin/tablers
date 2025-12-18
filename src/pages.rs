@@ -63,7 +63,7 @@ impl Page {
         let n_segs = obj.segments().len();
         let mut points = Vec::with_capacity(n_segs as usize);
         let mut line_type = LineType::Curve;
-        for seg in obj.segments().iter() {
+        for seg in obj.segments().transform(obj.matrix().unwrap()).iter() {
             let x = OrderedFloat::from(seg.x().value);
             let y = match self.bottom_origin {
                 true=>OrderedFloat::from(seg.y().value) ,
