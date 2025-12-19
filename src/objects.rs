@@ -5,22 +5,14 @@ use pyo3::prelude::*;
 #[pyclass]
 #[derive(Clone)]
 pub struct Objects {
+    #[pyo3(get)]
     pub rects: Vec<Rect>,
+    #[pyo3(get)]
     pub lines: Vec<Line>,
+    #[pyo3(get)]
+    pub chars: Vec<Char>,
 }
 
-#[pymethods]
-impl Objects {
-    #[getter]
-    fn rects(&self) -> Vec<Rect> {
-        self.rects.clone()
-    }
-
-    #[getter]
-    fn lines(&self) -> Vec<Line> {
-        self.lines.clone()
-    }
-}
 pub type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
 pub type BboxKey = (
     OrderedFloat<f32>,
@@ -106,6 +98,26 @@ impl Line {
             self.color.green(),
             self.color.blue(),
             self.color.alpha(),
+        )
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Char {
+    #[pyo3(get)]
+    pub unicode_char: Option<String>,
+    pub bbox: BboxKey,
+}
+#[pymethods]
+impl Char {
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
         )
     }
 }

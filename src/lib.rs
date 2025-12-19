@@ -228,39 +228,6 @@ impl PyPage {
         Ok(self.inner.objects.borrow().clone())
     }
 
-    // #[getter]
-    // fn edges(&self, py: Python<'_>) -> PyResult<Option<Py<PyDict>>> {
-    //     self.check_valid()?;
-
-    //     let key_namer = |edge_type: &EdgeType| -> &str {
-    //         match edge_type {
-    //             EdgeType::HorizontalLine => "h_line",
-    //             EdgeType::HorizontalRect => "h_rect",
-    //             EdgeType::VerticalLine => "v_line",
-    //             EdgeType::VerticalRect => "v_rect",
-    //         }
-    //     };
-
-    //     self.inner.extract_edges();
-
-    //     let edges_ref = self.inner.edges.borrow();
-
-    //     let edges_map = match edges_ref.as_ref() {
-    //         Some(map) => map,
-    //         None => return Ok(None), // 返回 Python None
-    //     };
-
-    //     let result = PyDict::new(py);
-
-    //     for (edge_type, edge_list) in edges_map.iter() {
-    //         let key = key_namer(edge_type);
-    //         let py_list = PyList::new(py, edge_list.clone())?;
-    //         result.set_item(key, py_list)?;
-    //     }
-
-    //     Ok(Some(result.into())) // 返回 Some(dict)
-    // }
-
     fn clear_cache(&self) -> PyResult<()> {
         self.check_valid()?;
         self.inner.clear();
