@@ -209,6 +209,12 @@ impl PyPage {
         Ok(self.inner.height())
     }
 
+    #[getter]
+    fn rotation_degrees(&self) -> PyResult<f32> {
+        self.check_valid()?;
+        Ok(self.inner.rotation_degrees())
+    }
+
     fn is_valid(&self) -> bool {
         self.doc_inner.borrow().doc.is_some()
     }

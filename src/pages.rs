@@ -35,6 +35,10 @@ impl Page {
         self.inner.height().value
     }
 
+    pub fn rotation_degrees(&self) -> f32 {
+        self.inner.rotation().unwrap().as_degrees()
+    }
+
     pub fn extract_objects(&self) {
         if self.objects.borrow().is_none() {
             let objects = self.extract_objects_from_page();
@@ -61,11 +65,13 @@ impl Page {
     }
 
     #[inline]
-    fn get_v_coord_with_bottom_origin(&self, y:f32) -> OrderedFloat<f32> {
+    fn get_v_coord_with_bottom_origin(&self, y: f32) -> OrderedFloat<f32> {
         if self.bottom_origin {
             OrderedFloat::from(y)
+        } else if self.rotation_degrees() == 90.0 || self.rotation_degrees() == 270.0 {
+            OrderedFloat::from(self.width() - y)
         } else {
-             OrderedFloat::from(self.height() - y)
+            OrderedFloat::from(self.height() - y)
         }
     }
 
@@ -73,19 +79,23 @@ impl Page {
         let text = self.inner.text().unwrap();
         for character in text.chars().iter() {
             let char_rect = character.loose_bounds().unwrap();
+            let (x1, y1) = (char_rect.left(), char_rect.top());
+            let (x2, y2) = (char_rect.right(), char_rect.bottom());
+
             let (y1, y2) = (
-                self.get_v_coord_with_bottom_origin(char_rect.top().value),
-                self.get_v_coord_with_bottom_origin(char_rect.bottom().value),
+                self.get_v_coord_with_bottom_origin(y1.value),
+                self.get_v_coord_with_bottom_origin(y2.value),
             );
             let bbox = (
-                OrderedFloat::from(char_rect.left().value),
+                OrderedFloat::from(x1.value),
                 cmp::min(y1, y2),
-                OrderedFloat::from(char_rect.right().value),
+                OrderedFloat::from(x2.value),
                 cmp::max(y1, y2),
             );
             objects.chars.push(Char {
                 unicode_char: character.unicode_string(),
                 bbox: bbox,
+                rotation_degrees: character.get_rotation_clockwise_degrees(),
             })
         }
     }

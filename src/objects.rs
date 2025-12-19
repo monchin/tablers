@@ -108,6 +108,8 @@ pub struct Char {
     #[pyo3(get)]
     pub unicode_char: Option<String>,
     pub bbox: BboxKey,
+    #[pyo3(get)]
+    pub rotation_degrees: f32,
 }
 #[pymethods]
 impl Char {

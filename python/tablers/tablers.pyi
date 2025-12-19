@@ -79,6 +79,8 @@ class TfSettingItems(TypedDict, total=False):
     join_y_tolerance: float
     edge_min_length: float
     edge_min_length_prefilter: float
+    min_words_vertical: int
+    min_words_horizontal: int
     intersection_x_tolerance: float
     intersection_y_tolerance: float
 

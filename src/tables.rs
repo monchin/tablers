@@ -10,6 +10,8 @@ use std::rc::Rc;
 static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
 static DEFAULT_JOIN_TOLERANCE: f32 = 3.0;
 static DEFAULT_INTERSECTION_TOLERANCE: f32 = 3.0;
+static DEFAULT_MIN_WORDS_VERTICAL: usize = 3;
+static DEFAULT_MIN_WORDS_HORIZONTAL: usize = 1;
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -142,6 +144,8 @@ pub struct TfSettings {
     pub join_y_tolerance: OrderedFloat<f32>,
     pub edge_min_length: OrderedFloat<f32>,
     pub edge_min_length_prefilter: OrderedFloat<f32>,
+    pub min_words_vertical: usize,
+    pub min_words_horizontal: usize,
     pub intersection_x_tolerance: OrderedFloat<f32>,
     pub intersection_y_tolerance: OrderedFloat<f32>,
 }
@@ -156,6 +160,8 @@ impl Default for TfSettings {
             join_y_tolerance: OrderedFloat::from(DEFAULT_JOIN_TOLERANCE),
             edge_min_length: OrderedFloat::from(3.0),
             edge_min_length_prefilter: OrderedFloat::from(1.0),
+            min_words_vertical: DEFAULT_MIN_WORDS_VERTICAL,
+            min_words_horizontal: DEFAULT_MIN_WORDS_HORIZONTAL,
             intersection_x_tolerance: OrderedFloat::from(DEFAULT_INTERSECTION_TOLERANCE),
             intersection_y_tolerance: OrderedFloat::from(DEFAULT_INTERSECTION_TOLERANCE),
         }
@@ -211,6 +217,12 @@ impl TfSettings {
                     "edge_min_length_prefilter" => {
                         settings.edge_min_length_prefilter =
                             OrderedFloat::from(value.extract::<f32>().unwrap())
+                    }
+                    "min_words_vertical" => {
+                        settings.min_words_vertical = value.extract::<usize>().unwrap()
+                    }
+                    "min_words_horizontal" => {
+                        settings.min_words_horizontal = value.extract::<usize>().unwrap()
                     }
                     "intersection_x_tolerance" => {
                         settings.intersection_x_tolerance =
@@ -440,11 +452,8 @@ impl TableFinder {
     }
     pub(crate) fn get_edges(&self, page: &Page) -> HashMap<Orientation, Vec<Edge>> {
         let settings = self.settings.as_ref();
-        if (settings.vertical_strategy == StrategyType::Text)
-            || (settings.horizontal_strategy == StrategyType::Text)
-        {
-            panic!("Text strategy not implemented")
-        }
+
+        let (v_strat, h_strat) = (settings.vertical_strategy, settings.horizontal_strategy);
 
         let objects_opt = page.objects.borrow();
         let objects = objects_opt.as_ref().expect("Objects should be extracted");
