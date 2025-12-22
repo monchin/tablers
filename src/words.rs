@@ -1,12 +1,10 @@
 use crate::clusters::cluster_objects;
 use crate::objects::*;
+use crate::settings::*;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
-
-pub(crate) static DEFAULT_X_TOLERANCE: f32 = 3.0;
-pub(crate) static DEFAULT_Y_TOLERANCE: f32 = 3.0;
 
 static LIGATURES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     [
@@ -49,37 +47,6 @@ impl WordMap {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum SplitPunctuation {
-    All,
-    Custom(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct WordsExtractSettings {
-    pub x_tolerance: OrderedFloat<f32>,
-    pub y_tolerance: OrderedFloat<f32>,
-    pub keep_blank_chars: bool,
-    pub use_text_flow: bool,
-    pub horizontal_ltr: bool,
-    pub vertical_ttb: bool,
-    pub split_at_punctuation: Option<SplitPunctuation>,
-    pub expand_ligatures: bool,
-}
-impl Default for WordsExtractSettings {
-    fn default() -> Self {
-        WordsExtractSettings {
-            x_tolerance: OrderedFloat::from(DEFAULT_X_TOLERANCE),
-            y_tolerance: OrderedFloat::from(DEFAULT_Y_TOLERANCE),
-            keep_blank_chars: false,
-            use_text_flow: false,
-            horizontal_ltr: true,
-            vertical_ttb: false,
-            split_at_punctuation: None,
-            expand_ligatures: true,
-        }
-    }
-}
 pub(crate) struct WordExtractor {
     x_tolerance: OrderedFloat<f32>,
     y_tolerance: OrderedFloat<f32>,

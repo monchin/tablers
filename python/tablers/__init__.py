@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Final
 
 from .tablers import Document as RsDoc
-from .tablers import Page, PdfiumRuntime, find_tables, get_edges
+from .tablers import Page, PageIterator, PdfiumRuntime, find_tables
 
 SYSTEM: Final = platform.system()
 
@@ -44,7 +44,7 @@ class Document:
     def get_page(self, page_num: int) -> Page:
         return self.doc.get_page(page_num)
 
-    def pages(self) -> list[Page]:
+    def pages(self) -> PageIterator:
         return self.doc.pages()
 
     def close(self) -> None:

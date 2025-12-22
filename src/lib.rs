@@ -1,10 +1,11 @@
 use crate::edges::Edge;
 use crate::objects::*;
 use crate::pages::Page;
-use crate::tables::{Table, TableCell, TableFinder, TfSettings, find_tables};
+use crate::settings::TfSettings;
+use crate::tables::{Table, TableCell, TableFinder, find_tables};
 use pdfium_render::prelude::{PdfDocument, PdfPageIndex, Pdfium, PdfiumError};
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::PyDict;
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -12,6 +13,7 @@ mod clusters;
 mod edges;
 mod objects;
 mod pages;
+mod settings;
 mod tables;
 mod words;
 
