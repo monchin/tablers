@@ -72,7 +72,7 @@ pub struct Document {
 #[pymethods]
 impl Document {
     #[new]
-    #[pyo3(signature=   (runtime, path=None, bytes=None, password=None))]
+    #[pyo3(signature=(runtime, path=None, bytes=None, password=None))]
     fn py_new(
         runtime: &PdfiumRuntime,
         path: Option<String>,
@@ -152,20 +152,60 @@ impl Document {
         })
     }
 
-    fn pages(&self, py: Python<'_>) -> PyResult<Py<PyList>> {
+    /// Returns an iterator over pages (memory efficient for large PDFs)
+    fn pages(&self) -> PyResult<PyPageIterator> {
+        self.__iter__()
+    }
+
+    fn __iter__(&self) -> PyResult<PyPageIterator> {
+        // Check if document is valid
         let inner = self.inner.borrow();
+        if inner.doc.is_none() {
+            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Document is closed",
+            ));
+        }
+        drop(inner);
+
+        let page_count = self.page_count()?;
+        Ok(PyPageIterator {
+            doc_inner: Rc::clone(&self.inner),
+            current_idx: 0,
+            page_count,
+        })
+    }
+}
+
+#[pyclass(unsendable)]
+pub struct PyPageIterator {
+    doc_inner: Rc<RefCell<DocumentInner>>,
+    current_idx: usize,
+    page_count: usize,
+}
+
+#[pymethods]
+impl PyPageIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__(&mut self) -> PyResult<Option<PyPage>> {
+        if self.current_idx >= self.page_count {
+            return Ok(None);
+        }
+
+        let inner = self.doc_inner.borrow();
         let doc = inner.doc.as_ref().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
         })?;
-        let page_count = self.page_count()?;
-        let pages: Vec<PyPage> = (0..page_count)
-            .map(|i| PyPage {
-                doc_inner: Rc::clone(&self.inner),
-                inner: Page::new(doc.pages().get(i as PdfPageIndex).unwrap(), i),
-            })
-            .collect();
 
-        Ok(PyList::new(py, pages.into_iter().map(|p| p.into_pyobject(py).unwrap()))?.into())
+        let page_idx = self.current_idx;
+        self.current_idx += 1;
+
+        Ok(Some(PyPage {
+            doc_inner: Rc::clone(&self.doc_inner),
+            inner: Page::new(doc.pages().get(page_idx as PdfPageIndex).unwrap(), page_idx),
+        }))
     }
 }
 
@@ -289,6 +329,7 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<PdfiumRuntime>()?;
     m.add_class::<Document>()?;
     m.add_class::<PyPage>()?;
+    m.add_class::<PyPageIterator>()?;
     m.add_class::<Edge>()?;
     m.add_class::<TableCell>()?;
     m.add_class::<Table>()?;
