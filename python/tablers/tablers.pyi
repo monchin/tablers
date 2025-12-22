@@ -9,6 +9,7 @@ else:
 
 Point: TypeAlias = tuple[float, float]
 BBox: TypeAlias = tuple[float, float, float, float]
+Color: TypeAlias = tuple[int, int, int, int]  # RGBA, each 0~255
 
 class PdfiumRuntime:
     def __init__(self, dll_path: Path | str): ...
@@ -39,18 +40,25 @@ class Page:
 class Objects:
     rects: list[Rect]
     lines: list[Line]
+    chars: list[Char]
 
 class Rect:
     bbox: BBox
-    fill_color: tuple[int, int, int, int]
-    stroke_color: tuple[int, int, int, int]
+    fill_color: Color
+    stroke_color: Color
     stroke_width: float
 
 class Line:
     line_type: Literal["straight", "curve"]
     points: list[Point]
-    color: tuple[int, int, int, int]
+    color: Color
     width: float
+
+class Char:
+    unicode_char: str | None
+    bbox: BBox
+    rotation_degrees: float
+    upright: bool
 
 class Edge:
     orietation: Literal["h", "v"]
@@ -59,7 +67,7 @@ class Edge:
     x2: float
     y2: float
     width: float
-    color: tuple[int, int, int, int]
+    color: Color
 
 class TableCell:
     bbox: BBox
@@ -70,8 +78,8 @@ class Table:
     cells: list[TableCell]
 
 class TfSettingItems(TypedDict, total=False):
-    vertical_strategy: str
-    horizontal_strategy: str
+    vertical_strategy: Literal["lines", "lines_strict", "text"]
+    horizontal_strategy: Literal["lines", "lines_strict", "text"]
     snap_x_tolerance: float
     snap_y_tolerance: float
     join_x_tolerance: float
@@ -82,9 +90,18 @@ class TfSettingItems(TypedDict, total=False):
     min_words_horizontal: int
     intersection_x_tolerance: float
     intersection_y_tolerance: float
+    text_x_tolerance: float
+    text_y_tolerance: float
+    text_keep_blank_chars: bool
+    text_use_text_flow: bool
+    text_horizontal_ltr: bool
+    text_vertical_ttb: bool
+    text_split_at_punctuation: Literal["all"] | str | None
+    text_expand_ligatures: bool
 
 def find_tables(
     page: Page,
     extract_text: bool,
     **kwargs: Unpack[TfSettingItems],
 ) -> tuple[list[BBox], list[Table]]: ...
+def get_edges(page: Page, settings: TfSettingItems | None = None) -> dict[str, list[Edge]]: ...

@@ -5,8 +5,8 @@ use ordered_float::OrderedFloat;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-static DEFAULT_X_TOLERANCE: f32 = 3.0;
-static DEFAULT_Y_TOLERANCE: f32 = 3.0;
+pub(crate) static DEFAULT_X_TOLERANCE: f32 = 3.0;
+pub(crate) static DEFAULT_Y_TOLERANCE: f32 = 3.0;
 
 static LIGATURES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     [
@@ -49,11 +49,37 @@ impl WordMap {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum SplitPunctuation {
     All,
     Custom(String),
 }
 
+#[derive(Debug, Clone)]
+pub struct WordsExtractSettings {
+    pub x_tolerance: OrderedFloat<f32>,
+    pub y_tolerance: OrderedFloat<f32>,
+    pub keep_blank_chars: bool,
+    pub use_text_flow: bool,
+    pub horizontal_ltr: bool,
+    pub vertical_ttb: bool,
+    pub split_at_punctuation: Option<SplitPunctuation>,
+    pub expand_ligatures: bool,
+}
+impl Default for WordsExtractSettings {
+    fn default() -> Self {
+        WordsExtractSettings {
+            x_tolerance: OrderedFloat::from(DEFAULT_X_TOLERANCE),
+            y_tolerance: OrderedFloat::from(DEFAULT_Y_TOLERANCE),
+            keep_blank_chars: false,
+            use_text_flow: false,
+            horizontal_ltr: true,
+            vertical_ttb: false,
+            split_at_punctuation: None,
+            expand_ligatures: true,
+        }
+    }
+}
 pub(crate) struct WordExtractor {
     x_tolerance: OrderedFloat<f32>,
     y_tolerance: OrderedFloat<f32>,
@@ -61,46 +87,31 @@ pub(crate) struct WordExtractor {
     use_text_flow: bool,
     horizontal_ltr: bool,
     vertical_ttb: bool,
-    extra_attrs: Vec<String>,
     split_at_punctuation: HashSet<char>,
     expansions: HashMap<&'static str, &'static str>,
-    most_chars_rotation_degrees: f32,
 }
 
 impl WordExtractor {
-    pub fn new(
-        x_tolerance: Option<f32>,
-        y_tolerance: Option<f32>,
-        keep_blank_chars: bool,
-        use_text_flow: bool,
-        horizontal_ltr: bool,
-        vertical_ttb: bool,
-        extra_attrs: Option<Vec<String>>,
-        split_at_punctuation: Option<SplitPunctuation>,
-        expand_ligatures: bool,
-        most_chars_rotation_degrees: f32,
-    ) -> Self {
-        let split_chars = match split_at_punctuation {
+    pub fn new(word_extract_settings: &WordsExtractSettings) -> Self {
+        let split_chars = match &word_extract_settings.split_at_punctuation {
             Some(SplitPunctuation::All) => PUNCTUATIONS.clone(),
             Some(SplitPunctuation::Custom(chars)) => chars.chars().collect(),
             None => HashSet::new(),
         };
 
         Self {
-            x_tolerance: OrderedFloat(x_tolerance.unwrap_or(DEFAULT_X_TOLERANCE)),
-            y_tolerance: OrderedFloat(y_tolerance.unwrap_or(DEFAULT_Y_TOLERANCE)),
-            keep_blank_chars,
-            use_text_flow,
-            horizontal_ltr,
-            vertical_ttb,
-            extra_attrs: extra_attrs.unwrap_or_default(),
+            x_tolerance: word_extract_settings.x_tolerance,
+            y_tolerance: word_extract_settings.y_tolerance,
+            keep_blank_chars: word_extract_settings.keep_blank_chars,
+            use_text_flow: word_extract_settings.use_text_flow,
+            horizontal_ltr: word_extract_settings.horizontal_ltr,
+            vertical_ttb: word_extract_settings.vertical_ttb,
             split_at_punctuation: split_chars,
-            expansions: if expand_ligatures {
+            expansions: if word_extract_settings.expand_ligatures {
                 LIGATURES.clone()
             } else {
                 HashMap::new()
             },
-            most_chars_rotation_degrees,
         }
     }
     pub fn merge_chars(&self, ordered_chars: &[Char]) -> Word {
@@ -208,7 +219,7 @@ impl WordExtractor {
 
         words
     }
-    pub fn iter_sort_chars(&self, chars: Vec<Char>) -> Vec<Char> {
+    pub fn iter_sort_chars(&self, chars: &[Char]) -> Vec<Char> {
         let mut result = Vec::with_capacity(chars.len());
         let rotation_degrees_key = |char: &Char| char.rotation_degrees;
 
@@ -248,9 +259,9 @@ impl WordExtractor {
         result
     }
 
-    pub fn iter_extract_tuples(&self, chars: Vec<Char>) -> Vec<(Word, Vec<Char>)> {
+    pub fn iter_extract_tuples(&self, chars: &[Char]) -> Vec<(Word, Vec<Char>)> {
         let ordered_chars = if self.use_text_flow {
-            chars
+            chars.to_vec()
         } else {
             self.iter_sort_chars(chars)
         };
@@ -274,11 +285,11 @@ impl WordExtractor {
         result
     }
 
-    pub fn extract_wordmap(&self, chars: Vec<Char>) -> WordMap {
+    pub fn extract_wordmap(&self, chars: &[Char]) -> WordMap {
         WordMap::new(self.iter_extract_tuples(chars))
     }
 
-    pub fn extract_words(&self, chars: Vec<Char>) -> Vec<Word> {
+    pub fn extract_words(&self, chars: &[Char]) -> Vec<Word> {
         self.iter_extract_tuples(chars)
             .into_iter()
             .map(|(word, _)| word)

@@ -4,12 +4,11 @@ use pdfium_render::prelude::PdfPage as PdfiumPage;
 use pdfium_render::prelude::*;
 use std::cell::RefCell;
 use std::cmp;
-use std::collections::HashMap;
 pub struct Page {
     pub inner: PdfiumPage<'static>,
     pub page_idx: usize,
     pub objects: RefCell<Option<Objects>>,
-    pub most_chars_rotation_degrees: RefCell<f32>,
+    // pub most_chars_rotation_degrees: RefCell<f32>,
 }
 
 impl Page {
@@ -18,7 +17,7 @@ impl Page {
             inner,
             page_idx,
             objects: RefCell::new(None),
-            most_chars_rotation_degrees: RefCell::new(0.0),
+            // most_chars_rotation_degrees: RefCell::new(0.0),
         };
         page.extract_objects();
         page
@@ -76,15 +75,15 @@ impl Page {
         }
     }
 
-    fn count_chars_rotation(&self, chars: &[Char]) -> HashMap<u16, usize> {
-        let mut result = HashMap::new();
-        for char in chars {
-            let rotation: u16 = char.rotation_degrees.round() as u16;
-            let count = result.entry(rotation).or_insert(0);
-            *count += 1;
-        }
-        result
-    }
+    // fn count_chars_rotation(&self, chars: &[Char]) -> HashMap<u16, usize> {
+    //     let mut result = HashMap::new();
+    //     for char in chars {
+    //         let rotation: u16 = char.rotation_degrees.round() as u16;
+    //         let count = result.entry(rotation).or_insert(0);
+    //         *count += 1;
+    //     }
+    //     result
+    // }
 
     // fn deal_with_page_not_rotated_but_most_chars_rotated(&self, objects: &mut Objects) {
     //     let chars = &mut objects.chars;

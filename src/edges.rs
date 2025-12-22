@@ -314,7 +314,6 @@ impl Edge {
 }
 #[pymethods]
 impl Edge {
-    // Getter 手动转换类型
     #[getter]
     fn x1(&self) -> f32 {
         self.x1.into_inner()

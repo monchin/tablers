@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Final
 
 from .tablers import Document as RsDoc
-from .tablers import Page, PdfiumRuntime, find_tables
+from .tablers import Page, PdfiumRuntime, find_tables, get_edges
 
 SYSTEM: Final = platform.system()
 

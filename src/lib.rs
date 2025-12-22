@@ -1,7 +1,7 @@
 use crate::edges::Edge;
-use crate::objects::Objects;
+use crate::objects::*;
 use crate::pages::Page;
-use crate::tables::{Table, TableCell, TfSettings, find_tables};
+use crate::tables::{Table, TableCell, TableFinder, TfSettings, find_tables};
 use pdfium_render::prelude::{PdfDocument, PdfPageIndex, Pdfium, PdfiumError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -225,17 +225,39 @@ impl PyPage {
         Ok(self.inner.objects.borrow().clone())
     }
 
-    #[getter]
-    fn most_chars_rotation_degrees(&self) -> PyResult<f32> {
-        self.check_valid()?;
-        Ok(self.inner.most_chars_rotation_degrees.borrow().clone())
-    }
+    // #[getter]
+    // fn most_chars_rotation_degrees(&self) -> PyResult<f32> {
+    //     self.check_valid()?;
+    //     Ok(self.inner.most_chars_rotation_degrees.borrow().clone())
+    // }
 
     fn clear_cache(&self) -> PyResult<()> {
         self.check_valid()?;
         self.inner.clear();
         Ok(())
     }
+}
+
+#[pyfunction]
+pub fn get_edges(page: &PyPage, settings: Option<&Bound<'_, PyDict>>) -> PyResult<Py<PyDict>> {
+    page.check_valid()?;
+    let settings = Rc::new(TfSettings::py_new(settings));
+    let edges = TableFinder::new(settings).get_edges(&page.inner);
+
+    Python::attach(|py| {
+        let res = PyDict::new(py);
+        let horizontal_edges: Vec<Edge> = edges
+            .get(&Orientation::Horizontal)
+            .map(|edges| edges.clone())
+            .unwrap_or_default();
+        res.set_item("h", horizontal_edges)?;
+        let vertical_edges: Vec<Edge> = edges
+            .get(&Orientation::Vertical)
+            .map(|edges| edges.clone())
+            .unwrap_or_default();
+        res.set_item("v", vertical_edges)?;
+        Ok(res.unbind())
+    })
 }
 
 #[pyfunction]
@@ -272,5 +294,6 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<Table>()?;
     m.add_class::<TfSettings>()?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(get_edges, m)?)?;
     Ok(())
 }
