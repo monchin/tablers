@@ -31,6 +31,26 @@ pub(crate) struct Word {
     pub upright: bool,
 }
 
+impl Word {
+    pub fn direction(&self) -> &'static str {
+        let rotation = self.rotation_degrees.into_inner();
+        if self.upright {
+            if (rotation - 0.0).abs() < 0.001 {
+                "ltr"
+            } else {
+                "rtl"
+            }
+        } else {
+            // 垂直文本
+            if (rotation - 90.0).abs() < 0.001 {
+                "ttb"
+            } else {
+                "btt"
+            }
+        }
+    }
+}
+
 impl HasBbox for Word {
     fn bbox(&self) -> BboxKey {
         self.bbox.clone()
@@ -261,5 +281,87 @@ impl WordExtractor {
             .into_iter()
             .map(|(word, _)| word)
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pages::Page;
+    use pdfium_render::prelude::Pdfium;
+
+    fn load_pdfium() -> Pdfium {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+
+        #[cfg(target_os = "windows")]
+        let pdfium = Pdfium::new(
+            Pdfium::bind_to_library(&format!("{}/python/tablers/pdfium.dll", project_root))
+                .unwrap(),
+        );
+        #[cfg(target_os = "macos")]
+        let pdfium = Pdfium::new(
+            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.dylib", project_root))
+                .unwrap(),
+        );
+        #[cfg(target_os = "linux")]
+        let pdfium = Pdfium::new(
+            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.so", project_root))
+                .unwrap(),
+        );
+
+        pdfium
+    }
+
+    #[test]
+    fn test_extract_words() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+
+        let pdf_path = format!("{}/tests/data/words-extract.pdf", project_root);
+        let doc = pdfium.load_pdf_from_file(&pdf_path, None).unwrap();
+        let page = doc.pages().get(0).unwrap();
+        let pdf_page = Page::new(unsafe { std::mem::transmute(page) }, 0);
+
+        let objects = pdf_page.objects.borrow();
+        let chars = &objects.as_ref().unwrap().chars;
+
+        let settings = WordsExtractSettings {
+            vertical_ttb: false,
+            ..Default::default()
+        };
+        let extractor = WordExtractor::new(&settings);
+        let words = extractor.extract_words(chars);
+
+        let horizontal_words: Vec<&Word> = words.iter().filter(|w| w.upright).collect();
+        assert_eq!(horizontal_words[0].text, "Agaaaaa:");
+        assert_eq!(horizontal_words[0].direction(), "ltr");
+
+        // keep_blank_chars=true
+        let settings_with_spaces = WordsExtractSettings {
+            vertical_ttb: false,
+            keep_blank_chars: true,
+            ..Default::default()
+        };
+        let extractor_with_spaces = WordExtractor::new(&settings_with_spaces);
+        let words_w_spaces = extractor_with_spaces.extract_words(chars);
+
+        let horizontal_words_w_spaces: Vec<&Word> =
+            words_w_spaces.iter().filter(|w| w.upright).collect();
+        assert_eq!(horizontal_words_w_spaces[0].text, "Agaaaaa: AAAA");
+
+        let vertical: Vec<&Word> = words.iter().filter(|w| !w.upright).collect();
+        assert_eq!(vertical[0].text, "Aaaaaabag8");
+        assert_eq!(vertical[0].direction(), "btt");
+
+        let settings_rtl = WordsExtractSettings {
+            horizontal_ltr: false,
+            ..Default::default()
+        };
+        let extractor_rtl = WordExtractor::new(&settings_rtl);
+        let words_rtl = extractor_rtl.extract_words(chars);
+
+        let horizontal_rtl: Vec<&Word> = words_rtl.iter().filter(|w| w.upright).collect();
+        assert_eq!(horizontal_rtl[1].text, "baaabaaA/AAA");
+        assert_eq!(horizontal_rtl[1].direction(), "ltr");
     }
 }
