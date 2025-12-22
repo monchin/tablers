@@ -69,8 +69,7 @@ pub struct Line {
     pub line_type: LineType,
     pub points: Vec<Point>,
     pub color: PdfColor,
-    #[pyo3(get)]
-    pub width: f32,
+    pub width: OrderedFloat<f32>,
 }
 
 #[pymethods]
@@ -100,6 +99,11 @@ impl Line {
             self.color.alpha(),
         )
     }
+
+    #[getter]
+    fn width(&self) -> f32 {
+        self.width.into_inner()
+    }
 }
 
 #[pyclass]
@@ -108,8 +112,9 @@ pub struct Char {
     #[pyo3(get)]
     pub unicode_char: Option<String>,
     pub bbox: BboxKey,
+    pub rotation_degrees: OrderedFloat<f32>,
     #[pyo3(get)]
-    pub rotation_degrees: f32,
+    pub upright: bool,
 }
 #[pymethods]
 impl Char {
@@ -121,6 +126,16 @@ impl Char {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
+    }
+
+    #[getter]
+    fn rotation_degrees(&self) -> f32 {
+        self.rotation_degrees.into_inner()
+    }
+}
+impl HasBbox for Char {
+    fn bbox(&self) -> BboxKey {
+        self.bbox.clone()
     }
 }
 
@@ -155,4 +170,21 @@ pub(crate) fn is_rect(points: &[Point]) -> bool {
         return true;
     }
     false
+}
+
+pub(crate) trait HasBbox {
+    fn bbox(&self) -> BboxKey;
+}
+
+fn merge_bboxes(bboxes: impl Iterator<Item = BboxKey>) -> Option<BboxKey> {
+    bboxes.fold(None, |acc, (x1, y1, x2, y2)| {
+        Some(match acc {
+            None => (x1, y1, x2, y2),
+            Some((ax1, ay1, ax2, ay2)) => (ax1.min(x1), ay1.min(y1), ax2.max(x2), ay2.max(y2)),
+        })
+    })
+}
+
+pub(crate) fn get_objects_bbox<T: HasBbox>(objects: &[T]) -> Option<BboxKey> {
+    merge_bboxes(objects.iter().map(|obj| obj.bbox()))
 }

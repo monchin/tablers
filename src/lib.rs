@@ -13,6 +13,8 @@ mod edges;
 mod objects;
 mod pages;
 mod tables;
+mod words;
+
 #[pyclass(unsendable)]
 pub struct PdfiumRuntime {
     inner: Rc<Pdfium>,
@@ -65,19 +67,17 @@ struct DocumentInner {
 #[pyclass(unsendable)]
 pub struct Document {
     inner: Rc<RefCell<DocumentInner>>,
-    bottom_origin: bool,
 }
 
 #[pymethods]
 impl Document {
     #[new]
-    #[pyo3(signature=   (runtime, path=None, bytes=None, password=None, bottom_origin = false))]
+    #[pyo3(signature=   (runtime, path=None, bytes=None, password=None))]
     fn py_new(
         runtime: &PdfiumRuntime,
         path: Option<String>,
         bytes: Option<&[u8]>,
         password: Option<String>,
-        bottom_origin: bool,
     ) -> PyResult<Self> {
         let pdfium = runtime.get_inner();
 
@@ -112,7 +112,6 @@ impl Document {
                 _pdfium: pdfium,
                 doc: Some(doc_static),
             })),
-            bottom_origin,
         })
     }
 
@@ -149,11 +148,7 @@ impl Document {
         }
         Ok(PyPage {
             doc_inner: Rc::clone(&self.inner),
-            inner: Page::new(
-                doc.pages().get(page_idx as PdfPageIndex).unwrap(),
-                page_idx,
-                self.bottom_origin,
-            ),
+            inner: Page::new(doc.pages().get(page_idx as PdfPageIndex).unwrap(), page_idx),
         })
     }
 
@@ -166,11 +161,7 @@ impl Document {
         let pages: Vec<PyPage> = (0..page_count)
             .map(|i| PyPage {
                 doc_inner: Rc::clone(&self.inner),
-                inner: Page::new(
-                    doc.pages().get(i as PdfPageIndex).unwrap(),
-                    i,
-                    self.bottom_origin,
-                ),
+                inner: Page::new(doc.pages().get(i as PdfPageIndex).unwrap(), i),
             })
             .collect();
 
@@ -212,7 +203,7 @@ impl PyPage {
     #[getter]
     fn rotation_degrees(&self) -> PyResult<f32> {
         self.check_valid()?;
-        Ok(self.inner.rotation_degrees())
+        Ok(self.inner.rotation_degrees().as_degrees())
     }
 
     fn is_valid(&self) -> bool {
@@ -232,6 +223,12 @@ impl PyPage {
             return Ok(None);
         }
         Ok(self.inner.objects.borrow().clone())
+    }
+
+    #[getter]
+    fn most_chars_rotation_degrees(&self) -> PyResult<f32> {
+        self.check_valid()?;
+        Ok(self.inner.most_chars_rotation_degrees.borrow().clone())
     }
 
     fn clear_cache(&self) -> PyResult<()> {

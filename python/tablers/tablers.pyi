@@ -20,7 +20,6 @@ class Document:
         path: Path | str | None = None,
         bytes: bytes | None = None,
         password: str | None = None,
-        bottom_origin: bool = False,
     ): ...
     def page_count(self) -> int: ...
     def get_page(self, page_num: int) -> Page: ...
@@ -87,6 +86,5 @@ class TfSettingItems(TypedDict, total=False):
 def find_tables(
     page: Page,
     extract_text: bool,
-    bottom_origin: bool = False,
     **kwargs: Unpack[TfSettingItems],
 ) -> tuple[list[BBox], list[Table]]: ...

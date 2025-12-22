@@ -4,20 +4,21 @@ use pdfium_render::prelude::PdfPage as PdfiumPage;
 use pdfium_render::prelude::*;
 use std::cell::RefCell;
 use std::cmp;
+use std::collections::HashMap;
 pub struct Page {
     pub inner: PdfiumPage<'static>,
     pub page_idx: usize,
     pub objects: RefCell<Option<Objects>>,
-    bottom_origin: bool,
+    pub most_chars_rotation_degrees: RefCell<f32>,
 }
 
 impl Page {
-    pub fn new(inner: PdfiumPage<'static>, page_idx: usize, bottom_origin: bool) -> Self {
+    pub fn new(inner: PdfiumPage<'static>, page_idx: usize) -> Self {
         let page = Self {
             inner,
             page_idx,
             objects: RefCell::new(None),
-            bottom_origin,
+            most_chars_rotation_degrees: RefCell::new(0.0),
         };
         page.extract_objects();
         page
@@ -35,8 +36,8 @@ impl Page {
         self.inner.height().value
     }
 
-    pub fn rotation_degrees(&self) -> f32 {
-        self.inner.rotation().unwrap().as_degrees()
+    pub fn rotation_degrees(&self) -> PdfPageRenderRotation {
+        self.inner.rotation().unwrap()
     }
 
     pub fn extract_objects(&self) {
@@ -66,17 +67,50 @@ impl Page {
 
     #[inline]
     fn get_v_coord_with_bottom_origin(&self, y: f32) -> OrderedFloat<f32> {
-        if self.bottom_origin {
-            OrderedFloat::from(y)
-        } else if self.rotation_degrees() == 90.0 || self.rotation_degrees() == 270.0 {
+        if self.rotation_degrees() == PdfPageRenderRotation::Degrees90
+            || self.rotation_degrees() == PdfPageRenderRotation::Degrees270
+        {
             OrderedFloat::from(self.width() - y)
         } else {
             OrderedFloat::from(self.height() - y)
         }
     }
 
+    fn count_chars_rotation(&self, chars: &[Char]) -> HashMap<u16, usize> {
+        let mut result = HashMap::new();
+        for char in chars {
+            let rotation: u16 = char.rotation_degrees.round() as u16;
+            let count = result.entry(rotation).or_insert(0);
+            *count += 1;
+        }
+        result
+    }
+
+    // fn deal_with_page_not_rotated_but_most_chars_rotated(&self, objects: &mut Objects) {
+    //     let chars = &mut objects.chars;
+    //     let n_chars = chars.len();
+    //     if n_chars == 0 {
+    //         return;
+    //     }
+    //     let count_res = self.count_chars_rotation(chars);
+    //     let count_90 = *count_res.get(&90u16).unwrap_or(&0);
+    //     let count_270 = *count_res.get(&270u16).unwrap_or(&0);
+    //     if (count_90 as f32 / n_chars as f32 > 0.9) || (count_270 as f32 / n_chars as f32 > 0.9) {
+    //         chars.iter_mut().for_each(|char| {
+    //             if char.rotation_degrees == 90.0 || char.rotation_degrees == 270.0 {
+    //                 char.upright = true;
+    //             }
+    //         });
+    //     }
+    //     let max_entry = count_res.iter().max_by_key(|(_, value)| *value);
+    //     if let Some((rotation, _)) = max_entry {
+    //         *self.most_chars_rotation_degrees.borrow_mut() = *rotation as f32;
+    //     }
+    // }
+
     fn process_chars(&self, objects: &mut Objects) {
         let text = self.inner.text().unwrap();
+
         for character in text.chars().iter() {
             let char_rect = character.loose_bounds().unwrap();
             let (x1, y1) = (char_rect.left(), char_rect.top());
@@ -92,12 +126,19 @@ impl Page {
                 OrderedFloat::from(x2.value),
                 cmp::max(y1, y2),
             );
+            let rotation_degrees = character.get_rotation_clockwise_degrees();
+
             objects.chars.push(Char {
                 unicode_char: character.unicode_string(),
                 bbox: bbox,
-                rotation_degrees: character.get_rotation_clockwise_degrees(),
+                rotation_degrees: OrderedFloat::from(rotation_degrees),
+                upright: rotation_degrees == 0.0 || rotation_degrees == 180.0,
             })
         }
+        // if page_rotation_degrees == PdfPageRenderRotation::None {
+        //     // for some pdf pages, their rotation is 0 degrees, but the characters are rotated
+        //     self.deal_with_page_not_rotated_but_most_chars_rotated(objects);
+        // }
     }
 
     fn process_path_obj(&self, objects: &mut Objects, obj: &PdfPagePathObject) {
@@ -136,7 +177,7 @@ impl Page {
                 points: points,
                 line_type: line_type,
                 color: obj.stroke_color().unwrap(),
-                width: obj.stroke_width().unwrap().value * 2.0,
+                width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),
             });
         }
     }

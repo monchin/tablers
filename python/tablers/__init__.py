@@ -20,7 +20,7 @@ else:
 
 
 __doc__ = tablers.__doc__
-__all__ = ["Document", "Page", "PdfiumRuntime", "find_tables"]
+__all__ = ["Document", "Page", "find_tables"]
 
 
 class Document:
@@ -29,14 +29,12 @@ class Document:
         path: Path | str | None = None,
         bytes: bytes | None = None,
         password: str | None = None,
-        bottom_origin: bool = False,
     ):
         self.doc = RsDoc(
             PDFIUM_RT,
             path=str(path) if path is not None else None,
             bytes=bytes,
             password=password,
-            bottom_origin=bottom_origin,
         )
 
     @property

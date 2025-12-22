@@ -1,15 +1,159 @@
 use crate::clusters::cluster_objects;
 use crate::objects::*;
+use crate::words::Word;
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
 use pyo3::prelude::*;
+use std::cmp;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy)]
 enum EdgeAttr {
     X1,
     Y1,
+}
+
+pub(crate) fn words_to_edges_h(words: &[Word], word_threshold: usize) -> Vec<Edge> {
+    let by_top = cluster_objects(words, |w: &Word| w.bbox.1, OrderedFloat(1.0));
+
+    let large_clusters: Vec<_> = by_top
+        .into_iter()
+        .filter(|cluster| cluster.len() >= word_threshold)
+        .collect();
+
+    let rects: Vec<BboxKey> = large_clusters
+        .iter()
+        .filter_map(|cluster| get_objects_bbox(cluster))
+        .collect();
+
+    if rects.is_empty() {
+        return Vec::new();
+    }
+
+    let min_x1 = rects
+        .iter()
+        .map(|r| r.0)
+        .fold(OrderedFloat(f32::INFINITY), cmp::min);
+    let max_x2 = rects
+        .iter()
+        .map(|r| r.2)
+        .fold(OrderedFloat(f32::NEG_INFINITY), cmp::max);
+
+    let mut edges = Vec::with_capacity(rects.len() * 2);
+
+    for r in &rects {
+        edges.push(Edge {
+            x1: min_x1,
+            y1: r.1,
+            x2: max_x2,
+            y2: r.1,
+            orientation: Orientation::Horizontal,
+            width: OrderedFloat(1.0f32),
+            color: PdfColor::new(0, 0, 0, 255),
+        });
+        edges.push(Edge {
+            x1: min_x1,
+            y1: r.3,
+            x2: max_x2,
+            y2: r.3,
+            orientation: Orientation::Horizontal,
+            width: OrderedFloat(1.0f32),
+            color: PdfColor::new(0, 0, 0, 255),
+        });
+    }
+
+    edges
+}
+
+fn get_bbox_overlap(b1: &BboxKey, b2: &BboxKey) -> bool {
+    let (b1_x1, b1_y1, b1_x2, b1_y2) = b1;
+    let (b2_x1, b2_y1, b2_x2, b2_y2) = b2;
+    let (max_x1, max_y1, min_x2, min_y2) = (
+        cmp::max(*b1_x1, *b2_x1),
+        cmp::max(*b1_y1, *b2_y1),
+        cmp::min(*b1_x2, *b2_x2),
+        cmp::min(*b1_y2, *b2_y2),
+    );
+    max_x1 < min_x2 && max_y1 < min_y2
+}
+
+pub fn words_to_edges_v(words: &[Word], word_threshold: usize) -> Vec<Edge> {
+    let by_x0 = cluster_objects(words, |w| w.bbox.0, OrderedFloat(1.0));
+    let by_x1 = cluster_objects(words, |w| w.bbox.2, OrderedFloat(1.0));
+    let by_center = cluster_objects(words, |w| (w.bbox.0 + w.bbox.2) / 2.0, OrderedFloat(1.0));
+
+    let mut clusters: Vec<Vec<Word>> = by_x0;
+    clusters.extend(by_x1);
+    clusters.extend(by_center);
+
+    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+    let large_clusters: Vec<_> = clusters
+        .into_iter()
+        .filter(|cluster| cluster.len() >= word_threshold)
+        .collect();
+
+    let bboxes: Vec<BboxKey> = large_clusters
+        .iter()
+        .filter_map(|cluster| get_objects_bbox(cluster))
+        .collect();
+
+    let mut condensed_bboxes: Vec<BboxKey> = Vec::new();
+    for bbox in bboxes {
+        let overlap = condensed_bboxes.iter().any(|c| get_bbox_overlap(&bbox, c));
+        if !overlap {
+            condensed_bboxes.push(bbox);
+        }
+    }
+
+    if condensed_bboxes.is_empty() {
+        return Vec::new();
+    }
+
+    let mut sorted_rects: Vec<BboxKey> = condensed_bboxes
+        .into_iter()
+        .map(|(x1, y1, x2, y2)| (x1, y1, x2, y2))
+        .collect();
+    sorted_rects.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    // 计算边界值
+    let max_x2 = sorted_rects
+        .iter()
+        .map(|r| r.2)
+        .fold(OrderedFloat(f32::NEG_INFINITY), cmp::max);
+    let min_top = sorted_rects
+        .iter()
+        .map(|r| r.1)
+        .fold(OrderedFloat(f32::INFINITY), cmp::min);
+    let max_bottom = sorted_rects
+        .iter()
+        .map(|r| r.3)
+        .fold(OrderedFloat(f32::NEG_INFINITY), cmp::max);
+
+    let mut edges: Vec<Edge> = sorted_rects
+        .iter()
+        .map(|b| Edge {
+            x1: b.0,
+            y1: min_top,
+            x2: b.0,
+            y2: max_bottom,
+            width: OrderedFloat(1.0),
+            orientation: Orientation::Vertical,
+            color: PdfColor::new(0, 0, 0, 255),
+        })
+        .collect();
+
+    edges.push(Edge {
+        x1: max_x2,
+        y1: min_top,
+        x2: max_x2,
+        y2: max_bottom,
+        width: OrderedFloat(1.0),
+        orientation: Orientation::Vertical,
+        color: PdfColor::new(0, 0, 0, 255),
+    });
+
+    edges
 }
 
 fn move_edge(edge: Edge, orient: Orientation, value: OrderedFloat<f32>) -> Edge {
@@ -36,7 +180,7 @@ fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: OrderedFloat<f32>) 
         EdgeAttr::X1 => |edge: &Edge| edge.x1,
         EdgeAttr::Y1 => |edge: &Edge| edge.y1,
     };
-    let clusters = cluster_objects(edges, attr_getter, tolerance, false);
+    let clusters = cluster_objects(&edges, attr_getter, tolerance);
     let mut result = Vec::new();
     for cluster in clusters {
         let avg = cluster
@@ -159,8 +303,8 @@ pub struct Edge {
     pub y1: OrderedFloat<f32>,
     pub x2: OrderedFloat<f32>,
     pub y2: OrderedFloat<f32>,
-    pub width: f32,      // Stroke width
-    pub color: PdfColor, // Stroke color
+    pub width: OrderedFloat<f32>, // Stroke width
+    pub color: PdfColor,          // Stroke color
 }
 
 impl Edge {
@@ -193,7 +337,7 @@ impl Edge {
 
     #[getter]
     fn width(&self) -> f32 {
-        self.width
+        self.width.into_inner()
     }
 
     #[getter]

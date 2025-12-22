@@ -70,12 +70,12 @@ fn make_cluster_dict(
     result
 }
 pub(crate) fn cluster_objects<T, F>(
-    xs: Vec<T>,
+    xs: &[T],
     key_fn: F,
     tolerance: OrderedFloat<f32>,
-    preserve_order: bool,
 ) -> Vec<Vec<T>>
 where
+    T: Clone,
     F: Fn(&T) -> OrderedFloat<f32>,
 {
     if xs.is_empty() {
@@ -86,17 +86,14 @@ where
     let cluster_dict = make_cluster_dict(values, tolerance);
 
     let mut cluster_tuples: Vec<(T, usize)> = xs
-        .into_iter()
+        .iter()
         .map(|x| {
             let key_value = OrderedFloat(key_fn(&x));
             let cluster_id = cluster_dict.get(&key_value).copied().unwrap_or(0);
-            (x, cluster_id)
+            (x.clone(), cluster_id)
         })
         .collect();
-
-    if !preserve_order {
-        cluster_tuples.sort_by_key(|(_, cluster_id)| *cluster_id);
-    }
+    cluster_tuples.sort_by_key(|(_, cluster_id)| *cluster_id);
 
     cluster_tuples
         .into_iter()
@@ -113,7 +110,6 @@ mod tests {
 
     #[test]
     fn test_cluster_list() {
-        // 测试1: tolerance=0 时，每个元素单独成组
         let a: Vec<OrderedFloat<f32>> = vec![1.0, 2.0, 3.0, 4.0]
             .into_iter()
             .map(OrderedFloat)
@@ -121,14 +117,12 @@ mod tests {
         let expected: Vec<Vec<OrderedFloat<f32>>> = a.iter().map(|&x| vec![x]).collect();
         assert_eq!(cluster_list(a.clone(), OrderedFloat(0.0)), expected);
 
-        // 测试2: tolerance=1 时，所有相邻元素合并成一组
         let a: Vec<OrderedFloat<f32>> = vec![1.0, 2.0, 3.0, 4.0]
             .into_iter()
             .map(OrderedFloat)
             .collect();
         assert_eq!(cluster_list(a.clone(), OrderedFloat(1.0)), vec![a]);
 
-        // 测试3: tolerance=1 时，间隔大于1的元素分开
         let a: Vec<OrderedFloat<f32>> = vec![1.0, 2.0, 5.0, 6.0]
             .into_iter()
             .map(OrderedFloat)
@@ -142,17 +136,15 @@ mod tests {
 
     #[test]
     fn test_cluster_objects() {
-        // 测试1: 使用字符串长度作为key
         let a: Vec<String> = vec!["a", "ab", "abc", "b"]
             .into_iter()
             .map(String::from)
             .collect();
 
         let result = cluster_objects(
-            a.clone(),
+            &a,
             |s: &String| OrderedFloat(s.len() as f32),
             OrderedFloat(0.0),
-            false,
         );
         // 按长度分组: ["a", "b"] (长度1), ["ab"] (长度2), ["abc"] (长度3)
         assert_eq!(
@@ -164,7 +156,6 @@ mod tests {
             ]
         );
 
-        // 测试2: 使用结构体字段作为key
         #[derive(Debug, Clone, PartialEq)]
         struct Item {
             x: f32,
@@ -190,13 +181,7 @@ mod tests {
             },
         ];
 
-        // 按 x 字段分组
-        let result = cluster_objects(
-            b.clone(),
-            |item: &Item| OrderedFloat(item.x),
-            OrderedFloat(0.0),
-            false,
-        );
+        let result = cluster_objects(&b, |item: &Item| OrderedFloat(item.x), OrderedFloat(0.0));
         assert_eq!(
             result,
             vec![
@@ -206,14 +191,13 @@ mod tests {
         );
 
         let result = cluster_objects(
-            b.clone(),
+            &b,
             |item: &Item| match item.label.as_str() {
                 "a" => OrderedFloat(1.0),
                 "b" => OrderedFloat(2.0),
                 _ => OrderedFloat(0.0),
             },
             OrderedFloat(0.0),
-            false,
         );
         assert_eq!(
             result,

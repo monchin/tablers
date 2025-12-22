@@ -559,7 +559,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                 y1: rect.bbox.1,
                 x2: x,
                 y2: rect.bbox.3,
-                width: (rect.bbox.2 - rect.bbox.0).into_inner(),
+                width: rect.bbox.2 - rect.bbox.0,
                 color: rect.fill_color,
             });
         } else if rect.bbox.3 - rect.bbox.1 < snap_y_tol {
@@ -570,7 +570,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                 y1: y,
                 x2: rect.bbox.2,
                 y2: y,
-                width: (rect.bbox.3 - rect.bbox.1).into_inner(),
+                width: rect.bbox.3 - rect.bbox.1,
                 color: rect.fill_color,
             })
         } else {
@@ -581,7 +581,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                     y1: rect.bbox.1,
                     x2: rect.bbox.2,
                     y2: rect.bbox.1,
-                    width: rect.stroke_width,
+                    width: OrderedFloat::from(rect.stroke_width),
                     color: rect.stroke_color,
                 });
                 edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
@@ -590,7 +590,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                     y1: rect.bbox.3,
                     x2: rect.bbox.2,
                     y2: rect.bbox.3,
-                    width: rect.stroke_width,
+                    width: OrderedFloat::from(rect.stroke_width),
                     color: rect.stroke_color,
                 });
             }
@@ -601,7 +601,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                     y1: rect.bbox.1,
                     x2: rect.bbox.0,
                     y2: rect.bbox.3,
-                    width: rect.stroke_width,
+                    width: OrderedFloat::from(rect.stroke_width),
                     color: rect.stroke_color,
                 });
                 edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
@@ -610,7 +610,7 @@ fn make_edges(objects: &Objects, tf_settings: Rc<TfSettings>) -> HashMap<Orienta
                     y1: rect.bbox.1,
                     x2: rect.bbox.2,
                     y2: rect.bbox.3,
-                    width: rect.stroke_width,
+                    width: OrderedFloat::from(rect.stroke_width),
                     color: rect.stroke_color,
                 });
             }
