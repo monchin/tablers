@@ -15,6 +15,8 @@ mod objects;
 mod pages;
 mod settings;
 mod tables;
+#[cfg(test)]
+mod test_utils;
 mod words;
 
 #[pyclass(unsendable)]
@@ -178,7 +180,7 @@ impl Document {
     }
 }
 
-#[pyclass(unsendable)]
+#[pyclass(unsendable, name = "PageIterator")]
 pub struct PyPageIterator {
     doc_inner: Rc<RefCell<DocumentInner>>,
     current_idx: usize,

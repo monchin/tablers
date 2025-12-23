@@ -288,29 +288,7 @@ impl WordExtractor {
 mod tests {
     use super::*;
     use crate::pages::Page;
-    use pdfium_render::prelude::Pdfium;
-
-    fn load_pdfium() -> Pdfium {
-        let project_root = env!("CARGO_MANIFEST_DIR");
-
-        #[cfg(target_os = "windows")]
-        let pdfium = Pdfium::new(
-            Pdfium::bind_to_library(&format!("{}/python/tablers/pdfium.dll", project_root))
-                .unwrap(),
-        );
-        #[cfg(target_os = "macos")]
-        let pdfium = Pdfium::new(
-            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.dylib", project_root))
-                .unwrap(),
-        );
-        #[cfg(target_os = "linux")]
-        let pdfium = Pdfium::new(
-            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.so", project_root))
-                .unwrap(),
-        );
-
-        pdfium
-    }
+    use crate::test_utils::load_pdfium;
 
     #[test]
     fn test_extract_words() {

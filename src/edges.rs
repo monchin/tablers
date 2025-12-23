@@ -517,6 +517,7 @@ pub(crate) fn make_edges(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::load_pdfium;
     use ordered_float::OrderedFloat;
     use pdfium_render::prelude::PdfColor;
 
@@ -549,25 +550,8 @@ mod tests {
 
     #[test]
     fn test_edge_merging() {
-        use pdfium_render::prelude::Pdfium;
-
         let project_root = env!("CARGO_MANIFEST_DIR");
-
-        #[cfg(target_os = "windows")]
-        let pdfium = Pdfium::new(
-            Pdfium::bind_to_library(&format!("{}/python/tablers/pdfium.dll", project_root))
-                .unwrap(),
-        );
-        #[cfg(target_os = "macos")]
-        let pdfium = Pdfium::new(
-            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.dylib", project_root))
-                .unwrap(),
-        );
-        #[cfg(target_os = "linux")]
-        let pdfium = Pdfium::new(
-            Pdfium::bind_to_library(&format!("{}/python/tablers/libpdfium.so", project_root))
-                .unwrap(),
-        );
+        let pdfium = load_pdfium();
 
         let pdf_path = format!("{}/tests/data/edge-test.pdf", project_root);
         let doc = pdfium.load_pdf_from_file(&pdf_path, None).unwrap();
