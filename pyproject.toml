@@ -31,7 +31,8 @@ select = ["I"]
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 100
 
+
 [dependency-groups]
-dev = [
-    "pytest>=9.0.2",
+stub = [
+    "typing-extensions>=4.15.0; python_version < \"3.11\"",
 ]

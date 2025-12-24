@@ -1,162 +1,165 @@
+use crate::clusters::cluster_objects;
+use crate::objects::*;
+use crate::settings::*;
+use crate::words::Word;
+use crate::words::*;
+use itertools::Itertools;
+use ordered_float::OrderedFloat;
 use pdfium_render::prelude::*;
+use pyo3::prelude::*;
 use std::cmp;
 use std::collections::HashMap;
+use std::rc::Rc;
 
-use crate::clusters::cluster_objects;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum EdgeType {
-    VerticalLine,
-    HorizontalLine,
-    VerticalRect,
-    HorizontalRect,
-    // No need to implement curves as we'll not use them
-}
-
-impl EdgeType {
-    pub(crate) fn all() -> Vec<EdgeType> {
-        vec![
-            EdgeType::VerticalLine,
-            EdgeType::HorizontalLine,
-            EdgeType::VerticalRect,
-            EdgeType::HorizontalRect,
-        ]
-    }
-}
-pub(crate) struct Edge {
-    edge_type: EdgeType,
-    x1: f32,
-    y1: f32,
-    x2: f32,
-    y2: f32,
-    width: f32,      // Stroke width
-    color: PdfColor, // Stroke color
-}
-
-#[inline]
-fn get_y_with_bottom_origin(y: f32, bottom_origin: bool, page_height: f32) -> f32 {
-    match bottom_origin {
-        true => y,
-        false => page_height - y,
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ObjShape {
-    Line,
-    Rect,
-    NoNeed,
-}
-fn get_obj_shape(obj: &PdfPagePathObject) -> ObjShape {
-    let (mut x1, mut y1, mut x2, mut y2) = (0f32, 0f32, 0f32, 0f32);
-    let mut edges = Vec::new();
-    for seg in obj.segments().iter() {
-        match seg.segment_type() {
-            PdfPathSegmentType::MoveTo => {
-                // First point of the object
-                x1 = seg.x().value;
-                y1 = seg.y().value;
-            }
-            PdfPathSegmentType::LineTo => {
-                // Second point of the object
-                x2 = seg.x().value;
-                y2 = seg.y().value;
-                if x1 != x2 && y1 != y2 {
-                    return ObjShape::NoNeed;
-                }
-                edges.push((x1, y1, x2, y2));
-                x1 = x2;
-                y1 = y2;
-            }
-            _ => {
-                return ObjShape::NoNeed;
-            }
-        }
-    }
-    match edges.len() {
-        1 => ObjShape::Line,
-        4 => ObjShape::Rect,
-        _ => ObjShape::NoNeed,
-    }
-}
-
-#[inline]
-fn get_edge_type(x1: f32, y1: f32, x2: f32, y2: f32, obj_shape: ObjShape) -> EdgeType {
-    if x1 == x2 {
-        if obj_shape == ObjShape::Line {
-            EdgeType::VerticalLine
-        } else {
-            EdgeType::VerticalRect
-        }
-    } else if y1 == y2 {
-        if obj_shape == ObjShape::Line {
-            EdgeType::HorizontalLine
-        } else {
-            EdgeType::HorizontalRect
-        }
-    } else {
-        panic!();
-    }
-}
-fn obj2edge(
-    obj: &PdfPagePathObject,
-    bottom_origin: bool,
-    page_height: f32,
-    edges: &mut HashMap<EdgeType, Vec<Edge>>,
-) {
-    if obj.is_stroked().unwrap() == false {
-        return; // We don't need non-stroked objects
-    }
-    let obj_shape = get_obj_shape(obj);
-    if obj_shape == ObjShape::NoNeed {
-        return;
-    }
-    let (mut x1, mut y1, mut x2, mut y2) = (0f32, 0f32, 0f32, 0f32);
-    let (line_width, line_color) = (
-        obj.stroke_width().unwrap().value,
-        obj.stroke_color().unwrap(),
-    );
-    for seg in obj.segments().transform(obj.matrix().unwrap()).iter() {
-        match seg.segment_type() {
-            PdfPathSegmentType::MoveTo => {
-                // First point of the object
-                x1 = seg.x().value;
-                y1 = get_y_with_bottom_origin(seg.y().value, bottom_origin, page_height);
-            }
-            PdfPathSegmentType::LineTo => {
-                x2 = seg.x().value;
-                y2 = get_y_with_bottom_origin(seg.y().value, bottom_origin, page_height);
-                let edge_type = get_edge_type(x1, y1, x2, y2, obj_shape);
-                edges.entry(edge_type).or_default().push(Edge {
-                    edge_type,
-                    x1: cmp::min(x1, x2),
-                    y1: cmp::min(y1, y2),
-                    x2: cmp::max(x1, x2),
-                    y2: cmp::max(y1, y2),
-                    width: line_width,
-                    color: line_color,
-                });
-                x1 = x2;
-                y1 = y2;
-            }
-            _ => {} // Impossible after filter ObjShape::NoNeed
-        }
-    }
-}
-#[derive(Debug, Clone, Copy)]
-pub enum Orientation {
-    Vertical,
-    Horizontal,
-}
 #[derive(Debug, Clone, Copy)]
 enum EdgeAttr {
     X1,
     Y1,
-    X2,
-    Y2,
 }
 
-fn move_edge(edge: Edge, orient: Orientation, value: f32) -> Edge {
+pub(crate) fn words_to_edges_h(words: &[Word], word_threshold: usize) -> Vec<Edge> {
+    let by_top = cluster_objects(words, |w: &Word| w.bbox.1, OrderedFloat(1.0));
+
+    let large_clusters: Vec<_> = by_top
+        .into_iter()
+        .filter(|cluster| cluster.len() >= word_threshold)
+        .collect();
+
+    let rects: Vec<BboxKey> = large_clusters
+        .iter()
+        .filter_map(|cluster| get_objects_bbox(cluster))
+        .collect();
+
+    if rects.is_empty() {
+        return Vec::new();
+    }
+
+    let min_x1 = rects
+        .iter()
+        .map(|r| r.0)
+        .fold(OrderedFloat(f32::INFINITY), cmp::min);
+    let max_x2 = rects
+        .iter()
+        .map(|r| r.2)
+        .fold(OrderedFloat(f32::NEG_INFINITY), cmp::max);
+
+    let mut edges = Vec::with_capacity(rects.len() * 2);
+
+    for r in &rects {
+        edges.push(Edge {
+            x1: min_x1,
+            y1: r.1,
+            x2: max_x2,
+            y2: r.1,
+            orientation: Orientation::Horizontal,
+            width: OrderedFloat(1.0f32),
+            color: PdfColor::new(0, 0, 0, 255),
+        });
+        edges.push(Edge {
+            x1: min_x1,
+            y1: r.3,
+            x2: max_x2,
+            y2: r.3,
+            orientation: Orientation::Horizontal,
+            width: OrderedFloat(1.0f32),
+            color: PdfColor::new(0, 0, 0, 255),
+        });
+    }
+
+    edges
+}
+
+fn get_bbox_overlap(b1: &BboxKey, b2: &BboxKey) -> bool {
+    let (b1_x1, b1_y1, b1_x2, b1_y2) = b1;
+    let (b2_x1, b2_y1, b2_x2, b2_y2) = b2;
+    let (max_x1, max_y1, min_x2, min_y2) = (
+        cmp::max(*b1_x1, *b2_x1),
+        cmp::max(*b1_y1, *b2_y1),
+        cmp::min(*b1_x2, *b2_x2),
+        cmp::min(*b1_y2, *b2_y2),
+    );
+    max_x1 < min_x2 && max_y1 < min_y2
+}
+
+pub fn words_to_edges_v(words: &[Word], word_threshold: usize) -> Vec<Edge> {
+    let by_x0 = cluster_objects(words, |w| w.bbox.0, OrderedFloat(1.0));
+    let by_x1 = cluster_objects(words, |w| w.bbox.2, OrderedFloat(1.0));
+    let by_center = cluster_objects(words, |w| (w.bbox.0 + w.bbox.2) / 2.0, OrderedFloat(1.0));
+
+    let mut clusters: Vec<Vec<Word>> = by_x0;
+    clusters.extend(by_x1);
+    clusters.extend(by_center);
+
+    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+    let large_clusters: Vec<_> = clusters
+        .into_iter()
+        .filter(|cluster| cluster.len() >= word_threshold)
+        .collect();
+
+    let bboxes: Vec<BboxKey> = large_clusters
+        .iter()
+        .filter_map(|cluster| get_objects_bbox(cluster))
+        .collect();
+
+    let mut condensed_bboxes: Vec<BboxKey> = Vec::new();
+    for bbox in bboxes {
+        let overlap = condensed_bboxes.iter().any(|c| get_bbox_overlap(&bbox, c));
+        if !overlap {
+            condensed_bboxes.push(bbox);
+        }
+    }
+
+    if condensed_bboxes.is_empty() {
+        return Vec::new();
+    }
+
+    let mut sorted_rects: Vec<BboxKey> = condensed_bboxes
+        .into_iter()
+        .map(|(x1, y1, x2, y2)| (x1, y1, x2, y2))
+        .collect();
+    sorted_rects.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    // 计算边界值
+    let max_x2 = sorted_rects
+        .iter()
+        .map(|r| r.2)
+        .fold(OrderedFloat(f32::NEG_INFINITY), cmp::max);
+    let min_top = sorted_rects
+        .iter()
+        .map(|r| r.1)
+        .fold(OrderedFloat(f32::INFINITY), cmp::min);
+    let max_bottom = sorted_rects
+        .iter()
+        .map(|r| r.3)
+        .fold(OrderedFloat(f32::NEG_INFINITY), cmp::max);
+
+    let mut edges: Vec<Edge> = sorted_rects
+        .iter()
+        .map(|b| Edge {
+            x1: b.0,
+            y1: min_top,
+            x2: b.0,
+            y2: max_bottom,
+            width: OrderedFloat(1.0),
+            orientation: Orientation::Vertical,
+            color: PdfColor::new(0, 0, 0, 255),
+        })
+        .collect();
+
+    edges.push(Edge {
+        x1: max_x2,
+        y1: min_top,
+        x2: max_x2,
+        y2: max_bottom,
+        width: OrderedFloat(1.0),
+        orientation: Orientation::Vertical,
+        color: PdfColor::new(0, 0, 0, 255),
+    });
+
+    edges
+}
+
+fn move_edge(edge: Edge, orient: Orientation, value: OrderedFloat<f32>) -> Edge {
     match orient {
         Orientation::Vertical => Edge {
             x1: edge.x1 + value,
@@ -171,74 +174,435 @@ fn move_edge(edge: Edge, orient: Orientation, value: f32) -> Edge {
     }
 }
 
-fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: f32) -> Vec<Edge> {
+fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: OrderedFloat<f32>) -> Vec<Edge> {
     let orient = match attr {
         EdgeAttr::X1 => Orientation::Vertical,
         EdgeAttr::Y1 => Orientation::Horizontal,
-        EdgeAttr::X2 => Orientation::Vertical,
-        EdgeAttr::Y2 => Orientation::Horizontal,
     };
     let attr_getter = match attr {
         EdgeAttr::X1 => |edge: &Edge| edge.x1,
         EdgeAttr::Y1 => |edge: &Edge| edge.y1,
-        EdgeAttr::X2 => |edge: &Edge| edge.x2,
-        EdgeAttr::Y2 => |edge: &Edge| edge.y2,
     };
-    let clusters = cluster_objects(edges, attr_getter, tolerance, false);
+    let clusters = cluster_objects(&edges, attr_getter, tolerance);
     let mut result = Vec::new();
     for cluster in clusters {
-        avg = cluster.iter().map(|edge| attr_getter(edge)).sum::<f32>() / cluster.len() as f32;
+        let avg = cluster
+            .iter()
+            .map(|edge| attr_getter(edge))
+            .sum::<OrderedFloat<f32>>()
+            / OrderedFloat(cluster.len() as f32);
         for edge in cluster {
-            result.push(move_edge(edge, orient, avg - attr_getter(edge)));
+            let move_value = avg - attr_getter(&edge);
+            result.push(move_edge(edge, orient, move_value));
         }
     }
     result
 }
 
-fn snap_edges(
-    edges: HashMap<Orientation, Vec<Edge>>,
-    x_tolerance: f32,
-    y_tolerance: f32,
+fn join_edge_group(
+    edges: Vec<Edge>,
+    orient: Orientation,
+    tolerance: OrderedFloat<f32>,
+) -> Vec<Edge> {
+    if edges.is_empty() {
+        return vec![];
+    }
+    let (get_min_prop, get_max_prop): (
+        fn(&Edge) -> OrderedFloat<f32>,
+        fn(&Edge) -> OrderedFloat<f32>,
+    ) = match orient {
+        Orientation::Vertical => (|e| e.y1, |e| e.y2),
+        Orientation::Horizontal => (|e| e.x1, |e| e.x2),
+    };
+    let update_last_edge = match orient {
+        Orientation::Vertical => |last_edge: &mut Edge, edge: &Edge| {
+            last_edge.y2 = edge.y2;
+        },
+        Orientation::Horizontal => |last_edge: &mut Edge, edge: &Edge| {
+            last_edge.x2 = edge.x2;
+        },
+    };
+    let mut sorted_edges: Vec<Edge> = edges
+        .into_iter()
+        .sorted_by(|a, b| get_min_prop(a).partial_cmp(&get_min_prop(b)).unwrap())
+        .collect();
+    let mut result = vec![sorted_edges[0].clone()];
+    for edge in sorted_edges.iter_mut().skip(1) {
+        let last_edge = result.last_mut().unwrap();
+        if get_min_prop(edge) <= get_max_prop(last_edge) + tolerance {
+            if get_max_prop(edge) > get_max_prop(last_edge) {
+                update_last_edge(last_edge, edge);
+            }
+        } else {
+            result.push(edge.clone());
+        }
+    }
+    result
+}
+
+fn merge_one_kind_edges(
+    mut edges: Vec<Edge>,
+    orient: Orientation,
+    snap_tolerance: OrderedFloat<f32>,
+    join_tolerance: OrderedFloat<f32>,
+) -> Vec<Edge> {
+    let get_prop: fn(&Edge) -> OrderedFloat<f32> = match orient {
+        Orientation::Vertical => |e| e.x1,
+        Orientation::Horizontal => |e| e.y1,
+    };
+    let attr = match orient {
+        Orientation::Vertical => EdgeAttr::X1,
+        Orientation::Horizontal => EdgeAttr::Y1,
+    };
+
+    if snap_tolerance > OrderedFloat(0.0) {
+        edges = snap_objects(edges, attr, snap_tolerance);
+    }
+    edges.sort_by_key(&get_prop);
+    edges
+        .chunk_by(|e1, e2| get_prop(e1) == get_prop(e2))
+        .map(|slice| slice.to_vec())
+        .flat_map(|group| {
+            let joined = join_edge_group(group, orient, join_tolerance);
+            joined
+        })
+        .collect()
+}
+
+pub(crate) fn merge_edges(
+    mut edges: HashMap<Orientation, Vec<Edge>>,
+    snap_x_tolerance: OrderedFloat<f32>,
+    snap_y_tolerance: OrderedFloat<f32>,
+    join_x_tolerance: OrderedFloat<f32>,
+    join_y_tolerance: OrderedFloat<f32>,
 ) -> HashMap<Orientation, Vec<Edge>> {
-    snapped_v = snap_objects(edges[Orientation::Vertical], EdgeAttr::X1, x_tolerance);
-    snapped_h = snap_objects(edges[Orientation::Horizontal], EdgeAttr::Y1, y_tolerance);
     HashMap::from([
-        (Orientation::Vertical, snapped_v),
-        (Orientation::Horizontal, snapped_h),
+        (
+            Orientation::Vertical,
+            merge_one_kind_edges(
+                edges.remove(&Orientation::Vertical).unwrap_or_default(),
+                Orientation::Vertical,
+                snap_x_tolerance,
+                join_y_tolerance,
+            ),
+        ),
+        (
+            Orientation::Horizontal,
+            merge_one_kind_edges(
+                edges.remove(&Orientation::Horizontal).unwrap_or_default(),
+                Orientation::Horizontal,
+                snap_y_tolerance,
+                join_x_tolerance,
+            ),
+        ),
     ])
 }
 
-fn merge_edges(edges: HashMap<Orientation, Vec<Edge>>) -> HashMap<Orientation, Vec<Edge>> {
-    let mut result = HashMap::new();
-    for (edge_type, edges) in edges {
-        let mut edges = edges;
-        edges.sort_by(|a, b| a.x1.partial_cmp(&b.x1).unwrap());
-        let mut i = 0;
-        while i < edges.len() - 1 {}
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Edge {
+    pub orientation: Orientation,
+    pub x1: OrderedFloat<f32>,
+    pub y1: OrderedFloat<f32>,
+    pub x2: OrderedFloat<f32>,
+    pub y2: OrderedFloat<f32>,
+    pub width: OrderedFloat<f32>, // Stroke width
+    pub color: PdfColor,          // Stroke color
+}
+
+impl Edge {
+    pub(crate) fn to_bbox_key(&self) -> BboxKey {
+        (self.x1, self.y1, self.x2, self.y2)
+    }
+}
+#[pymethods]
+impl Edge {
+    #[getter]
+    fn x1(&self) -> f32 {
+        self.x1.into_inner()
+    }
+
+    #[getter]
+    fn y1(&self) -> f32 {
+        self.y1.into_inner()
+    }
+
+    #[getter]
+    fn x2(&self) -> f32 {
+        self.x2.into_inner()
+    }
+
+    #[getter]
+    fn y2(&self) -> f32 {
+        self.y2.into_inner()
+    }
+
+    #[getter]
+    fn width(&self) -> f32 {
+        self.width.into_inner()
+    }
+
+    #[getter]
+    fn color(&self) -> (u8, u8, u8, u8) {
+        (
+            self.color.red(),
+            self.color.green(),
+            self.color.blue(),
+            self.color.alpha(),
+        )
+    }
+
+    #[getter]
+    fn orientation(&self) -> &str {
+        match self.orientation {
+            Orientation::Horizontal => "h",
+            Orientation::Vertical => "v",
+        }
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "Edge(type={}, x1={}, y1={}, x2={}, y2={}, width={}, color=(R{}, G{}, B{}, A{}))",
+            self.orientation(),
+            self.x1(),
+            self.y1(),
+            self.x2(),
+            self.y2(),
+            self.width(),
+            self.color.red(),
+            self.color.green(),
+            self.color.blue(),
+            self.color.alpha(),
+        )
+    }
+
+    fn __eq__(&self, other: &Self) -> bool {
+        self.x1 == other.x1 && self.y1 == other.y1 && self.x2 == other.x2 && self.y2 == other.y2
     }
 }
 
-fn join_edge_group(edges: Vec<Edge>, orient: Orientation, tolerance: f32) -> Vec<Edge> {
-    let (min_prop, max_prop) = match orient {
-        Orientation::Vertical => (EdgeAttr::X1, EdgeAttr::X2),
-        Orientation::Horizontal => (EdgeAttr::Y1, EdgeAttr::Y2),
-    };
-    let sorted_edges = edges
-        .into_iter()
-        .sorted_by(|a, b| a.min_prop.partial_cmp(&b.min_prop).unwrap());
-    let mut result = Vec::new();
-    // TODO: finish this
-}
-pub(crate) fn make_edges(page: &PdfPage, bottom_origin: bool) -> HashMap<EdgeType, Vec<Edge>> {
-    let page_height = page.height().value;
+pub(crate) fn make_edges(
+    objects: &Objects,
+    tf_settings: Rc<TfSettings>,
+) -> HashMap<Orientation, Vec<Edge>> {
+    let (snap_x_tol, snap_y_tol) = (tf_settings.snap_x_tolerance, tf_settings.snap_y_tolerance);
+    let lines = &objects.lines;
+    let rects = &objects.rects;
     let mut edges = HashMap::new();
-    for each_type in EdgeType::all() {
-        edges.insert(each_type, Vec::new());
-    }
-    for obj in page.objects().iter() {
-        if let Some(obj) = obj.as_path_object() {
-            obj2edge(obj, bottom_origin, page_height, &mut edges);
+    edges.insert(Orientation::Horizontal, Vec::new());
+    edges.insert(Orientation::Vertical, Vec::new());
+
+    let (h_strat, v_strat) = (
+        tf_settings.horizontal_strategy,
+        tf_settings.vertical_strategy,
+    );
+    if h_strat == StrategyType::Text || v_strat == StrategyType::Text {
+        let words = WordExtractor::new(&tf_settings.text_settings).extract_words(&objects.chars);
+        if h_strat == StrategyType::Text {
+            edges
+                .get_mut(&Orientation::Horizontal)
+                .unwrap()
+                .extend(words_to_edges_h(&words, tf_settings.min_words_horizontal));
+        }
+        if v_strat == StrategyType::Text {
+            edges
+                .get_mut(&Orientation::Vertical)
+                .unwrap()
+                .extend(words_to_edges_v(&words, tf_settings.min_words_vertical));
         }
     }
+
+    if ((h_strat | 0b11u8) != 0) || ((v_strat | 0b11u8) != 0) {
+        // 0b11: Lines or LinesStrict
+        for line in lines {
+            if line.line_type == LineType::Straight {
+                let (p1, p2) = (line.points[0], line.points[1]);
+                if ((v_strat | 0b11u8) != 0) && ((p1.0 - p2.0).abs() < snap_x_tol.into_inner()) {
+                    edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                        orientation: Orientation::Vertical,
+                        x1: p1.0,
+                        y1: cmp::min(p1.1, p2.1),
+                        x2: p1.0,
+                        y2: cmp::max(p1.1, p2.1),
+                        width: line.width,
+                        color: line.color,
+                    });
+                } else if ((h_strat | 0b11u8) != 0)
+                    && ((p1.1 - p2.1).abs() < snap_y_tol.into_inner())
+                {
+                    edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                        orientation: Orientation::Horizontal,
+                        x1: cmp::min(p1.0, p2.0),
+                        y1: p1.1,
+                        x2: cmp::max(p1.0, p2.0),
+                        y2: p1.1,
+                        width: line.width,
+                        color: line.color,
+                    })
+                }
+            }
+        }
+
+        for rect in rects {
+            if ((v_strat | 0b11u8) != 0) && (rect.bbox.2 - rect.bbox.0 < snap_x_tol) {
+                let x = (rect.bbox.0 + rect.bbox.2) / 2.0;
+                edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                    orientation: Orientation::Vertical,
+                    x1: x,
+                    y1: rect.bbox.1,
+                    x2: x,
+                    y2: rect.bbox.3,
+                    width: rect.bbox.2 - rect.bbox.0,
+                    color: rect.fill_color,
+                });
+            } else if ((h_strat | 0b11u8) != 0) && (rect.bbox.3 - rect.bbox.1 < snap_y_tol) {
+                let y = (rect.bbox.1 + rect.bbox.3) / 2.0;
+                edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: rect.bbox.0,
+                    y1: y,
+                    x2: rect.bbox.2,
+                    y2: y,
+                    width: rect.bbox.3 - rect.bbox.1,
+                    color: rect.fill_color,
+                })
+            } else {
+                if h_strat == StrategyType::Lines {
+                    edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                        orientation: Orientation::Horizontal,
+                        x1: rect.bbox.0,
+                        y1: rect.bbox.1,
+                        x2: rect.bbox.2,
+                        y2: rect.bbox.1,
+                        width: OrderedFloat::from(rect.stroke_width),
+                        color: rect.stroke_color,
+                    });
+                    edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                        orientation: Orientation::Horizontal,
+                        x1: rect.bbox.0,
+                        y1: rect.bbox.3,
+                        x2: rect.bbox.2,
+                        y2: rect.bbox.3,
+                        width: OrderedFloat::from(rect.stroke_width),
+                        color: rect.stroke_color,
+                    });
+                }
+                if v_strat == StrategyType::Lines {
+                    edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                        orientation: Orientation::Vertical,
+                        x1: rect.bbox.0,
+                        y1: rect.bbox.1,
+                        x2: rect.bbox.0,
+                        y2: rect.bbox.3,
+                        width: OrderedFloat::from(rect.stroke_width),
+                        color: rect.stroke_color,
+                    });
+                    edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                        orientation: Orientation::Vertical,
+                        x1: rect.bbox.2,
+                        y1: rect.bbox.1,
+                        x2: rect.bbox.2,
+                        y2: rect.bbox.3,
+                        width: OrderedFloat::from(rect.stroke_width),
+                        color: rect.stroke_color,
+                    });
+                }
+            }
+        }
+    }
+
     edges
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::load_pdfium;
+    use ordered_float::OrderedFloat;
+    use pdfium_render::prelude::PdfColor;
+
+    fn make_test_edge(x1: f32, y1: f32, x2: f32, y2: f32) -> Edge {
+        Edge {
+            orientation: Orientation::Vertical,
+            x1: OrderedFloat(x1),
+            y1: OrderedFloat(y1),
+            x2: OrderedFloat(x2),
+            y2: OrderedFloat(y2),
+            width: OrderedFloat(1.0),
+            color: PdfColor::new(0, 0, 0, 255),
+        }
+    }
+
+    #[test]
+    fn test_snap_objects() {
+        let a = make_test_edge(5.0, 20.0, 10.0, 30.0);
+        let b = make_test_edge(6.0, 20.0, 11.0, 30.0);
+        let c = make_test_edge(7.0, 20.0, 12.0, 30.0);
+
+        let result = snap_objects(vec![a, b, c], EdgeAttr::X1, OrderedFloat(1.0));
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].x1, result[1].x1);
+        assert_eq!(result[1].x1, result[2].x1);
+        // 验证平均值
+        assert_eq!(result[0].x1, OrderedFloat(6.0));
+    }
+
+    #[test]
+    fn test_edge_merging() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+
+        let pdf_path = format!("{}/tests/data/edge-test.pdf", project_root);
+        let doc = pdfium.load_pdf_from_file(&pdf_path, None).unwrap();
+        let page = doc.pages().get(0).unwrap();
+        let pdf_page = crate::pages::Page::new(unsafe { std::mem::transmute(page) }, 0);
+
+        let edges_by_orientation = make_edges(
+            &pdf_page.objects.borrow().as_ref().unwrap(),
+            Rc::new(TfSettings::default()),
+        );
+
+        let total: usize = edges_by_orientation.values().map(|v| v.len()).sum();
+        assert_eq!(total, 202);
+
+        let count =
+            |e: &HashMap<Orientation, Vec<Edge>>| -> usize { e.values().map(|v| v.len()).sum() };
+
+        let merged = merge_edges(
+            edges_by_orientation.clone(),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+        );
+        assert_eq!(count(&merged), 46);
+
+        let merged = merge_edges(
+            edges_by_orientation.clone(),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(0.0),
+        );
+        assert_eq!(count(&merged), 52);
+
+        let merged = merge_edges(
+            edges_by_orientation.clone(),
+            OrderedFloat(0.0001),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+        );
+        assert_eq!(count(&merged), 47);
+
+        let merged = merge_edges(
+            edges_by_orientation.clone(),
+            OrderedFloat(3.0),
+            OrderedFloat(0.0001),
+            OrderedFloat(3.0),
+            OrderedFloat(3.0),
+        );
+        assert_eq!(count(&merged), 88);
+    }
 }

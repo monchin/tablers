@@ -1,0 +1,190 @@
+use ordered_float::OrderedFloat;
+use pdfium_render::prelude::PdfColor;
+use pyo3::prelude::*;
+
+#[pyclass]
+#[derive(Clone)]
+pub struct Objects {
+    #[pyo3(get)]
+    pub rects: Vec<Rect>,
+    #[pyo3(get)]
+    pub lines: Vec<Line>,
+    #[pyo3(get)]
+    pub chars: Vec<Char>,
+}
+
+pub type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
+pub type BboxKey = (
+    OrderedFloat<f32>,
+    OrderedFloat<f32>,
+    OrderedFloat<f32>,
+    OrderedFloat<f32>,
+);
+#[pyclass]
+#[derive(Clone)]
+pub struct Rect {
+    pub bbox: BboxKey,
+    pub fill_color: PdfColor,
+    pub stroke_color: PdfColor,
+    #[pyo3(get)]
+    pub stroke_width: f32,
+}
+
+#[pymethods]
+impl Rect {
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
+        )
+    }
+
+    #[getter]
+    fn fill_color(&self) -> (u8, u8, u8, u8) {
+        (
+            self.fill_color.red(),
+            self.fill_color.green(),
+            self.fill_color.blue(),
+            self.fill_color.alpha(),
+        )
+    }
+
+    #[getter]
+    fn stroke_color(&self) -> (u8, u8, u8, u8) {
+        (
+            self.stroke_color.red(),
+            self.stroke_color.green(),
+            self.stroke_color.blue(),
+            self.stroke_color.alpha(),
+        )
+    }
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct Line {
+    pub line_type: LineType,
+    pub points: Vec<Point>,
+    pub color: PdfColor,
+    pub width: OrderedFloat<f32>,
+}
+
+#[pymethods]
+impl Line {
+    #[getter]
+    fn line_type(&self) -> &str {
+        match self.line_type {
+            LineType::Straight => "straight",
+            LineType::Curve => "curve",
+        }
+    }
+
+    #[getter]
+    fn points(&self) -> Vec<(f32, f32)> {
+        self.points
+            .iter()
+            .map(|p| (p.0.into_inner(), p.1.into_inner()))
+            .collect()
+    }
+
+    #[getter]
+    fn color(&self) -> (u8, u8, u8, u8) {
+        (
+            self.color.red(),
+            self.color.green(),
+            self.color.blue(),
+            self.color.alpha(),
+        )
+    }
+
+    #[getter]
+    fn width(&self) -> f32 {
+        self.width.into_inner()
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
+pub struct Char {
+    #[pyo3(get)]
+    pub unicode_char: Option<String>,
+    pub bbox: BboxKey,
+    pub rotation_degrees: OrderedFloat<f32>,
+    #[pyo3(get)]
+    pub upright: bool,
+}
+#[pymethods]
+impl Char {
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
+        )
+    }
+
+    #[getter]
+    fn rotation_degrees(&self) -> f32 {
+        self.rotation_degrees.into_inner()
+    }
+}
+impl HasBbox for Char {
+    fn bbox(&self) -> BboxKey {
+        self.bbox.clone()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
+pub enum Orientation {
+    Vertical,
+    Horizontal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Hash, Eq)]
+pub enum LineType {
+    Straight,
+    Curve,
+}
+
+pub(crate) fn is_rect(points: &[Point]) -> bool {
+    if (!(points.len() == 5)) || points[0] != points[4] {
+        return false;
+    }
+    if points[0].0 == points[1].0
+        && points[1].1 == points[2].1
+        && points[2].0 == points[3].0
+        && points[3].1 == points[0].1
+    {
+        return true;
+    }
+    if points[0].1 == points[1].1
+        && points[1].0 == points[2].0
+        && points[2].1 == points[3].1
+        && points[3].0 == points[0].0
+    {
+        return true;
+    }
+    false
+}
+
+pub(crate) trait HasBbox {
+    fn bbox(&self) -> BboxKey;
+}
+
+fn merge_bboxes(bboxes: impl Iterator<Item = BboxKey>) -> Option<BboxKey> {
+    bboxes.fold(None, |acc, (x1, y1, x2, y2)| {
+        Some(match acc {
+            None => (x1, y1, x2, y2),
+            Some((ax1, ay1, ax2, ay2)) => (ax1.min(x1), ay1.min(y1), ax2.max(x2), ay2.max(y2)),
+        })
+    })
+}
+
+pub(crate) fn get_objects_bbox<T: HasBbox>(objects: &[T]) -> Option<BboxKey> {
+    merge_bboxes(objects.iter().map(|obj| obj.bbox()))
+}
