@@ -54,7 +54,7 @@ impl PdfiumRuntime {
         bytes: &'a [u8],
         password: Option<&'a str>,
     ) -> Result<PdfDocument<'a>, PdfiumError> {
-        self.inner.load_pdf_from_byte_slice(bytes, password)
+        self.inner.load_pdf_from_byte_vec(bytes.to_vec(), password)
     }
 
     fn get_inner(&self) -> Rc<Pdfium> {
