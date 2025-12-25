@@ -13,6 +13,8 @@ Point: TypeAlias = tuple[float, float]
 BBox: TypeAlias = tuple[float, float, float, float]
 Color: TypeAlias = tuple[int, int, int, int]  # RGBA, each 0~255
 
+__version__: str
+
 class PdfiumRuntime:
     def __init__(self, dll_path: Path | str): ...
 

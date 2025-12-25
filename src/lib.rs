@@ -340,5 +340,6 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<TfSettings>()?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(get_edges, m)?)?;
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }
