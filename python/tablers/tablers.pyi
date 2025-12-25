@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Literal, TypeAlias, TypedDict
+from typing import Literal, TypeAlias, TypedDict
 
 if sys.version_info < (3, 11):
     from typing_extensions import Unpack

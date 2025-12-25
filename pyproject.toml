@@ -1,32 +1,55 @@
-[build-system]
-requires = ["maturin>=1.10,<2.0"]
-build-backend = "maturin"
-
 [project]
 name = "tablers"
 requires-python = ">=3.10"
 classifiers = [
+    "Topic :: Utilities",
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+authors = [
+    { name = "monchin", email = "pazzinter@126.com" }
 ]
 dynamic = ["version"]
+license = {text = "MIT"}
+keywords = ["pdf", "table-extraction"]
+
+[build-system]
+requires = ["maturin>=1.10,<2.0"]
+build-backend = "maturin"
+
+[project.urls]
+Homepage = "https://github.com/monchin/tablers"
+Repository = "https://github.com/monchin/tablers"
+
 
 [tool.maturin]
 python-source = "python"
 
 [tool.pdm.scripts]
 fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}
+pre_build = "python scripts/pre-build.py"
+post_build = "python scripts/post-build.py"
 
 [tool.ruff]
 line-length = 100
-include = ["python/**.py", "python/**.pyi"]
+include = ["python/**.py", "python/**.pyi", "scripts/**"]
 
 [tool.ruff.lint]
-select = ["I"]
+# See list of rules at: https://docs.astral.sh/ruff/rules/
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
 
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 100

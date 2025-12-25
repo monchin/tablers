@@ -19,8 +19,7 @@ else:
     raise RuntimeError(f"Unsupported system: {SYSTEM}")
 
 
-__doc__ = tablers.__doc__
-__all__ = ["Document", "Page", "find_tables"]
+__all__ = ["Document", "Page", "find_tables", "__version__"]
 
 
 class Document:
