@@ -1,0 +1,136 @@
+name: Build and Publish Wheels
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  # --------------------------------------------------
+  # Windows / macOS
+  # - PDM + hook
+  # - wheel only (no sdist)
+  # --------------------------------------------------
+  build-native:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv
+      - uses: astral-sh/setup-uv@v3
+
+      # Python (abi3 baseline)
+      - name: Install Python via uv
+        shell: bash
+        run: |
+          uv python install 3.10
+          PY=$(uv python find 3.10)
+          echo "PY=$PY" >> $GITHUB_ENV
+
+      # Rust
+      - uses: dtolnay/rust-toolchain@stable
+
+      # CLI tools
+      - name: Install tools
+        run: |
+          uv tool install pdm
+          uv tool install maturin
+
+      # Bind Python to PDM
+      - name: Configure PDM interpreter
+        run: |
+          pdm use "$PY" --global
+
+      # Build wheel only
+      - name: Build wheel with PDM
+        run: |
+          pdm build --no-sdist
+
+      # Upload artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: dist/*.whl
+
+  # --------------------------------------------------
+  # Linux manylinux
+  # - maturin build
+  # - wheel + sdist (ONLY HERE)
+  # --------------------------------------------------
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rust
+      - uses: dtolnay/rust-toolchain@stable
+
+      # uv
+      - uses: astral-sh/setup-uv@v3
+
+      # Tools
+      - name: Install tools
+        run: |
+          uv tool install maturin
+          uv tool install pdm
+
+      # sdist (once)
+      - name: Build sdist
+        run: |
+          pdm build --sdist
+
+      # manylinux abi3 wheel
+      - name: Build manylinux wheel
+        run: |
+          maturin build \
+            --release \
+            --manylinux auto \
+            --interpreter python3.10 \
+            --out dist
+
+      # Upload artifacts
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-linux
+          path: dist/*
+
+  # --------------------------------------------------
+  # Publish (once)
+  # --------------------------------------------------
+  publish:
+    needs: [build-native, build-linux]
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write  # required for Trusted Publishing
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      # flatten dist directory
+      - name: Flatten dist
+        run: |
+          mkdir final_dist
+          find dist -type f -name "*.whl" -exec cp {} final_dist/ \;
+          find dist -type f -name "*.tar.gz" -exec cp {} final_dist/ \;
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install PDM
+        run: |
+          uv tool install pdm
+
+      - name: Publish to PyPI
+        run: |
+          pdm publish \
+            --no-build \
+            --repository pypi \
+            --dest final_dist/*
