@@ -133,4 +133,4 @@ jobs:
           pdm publish \
             --no-build \
             --repository pypi \
-            --dest final_dist/*
+            --dest final_dist
