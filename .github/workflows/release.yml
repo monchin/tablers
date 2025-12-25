@@ -83,16 +83,13 @@ jobs:
         run: |
           python scripts/pre-build.py
 
-
       # manylinux abi3 wheel
       - name: Build manylinux wheel
         run: |
           maturin build \
             --release \
-            --manylinux auto \
             --interpreter python3.10 \
             --out dist
-
 
       - name: Restore native libs
         run: |
