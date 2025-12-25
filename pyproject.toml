@@ -26,12 +26,17 @@ build-backend = "maturin"
 Homepage = "https://github.com/monchin/tablers"
 Repository = "https://github.com/monchin/tablers"
 
+[dependency-groups]
+stub = [
+    "typing-extensions>=4.15.0; python_version < \"3.11\"",
+]
 
 [tool.maturin]
 python-source = "python"
 
 [tool.pdm.scripts]
 fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}
+lint = {composite = ["ruff check .", "ty check ."]}
 pre_build = "python scripts/pre-build.py"
 post_build = "python scripts/post-build.py"
 
@@ -54,8 +59,13 @@ select = [
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 100
 
+[tool.ty.rules]
+possibly-missing-attribute = "error"
+possibly-missing-import = "error"
+possibly-unresolved-reference = "warn"
 
-[dependency-groups]
-stub = [
-    "typing-extensions>=4.15.0; python_version < \"3.11\"",
-]
+[tool.ty.src]
+include = ["python/tablers"]
+
+[tool.ty.environment]
+python = "./.venv"
