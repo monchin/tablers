@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Literal, TypeAlias, TypedDict
+from typing import Literal, TypeAlias, TypedDict
 
 if sys.version_info < (3, 11):
     from typing_extensions import Unpack
@@ -12,6 +13,8 @@ else:
 Point: TypeAlias = tuple[float, float]
 BBox: TypeAlias = tuple[float, float, float, float]
 Color: TypeAlias = tuple[int, int, int, int]  # RGBA, each 0~255
+
+__version__: str
 
 class PdfiumRuntime:
     def __init__(self, dll_path: Path | str): ...
