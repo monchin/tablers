@@ -78,12 +78,11 @@ jobs:
       - name: Install tools
         run: |
           uv tool install maturin
-          uv tool install pdm
 
-      # sdist (once)
-      - name: Build sdist
+      - name: Prepare native libs
         run: |
-          pdm build --sdist
+          python scripts/pre-build.py
+
 
       # manylinux abi3 wheel
       - name: Build manylinux wheel
@@ -93,6 +92,11 @@ jobs:
             --manylinux auto \
             --interpreter python3.10 \
             --out dist
+
+
+      - name: Restore native libs
+        run: |
+          python scripts/post-build.py
 
       # Upload artifacts
       - uses: actions/upload-artifact@v4
@@ -120,7 +124,6 @@ jobs:
         run: |
           mkdir final_dist
           find dist -type f -name "*.whl" -exec cp {} final_dist/ \;
-          find dist -type f -name "*.tar.gz" -exec cp {} final_dist/ \;
 
       - uses: astral-sh/setup-uv@v3
 
