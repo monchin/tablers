@@ -150,11 +150,8 @@ impl TfSettings {
                     "text_use_text_flow" => {
                         settings.text_settings.use_text_flow = value.extract::<bool>().unwrap()
                     }
-                    "text_horizontal_ltr" => {
-                        settings.text_settings.horizontal_ltr = value.extract::<bool>().unwrap()
-                    }
-                    "text_vertical_ttb" => {
-                        settings.text_settings.vertical_ttb = value.extract::<bool>().unwrap()
+                    "text_read_in_clockwise" => {
+                        settings.text_settings.text_read_in_clockwise = value.extract::<bool>().unwrap()
                     }
                     "text_split_at_punctuation" => {
                         let split_value: Option<&str> = value.extract().unwrap();
@@ -187,8 +184,7 @@ pub struct WordsExtractSettings {
     pub y_tolerance: OrderedFloat<f32>,
     pub keep_blank_chars: bool,
     pub use_text_flow: bool,
-    pub horizontal_ltr: bool,
-    pub vertical_ttb: bool,
+    pub text_read_in_clockwise: bool,
     pub split_at_punctuation: Option<SplitPunctuation>,
     pub expand_ligatures: bool,
 }
@@ -199,8 +195,7 @@ impl Default for WordsExtractSettings {
             y_tolerance: OrderedFloat::from(DEFAULT_Y_TOLERANCE),
             keep_blank_chars: false,
             use_text_flow: false,
-            horizontal_ltr: true,
-            vertical_ttb: false,
+            text_read_in_clockwise: true,
             split_at_punctuation: None,
             expand_ligatures: true,
         }

@@ -72,8 +72,7 @@ pub(crate) struct WordExtractor {
     y_tolerance: OrderedFloat<f32>,
     keep_blank_chars: bool,
     use_text_flow: bool,
-    horizontal_ltr: bool,
-    vertical_ttb: bool,
+    text_read_in_clockwise: bool,
     split_at_punctuation: HashSet<char>,
     expansions: HashMap<&'static str, &'static str>,
 }
@@ -91,8 +90,7 @@ impl WordExtractor {
             y_tolerance: word_extract_settings.y_tolerance,
             keep_blank_chars: word_extract_settings.keep_blank_chars,
             use_text_flow: word_extract_settings.use_text_flow,
-            horizontal_ltr: word_extract_settings.horizontal_ltr,
-            vertical_ttb: word_extract_settings.vertical_ttb,
+            text_read_in_clockwise: word_extract_settings.text_read_in_clockwise,
             split_at_punctuation: split_chars,
             expansions: if word_extract_settings.expand_ligatures {
                 LIGATURES.clone()
@@ -135,13 +133,17 @@ impl WordExtractor {
     pub fn char_begins_new_word(&self, prev_char: &Char, curr_char: &Char) -> bool {
         let (x, y, ax, bx, cx, ay, cy);
 
-        if curr_char.upright {
+        if (curr_char.rotation_degrees >= OrderedFloat(-0.001f32)
+            && curr_char.rotation_degrees < OrderedFloat(45.0f32))
+            || (curr_char.rotation_degrees >= OrderedFloat(315.0f32)
+                && curr_char.rotation_degrees < OrderedFloat(360.001f32))
+        {
             x = self.x_tolerance;
             y = self.y_tolerance;
             ay = prev_char.bbox.1;
             cy = curr_char.bbox.1;
 
-            if self.horizontal_ltr {
+            if self.text_read_in_clockwise {
                 ax = prev_char.bbox.0;
                 bx = prev_char.bbox.2;
                 cx = curr_char.bbox.0;
@@ -150,13 +152,15 @@ impl WordExtractor {
                 bx = -prev_char.bbox.0;
                 cx = -curr_char.bbox.2;
             }
-        } else {
+        } else if curr_char.rotation_degrees >= OrderedFloat(45.0f32)
+            && curr_char.rotation_degrees < OrderedFloat(135.0f32)
+        {
             x = self.y_tolerance;
             y = self.x_tolerance;
             ay = prev_char.bbox.0;
             cy = curr_char.bbox.0;
 
-            if self.vertical_ttb {
+            if self.text_read_in_clockwise {
                 ax = prev_char.bbox.1;
                 bx = prev_char.bbox.3;
                 cx = curr_char.bbox.1;
@@ -164,6 +168,38 @@ impl WordExtractor {
                 ax = -prev_char.bbox.3;
                 bx = -prev_char.bbox.1;
                 cx = -curr_char.bbox.3;
+            }
+        } else if curr_char.rotation_degrees >= OrderedFloat(135.0f32)
+            && curr_char.rotation_degrees < OrderedFloat(225.0f32)
+        {
+            x = self.x_tolerance;
+            y = self.y_tolerance;
+            ay = prev_char.bbox.3;
+            cy = curr_char.bbox.3;
+
+            if self.text_read_in_clockwise {
+                ax = -prev_char.bbox.2;
+                bx = -prev_char.bbox.0;
+                cx = -curr_char.bbox.2;
+            } else {
+                ax = prev_char.bbox.0;
+                bx = prev_char.bbox.2;
+                cx = curr_char.bbox.0;
+            }
+        } else {
+            x = self.y_tolerance;
+            y = self.x_tolerance;
+            ay = prev_char.bbox.0;
+            cy = curr_char.bbox.0;
+
+            if self.text_read_in_clockwise {
+                ax = -prev_char.bbox.3;
+                bx = -prev_char.bbox.1;
+                cx = -curr_char.bbox.3;
+            } else {
+                ax = prev_char.bbox.1;
+                bx = prev_char.bbox.3;
+                cx = curr_char.bbox.1;
             }
         }
 
@@ -216,6 +252,7 @@ impl WordExtractor {
             if rotation_cluster.is_empty() {
                 continue;
             }
+            let rotation_degrees = rotation_cluster[0].rotation_degrees;
             let upright = rotation_cluster[0].upright;
             let sub_key = match upright {
                 true => |char: &Char| char.bbox.1,
@@ -224,19 +261,37 @@ impl WordExtractor {
             let sub_clusters = cluster_objects(&rotation_cluster, sub_key, self.y_tolerance);
 
             for mut sc in sub_clusters {
-                if upright {
-                    // horizontal
-                    if self.horizontal_ltr {
+                if (rotation_degrees >= OrderedFloat(-0.001f32)
+                    && rotation_degrees < OrderedFloat(45.0f32))
+                    || (rotation_degrees >= OrderedFloat(315.0f32)
+                        && rotation_degrees < OrderedFloat(360.001f32))
+                {
+                    if self.text_read_in_clockwise {
                         sc.sort_by(|a, b| a.bbox.0.partial_cmp(&b.bbox.0).unwrap());
                     } else {
                         sc.sort_by(|a, b| b.bbox.0.partial_cmp(&a.bbox.0).unwrap());
                     }
-                } else {
-                    // vertical
-                    if self.vertical_ttb {
+                } else if rotation_degrees >= OrderedFloat(45.0f32)
+                    && rotation_degrees < OrderedFloat(135.0f32)
+                {
+                    if self.text_read_in_clockwise {
                         sc.sort_by(|a, b| a.bbox.1.partial_cmp(&b.bbox.1).unwrap());
                     } else {
                         sc.sort_by(|a, b| b.bbox.1.partial_cmp(&a.bbox.1).unwrap());
+                    }
+                } else if rotation_degrees >= OrderedFloat(135.0f32)
+                    && rotation_degrees < OrderedFloat(225.0f32)
+                {
+                    if self.text_read_in_clockwise {
+                        sc.sort_by(|a, b| b.bbox.0.partial_cmp(&a.bbox.0).unwrap());
+                    } else {
+                        sc.sort_by(|a, b| a.bbox.0.partial_cmp(&b.bbox.0).unwrap());
+                    }
+                } else {
+                    if self.text_read_in_clockwise {
+                        sc.sort_by(|a, b| b.bbox.1.partial_cmp(&a.bbox.1).unwrap());
+                    } else {
+                        sc.sort_by(|a, b| a.bbox.1.partial_cmp(&b.bbox.1).unwrap());
                     }
                 }
                 result.extend(sc);
@@ -304,7 +359,6 @@ mod tests {
         let chars = &objects.as_ref().unwrap().chars;
 
         let settings = WordsExtractSettings {
-            vertical_ttb: false,
             ..Default::default()
         };
         let extractor = WordExtractor::new(&settings);
@@ -316,7 +370,6 @@ mod tests {
 
         // keep_blank_chars=true
         let settings_with_spaces = WordsExtractSettings {
-            vertical_ttb: false,
             keep_blank_chars: true,
             ..Default::default()
         };
@@ -332,7 +385,7 @@ mod tests {
         assert_eq!(vertical[0].direction(), "btt");
 
         let settings_rtl = WordsExtractSettings {
-            horizontal_ltr: false,
+            text_read_in_clockwise: false,
             ..Default::default()
         };
         let extractor_rtl = WordExtractor::new(&settings_rtl);

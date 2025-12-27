@@ -105,8 +105,7 @@ class TfSettingItems(TypedDict, total=False):
     text_y_tolerance: float
     text_keep_blank_chars: bool
     text_use_text_flow: bool
-    text_horizontal_ltr: bool
-    text_vertical_ttb: bool
+    text_read_in_clockwise: bool
     text_split_at_punctuation: Literal["all"] | str | None
     text_expand_ligatures: bool
 
