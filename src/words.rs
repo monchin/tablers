@@ -36,34 +36,6 @@ pub(crate) struct Word {
     pub bbox: BboxKey,
     /// The rotation of the word in degrees.
     pub rotation_degrees: OrderedFloat<f32>,
-    /// Whether the word is upright (horizontal).
-    pub upright: bool,
-}
-
-impl Word {
-    /// Returns the reading direction of the word.
-    ///
-    /// # Returns
-    ///
-    /// One of: "ltr" (left-to-right), "rtl" (right-to-left),
-    /// "ttb" (top-to-bottom), or "btt" (bottom-to-top).
-    pub fn direction(&self) -> &'static str {
-        let rotation = self.rotation_degrees.into_inner();
-        if self.upright {
-            if (rotation - 0.0).abs() < 0.001 {
-                "ltr"
-            } else {
-                "rtl"
-            }
-        } else {
-            // 垂直文本
-            if (rotation - 90.0).abs() < 0.001 {
-                "ttb"
-            } else {
-                "btt"
-            }
-        }
-    }
 }
 
 impl HasBbox for Word {
@@ -136,7 +108,6 @@ impl WordExtractor {
     pub fn merge_chars(&self, ordered_chars: &[Char]) -> Word {
         let (x1, y1, x2, y2) = get_objects_bbox(ordered_chars).unwrap();
         let first_char = &ordered_chars[0];
-        let upright = first_char.upright;
 
         let rotation = first_char.rotation_degrees;
         let chars_iter: Box<dyn Iterator<Item = &Char>> =
@@ -159,7 +130,6 @@ impl WordExtractor {
         Word {
             text,
             bbox: (x1, y1, x2, y2),
-            upright,
             rotation_degrees: rotation,
         }
     }
@@ -448,9 +418,11 @@ mod tests {
         let extractor = WordExtractor::new(&settings);
         let words = extractor.extract_words(chars);
 
-        let horizontal_words: Vec<&Word> = words.iter().filter(|w| w.upright).collect();
+        let horizontal_words: Vec<&Word> = words
+            .iter()
+            .filter(|w| (w.rotation_degrees - 0.0).abs() < 0.001)
+            .collect();
         assert_eq!(horizontal_words[0].text, "Agaaaaa:");
-        assert_eq!(horizontal_words[0].direction(), "ltr");
 
         // keep_blank_chars=true
         let settings_with_spaces = WordsExtractSettings {
@@ -460,13 +432,17 @@ mod tests {
         let extractor_with_spaces = WordExtractor::new(&settings_with_spaces);
         let words_w_spaces = extractor_with_spaces.extract_words(chars);
 
-        let horizontal_words_w_spaces: Vec<&Word> =
-            words_w_spaces.iter().filter(|w| w.upright).collect();
+        let horizontal_words_w_spaces: Vec<&Word> = words_w_spaces
+            .iter()
+            .filter(|w| (w.rotation_degrees - 0.0).abs() < 0.001)
+            .collect();
         assert_eq!(horizontal_words_w_spaces[0].text, "Agaaaaa: AAAA");
 
-        let vertical: Vec<&Word> = words.iter().filter(|w| !w.upright).collect();
+        let vertical: Vec<&Word> = words
+            .iter()
+            .filter(|w| (w.rotation_degrees - 0.0).abs() > 45.0)
+            .collect();
         assert_eq!(vertical[0].text, "Aaaaaabag8");
-        assert_eq!(vertical[0].direction(), "btt");
 
         let settings_rtl = WordsExtractSettings {
             text_read_in_clockwise: false,
@@ -475,8 +451,10 @@ mod tests {
         let extractor_rtl = WordExtractor::new(&settings_rtl);
         let words_rtl = extractor_rtl.extract_words(chars);
 
-        let horizontal_rtl: Vec<&Word> = words_rtl.iter().filter(|w| w.upright).collect();
+        let horizontal_rtl: Vec<&Word> = words_rtl
+            .iter()
+            .filter(|w| (w.rotation_degrees - 0.0).abs() < 0.001)
+            .collect();
         assert_eq!(horizontal_rtl[1].text, "baaabaaA/AAA");
-        assert_eq!(horizontal_rtl[1].direction(), "ltr");
     }
 }

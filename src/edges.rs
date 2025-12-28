@@ -660,8 +660,13 @@ pub(crate) fn make_edges(
 mod tests {
     use super::*;
     use crate::test_utils::load_pdfium;
+    use crate::words::Word;
     use ordered_float::OrderedFloat;
     use pdfium_render::prelude::PdfColor;
+
+    fn of(v: f32) -> OrderedFloat<f32> {
+        OrderedFloat(v)
+    }
 
     fn make_test_edge(x1: f32, y1: f32, x2: f32, y2: f32) -> Edge {
         Edge {
@@ -671,6 +676,18 @@ mod tests {
             x2: OrderedFloat(x2),
             y2: OrderedFloat(y2),
             width: OrderedFloat(1.0),
+            color: PdfColor::new(0, 0, 0, 255),
+        }
+    }
+
+    fn make_h_edge(x1: f32, y1: f32, x2: f32, y2: f32) -> Edge {
+        Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(x1),
+            y1: of(y1),
+            x2: of(x2),
+            y2: of(y2),
+            width: of(1.0),
             color: PdfColor::new(0, 0, 0, 255),
         }
     }
@@ -686,8 +703,165 @@ mod tests {
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].x1, result[1].x1);
         assert_eq!(result[1].x1, result[2].x1);
-        // 验证平均值
+        // Verify average value
         assert_eq!(result[0].x1, OrderedFloat(6.0));
+    }
+
+    #[test]
+    fn test_snap_objects_no_snap_needed() {
+        // Edges are too far apart to snap
+        let a = make_test_edge(5.0, 20.0, 10.0, 30.0);
+        let b = make_test_edge(15.0, 20.0, 20.0, 30.0);
+
+        let result = snap_objects(vec![a.clone(), b.clone()], EdgeAttr::X1, of(1.0));
+
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].x1, a.x1);
+        assert_eq!(result[1].x1, b.x1);
+    }
+
+    #[test]
+    fn test_move_edge_vertical() {
+        let edge = make_test_edge(10.0, 20.0, 10.0, 30.0);
+        let moved = move_edge(edge, Orientation::Vertical, of(5.0));
+        assert_eq!(moved.x1, of(15.0));
+        assert_eq!(moved.x2, of(15.0));
+        assert_eq!(moved.y1, of(20.0)); // y unchanged
+        assert_eq!(moved.y2, of(30.0)); // y unchanged
+    }
+
+    #[test]
+    fn test_move_edge_horizontal() {
+        let edge = make_h_edge(10.0, 20.0, 30.0, 20.0);
+        let moved = move_edge(edge, Orientation::Horizontal, of(5.0));
+        assert_eq!(moved.y1, of(25.0));
+        assert_eq!(moved.y2, of(25.0));
+        assert_eq!(moved.x1, of(10.0)); // x unchanged
+        assert_eq!(moved.x2, of(30.0)); // x unchanged
+    }
+
+    #[test]
+    fn test_join_edge_group_overlapping() {
+        // Two overlapping vertical edges
+        let edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(10.0),
+                y1: of(0.0),
+                x2: of(10.0),
+                y2: of(20.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(10.0),
+                y1: of(15.0),
+                x2: of(10.0),
+                y2: of(40.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let result = join_edge_group(edges, Orientation::Vertical, of(0.0));
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].y1, of(0.0));
+        assert_eq!(result[0].y2, of(40.0));
+    }
+
+    #[test]
+    fn test_join_edge_group_with_gap() {
+        // Two separate vertical edges with gap
+        let edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(10.0),
+                y1: of(0.0),
+                x2: of(10.0),
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(10.0),
+                y1: of(20.0),
+                x2: of(10.0),
+                y2: of(30.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        // With tolerance 0, they should remain separate
+        let result = join_edge_group(edges.clone(), Orientation::Vertical, of(0.0));
+        assert_eq!(result.len(), 2);
+
+        // With tolerance 10, they should be joined
+        let result = join_edge_group(edges, Orientation::Vertical, of(10.0));
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_join_edge_group_empty() {
+        let edges: Vec<Edge> = vec![];
+        let result = join_edge_group(edges, Orientation::Vertical, of(0.0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_get_bbox_overlap_true() {
+        let b1: BboxKey = (of(0.0), of(0.0), of(10.0), of(10.0));
+        let b2: BboxKey = (of(5.0), of(5.0), of(15.0), of(15.0));
+        assert!(get_bbox_overlap(&b1, &b2));
+    }
+
+    #[test]
+    fn test_get_bbox_overlap_false() {
+        let b1: BboxKey = (of(0.0), of(0.0), of(10.0), of(10.0));
+        let b2: BboxKey = (of(20.0), of(20.0), of(30.0), of(30.0));
+        assert!(!get_bbox_overlap(&b1, &b2));
+    }
+
+    #[test]
+    fn test_get_bbox_overlap_touching() {
+        // Boxes that touch but don't overlap
+        let b1: BboxKey = (of(0.0), of(0.0), of(10.0), of(10.0));
+        let b2: BboxKey = (of(10.0), of(0.0), of(20.0), of(10.0));
+        assert!(!get_bbox_overlap(&b1, &b2));
+    }
+
+    #[test]
+    fn test_edge_to_bbox_key() {
+        let edge = make_test_edge(1.0, 2.0, 3.0, 4.0);
+        let bbox = edge.to_bbox_key();
+        assert_eq!(bbox, (of(1.0), of(2.0), of(3.0), of(4.0)));
+    }
+
+    #[test]
+    fn test_words_to_edges_h_empty() {
+        let words: Vec<Word> = vec![];
+        let edges = words_to_edges_h(&words, 1);
+        assert!(edges.is_empty());
+    }
+
+    #[test]
+    fn test_words_to_edges_v_empty() {
+        let words: Vec<Word> = vec![];
+        let edges = words_to_edges_v(&words, 1);
+        assert!(edges.is_empty());
+    }
+
+    #[test]
+    fn test_merge_edges_empty() {
+        let edges: HashMap<Orientation, Vec<Edge>> = HashMap::from([
+            (Orientation::Vertical, vec![]),
+            (Orientation::Horizontal, vec![]),
+        ]);
+        let merged = merge_edges(edges, of(3.0), of(3.0), of(3.0), of(3.0));
+        assert!(merged.get(&Orientation::Vertical).unwrap().is_empty());
+        assert!(merged.get(&Orientation::Horizontal).unwrap().is_empty());
     }
 
     #[test]

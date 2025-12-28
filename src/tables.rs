@@ -779,3 +779,241 @@ pub fn find_tables(pdf_page: &Page, tf_settings: Rc<TfSettings>, extract_text: b
         Some(&tf_settings.text_settings),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ordered_float::OrderedFloat;
+
+    fn of(v: f32) -> OrderedFloat<f32> {
+        OrderedFloat(v)
+    }
+
+    #[test]
+    fn test_get_axis_value() {
+        let bbox: BboxKey = (of(1.0), of(2.0), of(3.0), of(4.0));
+        assert_eq!(get_axis_value(&bbox, 0), of(1.0)); // x1
+        assert_eq!(get_axis_value(&bbox, 1), of(2.0)); // y1
+        assert_eq!(get_axis_value(&bbox, 2), of(3.0)); // x2
+        assert_eq!(get_axis_value(&bbox, 3), of(4.0)); // y2
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid axis")]
+    fn test_get_axis_value_invalid() {
+        let bbox: BboxKey = (of(1.0), of(2.0), of(3.0), of(4.0));
+        get_axis_value(&bbox, 4);
+    }
+
+    #[test]
+    fn test_bbox_to_corners() {
+        let bbox: BboxKey = (of(0.0), of(0.0), of(10.0), of(20.0));
+        let corners = bbox_to_corners(&bbox);
+        assert_eq!(corners[0], (of(0.0), of(0.0))); // top-left
+        assert_eq!(corners[1], (of(0.0), of(20.0))); // bottom-left
+        assert_eq!(corners[2], (of(10.0), of(0.0))); // top-right
+        assert_eq!(corners[3], (of(10.0), of(20.0))); // bottom-right
+    }
+
+    #[test]
+    fn test_cells_to_tables_single_table() {
+        // Create a 2x2 table (4 cells sharing corners)
+        let cells: Vec<BboxKey> = vec![
+            (of(0.0), of(0.0), of(10.0), of(10.0)),
+            (of(10.0), of(0.0), of(20.0), of(10.0)),
+            (of(0.0), of(10.0), of(10.0), of(20.0)),
+            (of(10.0), of(10.0), of(20.0), of(20.0)),
+        ];
+        let tables = cells_to_tables(&cells);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].len(), 4);
+    }
+
+    #[test]
+    fn test_cells_to_tables_two_separate_tables() {
+        // Create two separate tables
+        let cells: Vec<BboxKey> = vec![
+            // Table 1 (2 cells)
+            (of(0.0), of(0.0), of(10.0), of(10.0)),
+            (of(10.0), of(0.0), of(20.0), of(10.0)),
+            // Table 2 (2 cells, far away from table 1)
+            (of(100.0), of(100.0), of(110.0), of(110.0)),
+            (of(110.0), of(100.0), of(120.0), of(110.0)),
+        ];
+        let tables = cells_to_tables(&cells);
+        assert_eq!(tables.len(), 2);
+    }
+
+    #[test]
+    fn test_cells_to_tables_single_cell_excluded() {
+        // A single cell should not form a table (needs at least 2 cells)
+        let cells: Vec<BboxKey> = vec![(of(0.0), of(0.0), of(10.0), of(10.0))];
+        let tables = cells_to_tables(&cells);
+        assert_eq!(tables.len(), 0);
+    }
+
+    #[test]
+    fn test_cells_to_tables_empty() {
+        let cells: Vec<BboxKey> = vec![];
+        let tables = cells_to_tables(&cells);
+        assert_eq!(tables.len(), 0);
+    }
+
+    #[test]
+    fn test_cell_group_new() {
+        let cell1 = TableCell {
+            text: "A".to_string(),
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+        };
+        let cell2 = TableCell {
+            text: "B".to_string(),
+            bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+        };
+        let cells: Vec<Option<&TableCell>> = vec![Some(&cell1), None, Some(&cell2)];
+        let group = CellGroup::new(cells);
+
+        assert_eq!(group.cells.len(), 3);
+        assert!(group.cells[0].is_some());
+        assert!(group.cells[1].is_none());
+        assert!(group.cells[2].is_some());
+        // Bbox should encompass both cells
+        assert_eq!(group.bbox.0, of(0.0)); // min x1
+        assert_eq!(group.bbox.2, of(20.0)); // max x2
+    }
+
+    #[test]
+    fn test_table_rows() {
+        // Create a 2x2 table
+        let cells = vec![
+            TableCell {
+                text: "A".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "B".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "C".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "D".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let rows = table.rows();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].cells.len(), 2);
+        assert_eq!(rows[1].cells.len(), 2);
+    }
+
+    #[test]
+    fn test_table_columns() {
+        // Create a 2x2 table
+        let cells = vec![
+            TableCell {
+                text: "A".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "B".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "C".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "D".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let cols = table.columns();
+        assert_eq!(cols.len(), 2);
+        assert_eq!(cols[0].cells.len(), 2);
+        assert_eq!(cols[1].cells.len(), 2);
+    }
+
+    #[test]
+    fn test_char_in_bbox() {
+        let char = Char {
+            unicode_char: Some("A".to_string()),
+            bbox: (of(5.0), of(5.0), of(8.0), of(8.0)),
+            rotation_degrees: of(0.0),
+            upright: true,
+        };
+        let bbox: BboxKey = (of(0.0), of(0.0), of(10.0), of(10.0));
+
+        // Char center is (6.5, 6.5), which is inside the bbox
+        assert!(Table::char_in_bbox(&char, &bbox));
+    }
+
+    #[test]
+    fn test_char_not_in_bbox() {
+        let char = Char {
+            unicode_char: Some("A".to_string()),
+            bbox: (of(15.0), of(15.0), of(18.0), of(18.0)),
+            rotation_degrees: of(0.0),
+            upright: true,
+        };
+        let bbox: BboxKey = (of(0.0), of(0.0), of(10.0), of(10.0));
+
+        // Char center is (16.5, 16.5), which is outside the bbox
+        assert!(!Table::char_in_bbox(&char, &bbox));
+    }
+
+    #[test]
+    fn test_filter_edges_by_min_len() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(5.0), // length = 5
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(10.0),
+                x2: of(15.0), // length = 15
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(3.0), // length = 3
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        filter_edges_by_min_len(&mut edges, of(10.0));
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].x2, of(15.0)); // Only the long horizontal edge remains
+    }
+}

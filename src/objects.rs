@@ -271,3 +271,173 @@ fn merge_bboxes(bboxes: impl Iterator<Item = BboxKey>) -> Option<BboxKey> {
 pub(crate) fn get_objects_bbox<T: HasBbox>(objects: &[T]) -> Option<BboxKey> {
     merge_bboxes(objects.iter().map(|obj| obj.bbox()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ordered_float::OrderedFloat;
+
+    #[test]
+    fn test_is_rect_valid_rectangle_clockwise() {
+        // A valid rectangle with 5 points (first == last), clockwise
+        let points: Vec<Point> = vec![
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+            (OrderedFloat(0.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(0.0)),
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+        ];
+        assert!(is_rect(&points));
+    }
+
+    #[test]
+    fn test_is_rect_valid_rectangle_counterclockwise() {
+        // A valid rectangle with 5 points, counterclockwise order
+        let points: Vec<Point> = vec![
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+            (OrderedFloat(10.0), OrderedFloat(0.0)),
+            (OrderedFloat(10.0), OrderedFloat(10.0)),
+            (OrderedFloat(0.0), OrderedFloat(10.0)),
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+        ];
+        assert!(is_rect(&points));
+    }
+
+    #[test]
+    fn test_is_rect_invalid_not_closed() {
+        // 5 points but first != last
+        let points: Vec<Point> = vec![
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+            (OrderedFloat(0.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(0.0)),
+            (OrderedFloat(1.0), OrderedFloat(0.0)), // different from first
+        ];
+        assert!(!is_rect(&points));
+    }
+
+    #[test]
+    fn test_is_rect_invalid_wrong_count() {
+        // Only 4 points
+        let points: Vec<Point> = vec![
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+            (OrderedFloat(0.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(0.0)),
+        ];
+        assert!(!is_rect(&points));
+    }
+
+    #[test]
+    fn test_is_rect_invalid_not_rectangular() {
+        // 5 points but not forming a rectangle
+        let points: Vec<Point> = vec![
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+            (OrderedFloat(5.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(10.0)),
+            (OrderedFloat(10.0), OrderedFloat(0.0)),
+            (OrderedFloat(0.0), OrderedFloat(0.0)),
+        ];
+        assert!(!is_rect(&points));
+    }
+
+    #[test]
+    fn test_merge_bboxes_single() {
+        let bboxes = vec![(
+            OrderedFloat(1.0),
+            OrderedFloat(2.0),
+            OrderedFloat(3.0),
+            OrderedFloat(4.0),
+        )];
+        let result = merge_bboxes(bboxes.into_iter());
+        assert_eq!(
+            result,
+            Some((
+                OrderedFloat(1.0),
+                OrderedFloat(2.0),
+                OrderedFloat(3.0),
+                OrderedFloat(4.0)
+            ))
+        );
+    }
+
+    #[test]
+    fn test_merge_bboxes_multiple() {
+        let bboxes = vec![
+            (
+                OrderedFloat(0.0),
+                OrderedFloat(0.0),
+                OrderedFloat(10.0),
+                OrderedFloat(10.0),
+            ),
+            (
+                OrderedFloat(5.0),
+                OrderedFloat(5.0),
+                OrderedFloat(15.0),
+                OrderedFloat(15.0),
+            ),
+        ];
+        let result = merge_bboxes(bboxes.into_iter());
+        assert_eq!(
+            result,
+            Some((
+                OrderedFloat(0.0),
+                OrderedFloat(0.0),
+                OrderedFloat(15.0),
+                OrderedFloat(15.0)
+            ))
+        );
+    }
+
+    #[test]
+    fn test_merge_bboxes_empty() {
+        let bboxes: Vec<BboxKey> = vec![];
+        let result = merge_bboxes(bboxes.into_iter());
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_get_objects_bbox_with_chars() {
+        let chars = vec![
+            Char {
+                unicode_char: Some("A".to_string()),
+                bbox: (
+                    OrderedFloat(0.0),
+                    OrderedFloat(0.0),
+                    OrderedFloat(10.0),
+                    OrderedFloat(10.0),
+                ),
+                rotation_degrees: OrderedFloat(0.0),
+                upright: true,
+            },
+            Char {
+                unicode_char: Some("B".to_string()),
+                bbox: (
+                    OrderedFloat(20.0),
+                    OrderedFloat(20.0),
+                    OrderedFloat(30.0),
+                    OrderedFloat(30.0),
+                ),
+                rotation_degrees: OrderedFloat(0.0),
+                upright: true,
+            },
+        ];
+        let result = get_objects_bbox(&chars);
+        assert_eq!(
+            result,
+            Some((
+                OrderedFloat(0.0),
+                OrderedFloat(0.0),
+                OrderedFloat(30.0),
+                OrderedFloat(30.0)
+            ))
+        );
+    }
+
+    #[test]
+    fn test_get_objects_bbox_empty() {
+        let chars: Vec<Char> = vec![];
+        let result = get_objects_bbox(&chars);
+        assert_eq!(result, None);
+    }
+}

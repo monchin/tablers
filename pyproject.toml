@@ -30,6 +30,10 @@ Repository = "https://github.com/monchin/tablers"
 stub = [
     "typing-extensions>=4.15.0; python_version < \"3.11\"",
 ]
+test = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+]
 
 [tool.maturin]
 python-source = "python"
@@ -37,12 +41,13 @@ python-source = "python"
 [tool.pdm.scripts]
 fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}
 lint = {composite = ["ruff check .", "ty check ."]}
+test = {composite = ["cargo test", "pytest tests/python"]}
 pre_build = "python scripts/pre-build.py"
 post_build = "python scripts/post-build.py"
 
 [tool.ruff]
 line-length = 100
-include = ["python/**.py", "python/**.pyi", "scripts/**"]
+include = ["python/**.py", "python/**.pyi", "scripts/**", "tests/**.py"]
 
 [tool.ruff.lint]
 # See list of rules at: https://docs.astral.sh/ruff/rules/

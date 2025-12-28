@@ -734,3 +734,124 @@ impl WordsExtractSettings {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ordered_float::OrderedFloat;
+
+    // TfSettings tests
+    #[test]
+    fn test_tf_settings_default() {
+        let settings = TfSettings::default();
+        assert_eq!(settings.vertical_strategy, StrategyType::Lines);
+        assert_eq!(settings.horizontal_strategy, StrategyType::Lines);
+        assert_eq!(settings.snap_x_tolerance, OrderedFloat(3.0));
+        assert_eq!(settings.snap_y_tolerance, OrderedFloat(3.0));
+        assert_eq!(settings.join_x_tolerance, OrderedFloat(3.0));
+        assert_eq!(settings.join_y_tolerance, OrderedFloat(3.0));
+        assert_eq!(settings.edge_min_length, OrderedFloat(3.0));
+        assert_eq!(settings.edge_min_length_prefilter, OrderedFloat(1.0));
+        assert_eq!(settings.min_words_vertical, 3);
+        assert_eq!(settings.min_words_horizontal, 1);
+        assert_eq!(settings.intersection_x_tolerance, OrderedFloat(3.0));
+        assert_eq!(settings.intersection_y_tolerance, OrderedFloat(3.0));
+    }
+
+    #[test]
+    fn test_strategy_str_to_enum() {
+        assert_eq!(
+            TfSettings::strategy_str_to_enum("lines"),
+            StrategyType::Lines
+        );
+        assert_eq!(
+            TfSettings::strategy_str_to_enum("lines_strict"),
+            StrategyType::LinesStrict
+        );
+        assert_eq!(TfSettings::strategy_str_to_enum("text"), StrategyType::Text);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid strategy")]
+    fn test_strategy_str_to_enum_invalid() {
+        TfSettings::strategy_str_to_enum("invalid");
+    }
+
+    #[test]
+    fn test_strategy_enum_to_str() {
+        assert_eq!(
+            TfSettings::strategy_enum_to_str(StrategyType::Lines),
+            "lines"
+        );
+        assert_eq!(
+            TfSettings::strategy_enum_to_str(StrategyType::LinesStrict),
+            "lines_strict"
+        );
+        assert_eq!(TfSettings::strategy_enum_to_str(StrategyType::Text), "text");
+    }
+
+    #[test]
+    fn test_strategy_type_bitor() {
+        assert_eq!(StrategyType::Lines | 0u8, 1u8);
+        assert_eq!(StrategyType::LinesStrict | 0u8, 2u8);
+        assert_eq!(StrategyType::Text | 0u8, 4u8);
+        assert_eq!(StrategyType::Lines | StrategyType::LinesStrict, 3u8);
+        assert_eq!(StrategyType::Lines | StrategyType::Text, 5u8);
+    }
+
+    // WordsExtractSettings tests
+    #[test]
+    fn test_words_extract_settings_default() {
+        let settings = WordsExtractSettings::default();
+        assert_eq!(settings.x_tolerance, OrderedFloat(3.0));
+        assert_eq!(settings.y_tolerance, OrderedFloat(3.0));
+        assert!(!settings.keep_blank_chars);
+        assert!(!settings.use_text_flow);
+        assert!(settings.text_read_in_clockwise);
+        assert!(settings.split_at_punctuation.is_none());
+        assert!(settings.expand_ligatures);
+    }
+
+    #[test]
+    fn test_split_punctuation_to_str() {
+        let mut settings = WordsExtractSettings::default();
+
+        settings.split_at_punctuation = None;
+        assert_eq!(settings.split_punctuation_to_str(), None);
+
+        settings.split_at_punctuation = Some(SplitPunctuation::All);
+        assert_eq!(settings.split_punctuation_to_str(), Some("all".to_string()));
+
+        settings.split_at_punctuation = Some(SplitPunctuation::Custom(".,;".to_string()));
+        assert_eq!(settings.split_punctuation_to_str(), Some(".,;".to_string()));
+    }
+
+    #[test]
+    fn test_str_to_split_punctuation() {
+        assert!(WordsExtractSettings::str_to_split_punctuation(None).is_none());
+
+        match WordsExtractSettings::str_to_split_punctuation(Some("all")) {
+            Some(SplitPunctuation::All) => {}
+            _ => panic!("Expected SplitPunctuation::All"),
+        }
+
+        match WordsExtractSettings::str_to_split_punctuation(Some(".,;")) {
+            Some(SplitPunctuation::Custom(s)) => assert_eq!(s, ".,;"),
+            _ => panic!("Expected SplitPunctuation::Custom"),
+        }
+    }
+
+    #[test]
+    fn test_tf_settings_with_text_settings() {
+        let settings = TfSettings::default();
+        // text_settings should use the same default WordsExtractSettings
+        assert_eq!(
+            settings.text_settings.x_tolerance,
+            WordsExtractSettings::default().x_tolerance
+        );
+        assert_eq!(
+            settings.text_settings.y_tolerance,
+            WordsExtractSettings::default().y_tolerance
+        );
+    }
+}
