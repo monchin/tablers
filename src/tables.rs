@@ -366,9 +366,9 @@ impl Table {
                 let words = word_extractor.extract_words(&cell_chars);
                 let text = words
                     .iter()
-                    .map(|w| w.text.as_str())
+                    .map(|w| w.text.replace("\r\n", " ").replace('\n', " "))
                     .collect::<Vec<_>>()
-                    .join(" ");
+                    .join("");
                 cell.text = text;
             }
         }
