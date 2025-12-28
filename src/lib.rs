@@ -1,11 +1,12 @@
 use crate::edges::Edge;
 use crate::objects::*;
 use crate::pages::Page;
-use crate::settings::TfSettings;
-use crate::tables::{Table, TableCell, TableFinder, find_tables};
+use crate::settings::*;
+use crate::tables::*;
+use ordered_float::OrderedFloat;
 use pdfium_render::prelude::{PdfDocument, PdfPageIndex, Pdfium, PdfiumError};
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
@@ -18,6 +19,8 @@ mod tables;
 #[cfg(test)]
 mod test_utils;
 mod words;
+
+type PyBbox = (f32, f32, f32, f32);
 
 #[pyclass(unsendable)]
 pub struct PdfiumRuntime {
@@ -304,32 +307,98 @@ pub fn get_edges(page: &PyPage, settings: Option<&Bound<'_, PyDict>>) -> PyResul
     })
 }
 
+fn rs_bbox_to_py_bbox(bbox: &BboxKey) -> PyBbox {
+    (
+        bbox.0.into_inner(),
+        bbox.1.into_inner(),
+        bbox.2.into_inner(),
+        bbox.3.into_inner(),
+    )
+}
+fn py_bbox_to_rs_bbox(bbox: &PyBbox) -> BboxKey {
+    (
+        OrderedFloat(bbox.0),
+        OrderedFloat(bbox.1),
+        OrderedFloat(bbox.2),
+        OrderedFloat(bbox.3),
+    )
+}
 #[pyfunction]
-#[pyo3(name = "find_tables")]
-#[pyo3(signature = (page, extract_text, **kwargs))]
+#[pyo3(name="find_all_cells_bboxes", signature = (page, tf_settings=None, **kwargs))]
+fn py_find_all_cells_bboxes(
+    page: &PyPage,
+    tf_settings: Option<TfSettings>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Vec<PyBbox>> {
+    let settings;
+    if let Some(tf_settings) = tf_settings {
+        settings = Rc::new(tf_settings);
+    } else {
+        settings = Rc::new(TfSettings::py_new(kwargs));
+    };
+    let cells = find_all_cells_bboxes(&page.inner, settings.clone());
+    Ok(cells.iter().map(|bbox| rs_bbox_to_py_bbox(bbox)).collect())
+}
+
+#[pyfunction]
+#[pyo3(name = "find_tables_from_cells", signature = (cells,extract_text, pdf_page=None, we_settings=None, **kwargs))]
+fn py_find_tables_from_cells(
+    cells: &Bound<'_, PyList>,
+    extract_text: bool,
+    pdf_page: Option<&PyPage>,
+    we_settings: Option<WordsExtractSettings>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Vec<Table>> {
+    let cells: Vec<BboxKey> = cells
+        .iter()
+        .map(|item| {
+            let bbox: PyBbox = item.extract()?;
+            Ok(py_bbox_to_rs_bbox(&bbox))
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let settings_value = if extract_text {
+        Some(we_settings.unwrap_or_else(|| WordsExtractSettings::py_new(kwargs)))
+    } else {
+        None
+    };
+    let settings = settings_value.as_ref();
+
+    let page = match extract_text {
+        true => match pdf_page {
+            Some(pdf_page) => Some(&pdf_page.inner),
+            None => {
+                return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                    "pdf_page is required when extract_text is true",
+                ));
+            }
+        },
+        false => None,
+    };
+
+    let tables = find_tables_from_cells(&cells, extract_text, page, settings);
+    Ok(tables)
+}
+#[pyfunction]
+#[pyo3(name = "find_tables", signature = (page, extract_text, tf_settings=None, **kwargs))]
 fn py_find_tables(
     page: &PyPage,
     extract_text: bool,
+    tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
-) -> PyResult<(Vec<(f32, f32, f32, f32)>, Vec<Table>)> {
-    let settings = Rc::new(TfSettings::py_new(kwargs));
-    let (cell_bboxes, tables) = find_tables(&page.inner, settings.clone(), extract_text);
-    let cell_bboxes = cell_bboxes
-        .into_iter()
-        .map(|bbox| {
-            (
-                bbox.0.into_inner(),
-                bbox.1.into_inner(),
-                bbox.2.into_inner(),
-                bbox.3.into_inner(),
-            )
-        })
-        .collect();
-    Ok((cell_bboxes, tables))
+) -> PyResult<Vec<Table>> {
+    let settings;
+    if let Some(tf_settings) = tf_settings {
+        settings = Rc::new(tf_settings);
+    } else {
+        settings = Rc::new(TfSettings::py_new(kwargs));
+    };
+    let tables = find_tables(&page.inner, settings.clone(), extract_text);
+    Ok(tables)
 }
 
 #[pymodule]
 fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<PdfiumRuntime>()?;
     m.add_class::<Document>()?;
     m.add_class::<PyPage>()?;
@@ -338,8 +407,10 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<TableCell>()?;
     m.add_class::<Table>()?;
     m.add_class::<TfSettings>()?;
+    m.add_class::<WordsExtractSettings>()?;
+    m.add_function(pyo3::wrap_pyfunction!(py_find_all_cells_bboxes, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(py_find_tables_from_cells, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(get_edges, m)?)?;
-    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

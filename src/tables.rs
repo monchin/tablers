@@ -1,11 +1,59 @@
 use crate::edges::*;
 use crate::objects::*;
 use crate::pages::Page;
-use crate::settings::TfSettings;
+use crate::settings::*;
+use crate::words::*;
 use ordered_float::OrderedFloat;
 use pyo3::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::cmp;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CellGroupKind {
+    Row,
+    Column,
+}
+
+pub struct CellGroup<'tab> {
+    pub cells: Vec<Option<&'tab TableCell>>,
+    pub bbox: BboxKey,
+}
+
+impl<'tab> CellGroup<'tab> {
+    pub fn new(cells: Vec<Option<&'tab TableCell>>) -> Self {
+        let non_null_cells: Vec<&&TableCell> = cells.iter().filter_map(|c| c.as_ref()).collect();
+        let bbox: BboxKey = (
+            non_null_cells
+                .iter()
+                .map(|c| c.bbox.0)
+                .fold(OrderedFloat::from(f32::INFINITY), cmp::min),
+            non_null_cells
+                .iter()
+                .map(|c| c.bbox.1)
+                .fold(OrderedFloat::from(f32::INFINITY), cmp::min),
+            non_null_cells
+                .iter()
+                .map(|c| c.bbox.2)
+                .fold(OrderedFloat::from(f32::NEG_INFINITY), cmp::max),
+            non_null_cells
+                .iter()
+                .map(|c| c.bbox.3)
+                .fold(OrderedFloat::from(f32::NEG_INFINITY), cmp::max),
+        );
+        Self { cells, bbox }
+    }
+}
+
+fn get_axis_value(cell: &BboxKey, axis: usize) -> OrderedFloat<f32> {
+    match axis {
+        0 => cell.0, // x1
+        1 => cell.1, // y1
+        2 => cell.2, // x2
+        3 => cell.3, // y2
+        _ => panic!("Invalid axis"),
+    }
+}
 
 #[pyclass]
 #[derive(Debug, Clone)]
@@ -34,7 +82,9 @@ impl TableCell {
 pub struct Table {
     pub cells: Vec<TableCell>,
     pub bbox: BboxKey,
+    #[pyo3(get)]
     pub page_index: usize,
+    #[pyo3(get)]
     pub text_extracted: bool,
 }
 #[pymethods]
@@ -52,16 +102,6 @@ impl Table {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
-    }
-
-    #[getter]
-    fn page_idx(&self) -> usize {
-        self.page_index
-    }
-
-    #[getter]
-    fn text_extracted(&self) -> bool {
-        self.text_extracted
     }
 }
 fn get_table_bbox(cells_bbox: &[BboxKey]) -> BboxKey {
@@ -97,26 +137,142 @@ fn get_table_bbox(cells_bbox: &[BboxKey]) -> BboxKey {
 }
 
 impl Table {
-    pub fn new(page_idx: usize, cells_bbox: &[BboxKey], extract_text: bool) -> Self {
+    pub fn new(
+        page_idx: usize,
+        cells_bbox: &[BboxKey],
+        extract_text: bool,
+        chars: Option<&[Char]>,
+        we_settings: Option<&WordsExtractSettings>,
+    ) -> Self {
         let bbox = get_table_bbox(cells_bbox);
         let cells;
-        if !extract_text {
-            cells = cells_bbox
-                .iter()
-                .map(|bbox| TableCell {
-                    text: "".to_string(),
-                    bbox: *bbox,
-                })
-                .collect();
-            Self {
-                cells,
-                bbox,
-                page_index: page_idx,
-                text_extracted: false,
-            }
-        } else {
-            panic!("extract_text = true not implemented");
+        cells = cells_bbox
+            .iter()
+            .map(|bbox| TableCell {
+                text: "".to_string(),
+                bbox: *bbox,
+            })
+            .collect();
+        let mut slf = Self {
+            cells,
+            bbox,
+            page_index: page_idx,
+            text_extracted: false,
+        };
+        if extract_text {
+            match chars {
+                Some(chars) => slf.extract_text(chars, we_settings),
+                None => panic!("No chars provided"),
+            };
+        };
+        slf
+    }
+
+    fn get_rows_or_cols<'tab>(
+        cells: &'tab [TableCell],
+        kind: CellGroupKind,
+    ) -> Vec<CellGroup<'tab>> {
+        let axis: usize = if kind == CellGroupKind::Row { 0 } else { 1 };
+        let antiaxis: usize = if axis == 0 { 1 } else { 0 };
+
+        let mut indices: Vec<usize> = (0..cells.len()).collect();
+        indices.sort_by(|&a, &b| {
+            let cell_a = &cells[a];
+            let cell_b = &cells[b];
+            let a_anti = get_axis_value(&cell_a.bbox, antiaxis);
+            let b_anti = get_axis_value(&cell_b.bbox, antiaxis);
+            let a_axis = get_axis_value(&cell_a.bbox, axis);
+            let b_axis = get_axis_value(&cell_b.bbox, axis);
+
+            a_anti
+                .partial_cmp(&b_anti)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(
+                    a_axis
+                        .partial_cmp(&b_axis)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+        });
+
+        let sorted_refs: Vec<&'tab TableCell> = indices.iter().map(|&i| &cells[i]).collect();
+
+        let xs: BTreeSet<OrderedFloat<f32>> = cells
+            .iter()
+            .map(|cell| get_axis_value(&cell.bbox, axis))
+            .collect();
+        let xs: Vec<OrderedFloat<f32>> = xs.into_iter().collect();
+
+        let mut grouped: HashMap<OrderedFloat<f32>, Vec<&TableCell>> = HashMap::new();
+        for cell in &sorted_refs {
+            let key = get_axis_value(&cell.bbox, antiaxis);
+            grouped.entry(key).or_default().push(cell);
         }
+
+        let mut group_keys: Vec<OrderedFloat<f32>> = grouped.keys().copied().collect();
+        group_keys.sort();
+
+        let mut rows: Vec<CellGroup> = Vec::new();
+
+        for group in sorted_refs.chunk_by(|a, b| {
+            (get_axis_value(&a.bbox, antiaxis) - get_axis_value(&b.bbox, antiaxis)).abs() < 0.001
+        }) {
+            let xdict: HashMap<OrderedFloat<f32>, &'tab TableCell> = group
+                .iter()
+                .map(|cell| (get_axis_value(&cell.bbox, axis), *cell))
+                .collect();
+
+            let row_data: Vec<Option<&'tab TableCell>> =
+                xs.iter().map(|x| xdict.get(&x).copied()).collect();
+
+            rows.push(CellGroup::new(row_data));
+        }
+
+        rows
+    }
+
+    pub fn rows(&self) -> Vec<CellGroup<'_>> {
+        Self::get_rows_or_cols(&self.cells, CellGroupKind::Row)
+    }
+
+    pub fn columns(&self) -> Vec<CellGroup<'_>> {
+        Self::get_rows_or_cols(&self.cells, CellGroupKind::Column)
+    }
+
+    #[inline]
+    fn char_in_bbox(char: &Char, bbox: &BboxKey) -> bool {
+        let v_mid = (char.bbox.1 + char.bbox.3) / 2.0;
+        let h_mid = (char.bbox.0 + char.bbox.2) / 2.0;
+        let (x1, y1, x2, y2) = *bbox;
+        h_mid >= x1 && h_mid < x2 && v_mid >= y1 && v_mid < y2
+    }
+
+    pub fn extract_text(&mut self, chars: &[Char], settings: Option<&WordsExtractSettings>) {
+        let default_settings = WordsExtractSettings::default();
+        let base_settings = settings.unwrap_or(&default_settings);
+        let word_settings = WordsExtractSettings {
+            keep_blank_chars: true, // keep_blank_chars should be true anyway
+            ..base_settings.clone()
+        };
+        let word_extractor = WordExtractor::new(&word_settings);
+
+        for cell in &mut self.cells {
+            let cell_chars: Vec<Char> = chars
+                .iter()
+                .filter(|char| Self::char_in_bbox(char, &cell.bbox))
+                .cloned()
+                .collect();
+
+            if !cell_chars.is_empty() {
+                let words = word_extractor.extract_words(&cell_chars);
+                let text = words
+                    .iter()
+                    .map(|w| w.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                cell.text = text;
+            }
+        }
+        self.text_extracted = true;
     }
 }
 
@@ -256,7 +412,7 @@ fn bbox_to_corners(bbox: &BboxKey) -> [Point; 4] {
     [(x1, y1), (x1, y2), (x2, y1), (x2, y2)]
 }
 
-pub fn cells_to_tables(cells: &Vec<BboxKey>) -> Vec<Vec<BboxKey>> {
+pub fn cells_to_tables(cells: &[BboxKey]) -> Vec<Vec<BboxKey>> {
     let n = cells.len();
     let mut used = vec![false; n];
     let mut tables: Vec<Vec<BboxKey>> = Vec::new();
@@ -367,11 +523,7 @@ impl TableFinder {
     }
 }
 
-pub fn find_tables(
-    pdf_page: &Page,
-    tf_settings: Rc<TfSettings>,
-    extract_text: bool,
-) -> (Vec<BboxKey>, Vec<Table>) {
+pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
     let table_finder = TableFinder::new(tf_settings.clone());
     let edges = table_finder.get_edges(pdf_page);
     let intersections = edges_to_intersections(
@@ -379,11 +531,43 @@ pub fn find_tables(
         table_finder.settings.intersection_x_tolerance,
         table_finder.settings.intersection_y_tolerance,
     );
-    let cells = intersections_to_cells(intersections);
-    let tables_bbox = cells_to_tables(&cells);
-    let tables = tables_bbox
+    intersections_to_cells(intersections)
+}
+
+pub fn find_tables_from_cells(
+    cells: &[BboxKey],
+    extract_text: bool,
+    pdf_page: Option<&Page>,
+    we_settings: Option<&WordsExtractSettings>,
+) -> Vec<Table> {
+    let tables_bbox = cells_to_tables(cells);
+
+    let objects_guard = if extract_text {
+        let page = match pdf_page {
+            Some(p) => p,
+            None => panic!("Page must be provided when extract_text is true"),
+        };
+        if page.objects.borrow().is_none() {
+            page.extract_objects();
+        }
+        Some(page.objects.borrow())
+    } else {
+        None
+    };
+    let chars: Option<&[Char]> = objects_guard
+        .as_ref()
+        .map(|g| &g.as_ref().unwrap().chars[..]);
+    tables_bbox
         .iter()
-        .map(|table_cells_bbox| Table::new(pdf_page.page_idx, table_cells_bbox, extract_text))
-        .collect();
-    return (cells, tables);
+        .map(|table_cells_bbox| Table::new(0, table_cells_bbox, extract_text, chars, we_settings))
+        .collect()
+}
+pub fn find_tables(pdf_page: &Page, tf_settings: Rc<TfSettings>, extract_text: bool) -> Vec<Table> {
+    let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone());
+    find_tables_from_cells(
+        &cells,
+        extract_text,
+        Some(pdf_page),
+        Some(&tf_settings.text_settings),
+    )
 }

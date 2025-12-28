@@ -57,16 +57,6 @@ impl HasBbox for Word {
     }
 }
 
-pub(crate) struct WordMap {
-    pub items: Vec<(Word, Vec<Char>)>,
-}
-
-impl WordMap {
-    pub fn new(items: Vec<(Word, Vec<Char>)>) -> Self {
-        Self { items }
-    }
-}
-
 pub(crate) struct WordExtractor {
     x_tolerance: OrderedFloat<f32>,
     y_tolerance: OrderedFloat<f32>,
@@ -325,10 +315,6 @@ impl WordExtractor {
         }
 
         result
-    }
-
-    pub fn extract_wordmap(&self, chars: &[Char]) -> WordMap {
-        WordMap::new(self.iter_extract_tuples(chars))
     }
 
     pub fn extract_words(&self, chars: &[Char]) -> Vec<Word> {

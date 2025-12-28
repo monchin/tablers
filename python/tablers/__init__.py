@@ -5,7 +5,17 @@ from pathlib import Path
 from typing import Final
 
 from .tablers import Document as RsDoc
-from .tablers import Page, PageIterator, PdfiumRuntime, __version__, find_tables
+from .tablers import (
+    Page,
+    PageIterator,
+    PdfiumRuntime,
+    TfSettings,
+    WordsExtractSettings,
+    __version__,
+    find_all_cells_bboxes,
+    find_tables,
+    find_tables_from_cells,
+)
 
 SYSTEM: Final = platform.system()
 
@@ -19,7 +29,16 @@ else:
     raise RuntimeError(f"Unsupported system: {SYSTEM}")
 
 
-__all__ = ["Document", "Page", "find_tables", "__version__"]
+__all__ = [
+    "Document",
+    "Page",
+    "TfSettings",
+    "WordsExtractSettings",
+    "find_all_cells_bboxes",
+    "find_tables_from_cells",
+    "find_tables",
+    "__version__",
+]
 
 
 class Document:

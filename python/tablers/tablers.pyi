@@ -88,6 +88,30 @@ class Table:
     bbox: BBox
     cells: list[TableCell]
 
+class WordsExtractSettingsItems(TypedDict, total=False):
+    x_tolerance: float
+    y_tolerance: float
+    keep_blank_chars: bool
+    use_text_flow: bool
+    text_read_in_clockwise: bool
+    split_at_punctuation: Literal["all"] | str | None
+    expand_ligatures: bool
+
+class WordsExtractSettings:
+    """Settings for text/word extraction."""
+
+    x_tolerance: float
+    y_tolerance: float
+    keep_blank_chars: bool
+    use_text_flow: bool
+    text_read_in_clockwise: bool
+    split_at_punctuation: str | None
+    expand_ligatures: bool
+
+    def __init__(self, **kwargs: Unpack[WordsExtractSettingsItems]) -> None: ...
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object) -> bool: ...
+
 class TfSettingItems(TypedDict, total=False):
     vertical_strategy: Literal["lines", "lines_strict", "text"]
     horizontal_strategy: Literal["lines", "lines_strict", "text"]
@@ -109,9 +133,48 @@ class TfSettingItems(TypedDict, total=False):
     text_split_at_punctuation: Literal["all"] | str | None
     text_expand_ligatures: bool
 
+class TfSettings:
+    """Settings for table finding."""
+
+    vertical_strategy: Literal["lines", "lines_strict", "text"]
+    horizontal_strategy: Literal["lines", "lines_strict", "text"]
+    snap_x_tolerance: float
+    snap_y_tolerance: float
+    join_x_tolerance: float
+    join_y_tolerance: float
+    edge_min_length: float
+    edge_min_length_prefilter: float
+    min_words_vertical: int
+    min_words_horizontal: int
+    intersection_x_tolerance: float
+    intersection_y_tolerance: float
+    text_settings: WordsExtractSettings
+    text_x_tolerance: float
+    text_y_tolerance: float
+    text_keep_blank_chars: bool
+    text_use_text_flow: bool
+    text_read_in_clockwise: bool
+    text_split_at_punctuation: str | None
+    text_expand_ligatures: bool
+
+    def __init__(self, **kwargs: Unpack[TfSettingItems]) -> None: ...
+    def __repr__(self) -> str: ...
+    def __eq__(self, other: object) -> bool: ...
+
+def find_all_cells_bboxes(
+    page: Page, tf_settings: TfSettings | None = None, **kwargs
+) -> list[BBox]: ...
+def find_tables_from_cells(
+    cells: list[BBox],
+    extract_text: bool,
+    page: Page | None = None,
+    we_settings: WordsExtractSettings | None = None,
+    **kwargs: Unpack[TfSettingItems],
+) -> list[Table]: ...
 def find_tables(
     page: Page,
     extract_text: bool,
+    tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems],
-) -> tuple[list[BBox], list[Table]]: ...
+) -> list[Table]: ...
 def get_edges(page: Page, settings: TfSettingItems | None = None) -> dict[str, list[Edge]]: ...
