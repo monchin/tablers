@@ -10,12 +10,13 @@ from __future__ import annotations
 import sys
 from collections.abc import Iterator
 from pathlib import Path
+from types import TracebackType
 from typing import Literal, TypeAlias, TypedDict
 
 if sys.version_info < (3, 11):
-    from typing_extensions import Unpack
+    from typing_extensions import Self, Unpack
 else:
-    from typing import Unpack
+    from typing import Self, Unpack
 
 Point: TypeAlias = tuple[float, float]
 """A 2D point represented as (x, y) coordinates."""
@@ -166,6 +167,50 @@ class Document:
         ...
 
     def __iter__(self) -> PageIterator: ...
+    def __enter__(self) -> Self:
+        """
+        Context manager entry point.
+
+        Returns
+        -------
+        Self
+            The document instance for use in `with` statements.
+
+        Examples
+        --------
+        >>> with Document(runtime, path="example.pdf") as doc:
+        ...     for page in doc:
+        ...         print(page.width, page.height)
+        """
+        ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
+        """
+        Context manager exit point.
+
+        Closes the document when exiting the `with` block, regardless
+        of whether an exception occurred.
+
+        Parameters
+        ----------
+        exc_type : type[BaseException] or None
+            The exception type, if an exception was raised.
+        exc_val : BaseException or None
+            The exception value, if an exception was raised.
+        exc_tb : TracebackType or None
+            The exception traceback, if an exception was raised.
+
+        Returns
+        -------
+        bool
+            False, indicating that exceptions are not suppressed.
+        """
+        ...
 
 class Page:
     """

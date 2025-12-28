@@ -262,6 +262,38 @@ impl Document {
             page_count,
         })
     }
+
+    /// Context manager entry point.
+    ///
+    /// # Returns
+    ///
+    /// A reference to self for use in `with` statements.
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    /// Context manager exit point.
+    ///
+    /// Closes the document when exiting the `with` block.
+    ///
+    /// # Arguments
+    ///
+    /// * `_exc_type` - The exception type (if any).
+    /// * `_exc_val` - The exception value (if any).
+    /// * `_exc_tb` - The exception traceback (if any).
+    ///
+    /// # Returns
+    ///
+    /// `false` to indicate that exceptions should not be suppressed.
+    fn __exit__(
+        &self,
+        _exc_type: Option<&Bound<'_, PyAny>>,
+        _exc_val: Option<&Bound<'_, PyAny>>,
+        _exc_tb: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<bool> {
+        self.close()?;
+        Ok(false)
+    }
 }
 
 /// Iterator for traversing pages in a PDF document.
