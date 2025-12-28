@@ -125,6 +125,12 @@ class Document:
             password=password,
         )
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     @property
     def page_count(self) -> int:
         """
