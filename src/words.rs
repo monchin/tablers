@@ -6,6 +6,7 @@ use ordered_float::OrderedFloat;
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
+/// Mapping of Unicode ligature characters to their expanded forms.
 static LIGATURES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     [
         ("ﬀ", "ff"),
@@ -20,18 +21,32 @@ static LIGATURES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
     .collect()
 });
 
+/// Set of standard ASCII punctuation characters.
 static PUNCTUATIONS: LazyLock<HashSet<char>> =
     LazyLock::new(|| "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".chars().collect());
 
+/// Represents a word extracted from PDF text.
+///
+/// A word is a sequence of characters grouped by proximity and alignment.
 #[derive(Debug, Clone)]
 pub(crate) struct Word {
+    /// The text content of the word.
     pub text: String,
+    /// The bounding box of the word.
     pub bbox: BboxKey,
+    /// The rotation of the word in degrees.
     pub rotation_degrees: OrderedFloat<f32>,
+    /// Whether the word is upright (horizontal).
     pub upright: bool,
 }
 
 impl Word {
+    /// Returns the reading direction of the word.
+    ///
+    /// # Returns
+    ///
+    /// One of: "ltr" (left-to-right), "rtl" (right-to-left),
+    /// "ttb" (top-to-bottom), or "btt" (bottom-to-top).
     pub fn direction(&self) -> &'static str {
         let rotation = self.rotation_degrees.into_inner();
         if self.upright {
@@ -57,17 +72,37 @@ impl HasBbox for Word {
     }
 }
 
+/// Extracts words from PDF character data.
+///
+/// This struct handles grouping characters into words based on
+/// proximity, alignment, and various configuration options.
 pub(crate) struct WordExtractor {
+    /// X-axis tolerance for character grouping.
     x_tolerance: OrderedFloat<f32>,
+    /// Y-axis tolerance for line grouping.
     y_tolerance: OrderedFloat<f32>,
+    /// Whether to preserve whitespace characters.
     keep_blank_chars: bool,
+    /// Whether to use PDF text flow order.
     use_text_flow: bool,
+    /// Whether text reads in clockwise direction.
     text_read_in_clockwise: bool,
+    /// Characters that trigger word splits.
     split_at_punctuation: HashSet<char>,
+    /// Ligature expansion mappings.
     expansions: HashMap<&'static str, &'static str>,
 }
 
 impl WordExtractor {
+    /// Creates a new WordExtractor with the specified settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `word_extract_settings` - The settings for word extraction.
+    ///
+    /// # Returns
+    ///
+    /// A new WordExtractor instance.
     pub fn new(word_extract_settings: &WordsExtractSettings) -> Self {
         let split_chars = match &word_extract_settings.split_at_punctuation {
             Some(SplitPunctuation::All) => PUNCTUATIONS.clone(),
@@ -89,6 +124,15 @@ impl WordExtractor {
             },
         }
     }
+    /// Merges a sequence of characters into a single word.
+    ///
+    /// # Arguments
+    ///
+    /// * `ordered_chars` - The characters to merge (must be non-empty).
+    ///
+    /// # Returns
+    ///
+    /// A Word containing the merged text and combined bounding box.
     pub fn merge_chars(&self, ordered_chars: &[Char]) -> Word {
         let (x1, y1, x2, y2) = get_objects_bbox(ordered_chars).unwrap();
         let first_char = &ordered_chars[0];
@@ -120,6 +164,19 @@ impl WordExtractor {
         }
     }
 
+    /// Determines if a character should start a new word.
+    ///
+    /// Based on the position and rotation of the current character
+    /// relative to the previous character.
+    ///
+    /// # Arguments
+    ///
+    /// * `prev_char` - The previous character.
+    /// * `curr_char` - The current character.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the current character should start a new word.
     pub fn char_begins_new_word(&self, prev_char: &Char, curr_char: &Char) -> bool {
         let (x, y, ax, bx, cx, ay, cy);
 
@@ -196,6 +253,15 @@ impl WordExtractor {
         (cx < ax) || (cx > bx + x) || (cy > ay + y)
     }
 
+    /// Groups ordered characters into word groups.
+    ///
+    /// # Arguments
+    ///
+    /// * `ordered_chars` - Characters in reading order.
+    ///
+    /// # Returns
+    ///
+    /// A vector where each element is a group of characters forming a word.
     pub fn iter_chars_to_words(&self, ordered_chars: Vec<Char>) -> Vec<Vec<Char>> {
         let mut words = Vec::new();
         let mut current_word: Vec<Char> = Vec::new();
@@ -232,6 +298,18 @@ impl WordExtractor {
 
         words
     }
+    /// Sorts characters into reading order.
+    ///
+    /// Characters are first clustered by rotation, then sorted within
+    /// each cluster based on position.
+    ///
+    /// # Arguments
+    ///
+    /// * `chars` - The characters to sort.
+    ///
+    /// # Returns
+    ///
+    /// Characters sorted in reading order.
     pub fn iter_sort_chars(&self, chars: &[Char]) -> Vec<Char> {
         let mut result = Vec::with_capacity(chars.len());
         let rotation_degrees_key = |char: &Char| char.rotation_degrees;
@@ -291,6 +369,15 @@ impl WordExtractor {
         result
     }
 
+    /// Extracts words along with their source characters.
+    ///
+    /// # Arguments
+    ///
+    /// * `chars` - The characters to process.
+    ///
+    /// # Returns
+    ///
+    /// A vector of tuples containing each word and its source characters.
     pub fn iter_extract_tuples(&self, chars: &[Char]) -> Vec<(Word, Vec<Char>)> {
         let ordered_chars = if self.use_text_flow {
             chars.to_vec()
@@ -317,6 +404,17 @@ impl WordExtractor {
         result
     }
 
+    /// Extracts words from a sequence of characters.
+    ///
+    /// This is the main entry point for word extraction.
+    ///
+    /// # Arguments
+    ///
+    /// * `chars` - The characters to process.
+    ///
+    /// # Returns
+    ///
+    /// A vector of extracted words.
     pub fn extract_words(&self, chars: &[Char]) -> Vec<Word> {
         self.iter_extract_tuples(chars)
             .into_iter()

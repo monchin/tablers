@@ -1,3 +1,30 @@
+"""
+Tablers: A fast PDF table extraction library.
+
+This module provides tools for extracting tables from PDF documents
+using edge detection and cell identification algorithms.
+
+The library is implemented in Rust for performance and exposed to
+Python via PyO3 bindings.
+
+Examples
+--------
+Basic usage for extracting tables from a PDF:
+
+>>> from tablers import Document, find_tables
+>>> doc = Document("example.pdf")
+>>> for page in doc.pages():
+...     tables = find_tables(page, extract_text=True)
+...     for table in tables:
+...         print(f"Found table with {len(table.cells)} cells")
+>>> doc.close()
+
+Notes
+-----
+The library automatically loads the appropriate Pdfium library
+based on the operating system (Windows, Linux, or macOS).
+"""
+
 from __future__ import annotations
 
 import platform
@@ -42,6 +69,49 @@ __all__ = [
 
 
 class Document:
+    """
+    Represents an opened PDF document.
+
+    Provides a high-level interface for working with PDF documents,
+    including page access and iteration.
+
+    Parameters
+    ----------
+    path : Path or str, optional
+        File path to the PDF document.
+    bytes : bytes, optional
+        PDF content as bytes.
+    password : str, optional
+        Password for encrypted PDFs.
+
+    Raises
+    ------
+    RuntimeError
+        If the PDF cannot be opened or parsed.
+    ValueError
+        If neither path nor bytes is provided.
+
+    Examples
+    --------
+    Open a PDF from a file path:
+
+    >>> doc = Document("example.pdf")
+    >>> print(f"Document has {doc.page_count} pages")
+    >>> doc.close()
+
+    Open a PDF from bytes:
+
+    >>> with open("example.pdf", "rb") as f:
+    ...     pdf_bytes = f.read()
+    >>> doc = Document(bytes=pdf_bytes)
+    >>> doc.close()
+
+    Notes
+    -----
+    Either `path` or `bytes` must be provided, but not both.
+    Always close the document when done to release resources.
+    """
+
     def __init__(
         self,
         path: Path | str | None = None,
@@ -57,16 +127,103 @@ class Document:
 
     @property
     def page_count(self) -> int:
+        """
+        Get the total number of pages in the document.
+
+        Returns
+        -------
+        int
+            The number of pages in the document.
+
+        Raises
+        ------
+        RuntimeError
+            If the document has been closed.
+        """
         return self.doc.page_count()
 
     def get_page(self, page_num: int) -> Page:
+        """
+        Retrieve a specific page by index.
+
+        Parameters
+        ----------
+        page_num : int
+            The zero-based index of the page to retrieve.
+
+        Returns
+        -------
+        Page
+            The requested page object.
+
+        Raises
+        ------
+        IndexError
+            If the page index is out of range.
+        RuntimeError
+            If the document has been closed.
+
+        Examples
+        --------
+        >>> doc = Document("example.pdf")
+        >>> first_page = doc.get_page(0)
+        >>> print(f"Page size: {first_page.width} x {first_page.height}")
+        """
         return self.doc.get_page(page_num)
 
     def pages(self) -> PageIterator:
+        """
+        Get an iterator over all pages in the document.
+
+        This method is memory-efficient for large PDFs as it loads
+        pages on demand rather than all at once.
+
+        Returns
+        -------
+        PageIterator
+            An iterator that yields pages one at a time.
+
+        Examples
+        --------
+        >>> doc = Document("example.pdf")
+        >>> for page in doc.pages():
+        ...     print(f"Page size: {page.width} x {page.height}")
+        """
         return self.doc.pages()
 
     def close(self) -> None:
+        """
+        Close the document and release resources.
+
+        After calling this method, all Page objects from this document
+        become invalid and should not be used.
+
+        Examples
+        --------
+        >>> doc = Document("example.pdf")
+        >>> # ... work with document ...
+        >>> doc.close()
+        >>> doc.is_closed()
+        True
+        """
         self.doc.close()
 
     def is_closed(self) -> bool:
+        """
+        Check if the document has been closed.
+
+        Returns
+        -------
+        bool
+            True if the document is closed, False otherwise.
+
+        Examples
+        --------
+        >>> doc = Document("example.pdf")
+        >>> doc.is_closed()
+        False
+        >>> doc.close()
+        >>> doc.is_closed()
+        True
+        """
         return self.doc.is_closed()

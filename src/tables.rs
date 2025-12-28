@@ -9,18 +9,35 @@ use std::cmp;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 
+/// Specifies whether a cell group represents a row or column.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CellGroupKind {
+    /// A horizontal row of cells.
     Row,
+    /// A vertical column of cells.
     Column,
 }
 
+/// A group of table cells arranged in a row or column.
+///
+/// Cells may be `None` for empty positions in the grid.
 pub struct CellGroup<'tab> {
+    /// The cells in this group, with `None` for empty positions.
     pub cells: Vec<Option<&'tab TableCell>>,
+    /// The bounding box of the entire group.
     pub bbox: BboxKey,
 }
 
 impl<'tab> CellGroup<'tab> {
+    /// Creates a new CellGroup from a vector of optional cell references.
+    ///
+    /// # Arguments
+    ///
+    /// * `cells` - Vector of optional cell references.
+    ///
+    /// # Returns
+    ///
+    /// A new CellGroup with computed bounding box.
     pub fn new(cells: Vec<Option<&'tab TableCell>>) -> Self {
         let non_null_cells: Vec<&&TableCell> = cells.iter().filter_map(|c| c.as_ref()).collect();
         let bbox: BboxKey = (
@@ -45,6 +62,20 @@ impl<'tab> CellGroup<'tab> {
     }
 }
 
+/// Gets a coordinate value from a bounding box by axis index.
+///
+/// # Arguments
+///
+/// * `cell` - The bounding box.
+/// * `axis` - The axis index (0=x1, 1=y1, 2=x2, 3=y2).
+///
+/// # Returns
+///
+/// The coordinate value at the specified axis.
+///
+/// # Panics
+///
+/// Panics if axis is not in range 0-3.
 fn get_axis_value(cell: &BboxKey, axis: usize) -> OrderedFloat<f32> {
     match axis {
         0 => cell.0, // x1
@@ -55,19 +86,27 @@ fn get_axis_value(cell: &BboxKey, axis: usize) -> OrderedFloat<f32> {
     }
 }
 
+/// Represents a single cell in a table.
+///
+/// Each cell has a bounding box and optional text content.
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct TableCell {
+    /// The text content of the cell.
     pub text: String,
+    /// The bounding box of the cell.
     pub bbox: BboxKey,
 }
+
 #[pymethods]
 impl TableCell {
+    /// Returns the text content of the cell.
     #[getter]
     fn text(&self) -> &str {
         &self.text
     }
 
+    /// Returns the bounding box as a tuple (x1, y1, x2, y2).
     #[getter]
     fn bbox(&self) -> (f32, f32, f32, f32) {
         (
@@ -78,22 +117,32 @@ impl TableCell {
         )
     }
 }
+
+/// Represents a table extracted from a PDF page.
+///
+/// A table consists of cells organized in a grid structure.
 #[pyclass]
 pub struct Table {
+    /// All cells in the table.
     pub cells: Vec<TableCell>,
+    /// The bounding box of the entire table.
     pub bbox: BboxKey,
+    /// The index of the page containing this table.
     #[pyo3(get)]
     pub page_index: usize,
+    /// Whether text has been extracted for cells.
     #[pyo3(get)]
     pub text_extracted: bool,
 }
 #[pymethods]
 impl Table {
+    /// Returns a clone of all cells in the table.
     #[getter]
     fn cells(&self) -> Vec<TableCell> {
         self.cells.clone()
     }
 
+    /// Returns the bounding box as a tuple (x1, y1, x2, y2).
     #[getter]
     fn bbox(&self) -> (f32, f32, f32, f32) {
         (
@@ -104,6 +153,16 @@ impl Table {
         )
     }
 }
+
+/// Computes the bounding box of a table from its cell bounding boxes.
+///
+/// # Arguments
+///
+/// * `cells_bbox` - A slice of cell bounding boxes.
+///
+/// # Returns
+///
+/// The combined bounding box encompassing all cells.
 fn get_table_bbox(cells_bbox: &[BboxKey]) -> BboxKey {
     let x1 = cells_bbox
         .iter()
@@ -137,6 +196,19 @@ fn get_table_bbox(cells_bbox: &[BboxKey]) -> BboxKey {
 }
 
 impl Table {
+    /// Creates a new Table from cell bounding boxes.
+    ///
+    /// # Arguments
+    ///
+    /// * `page_idx` - The page index where the table is located.
+    /// * `cells_bbox` - Bounding boxes for all cells.
+    /// * `extract_text` - Whether to extract text content.
+    /// * `chars` - Optional character array for text extraction.
+    /// * `we_settings` - Optional word extraction settings.
+    ///
+    /// # Returns
+    ///
+    /// A new Table instance.
     pub fn new(
         page_idx: usize,
         cells_bbox: &[BboxKey],
@@ -168,6 +240,16 @@ impl Table {
         slf
     }
 
+    /// Gets all rows or columns from the table cells.
+    ///
+    /// # Arguments
+    ///
+    /// * `cells` - The table cells.
+    /// * `kind` - Whether to get rows or columns.
+    ///
+    /// # Returns
+    ///
+    /// A vector of CellGroup representing rows or columns.
     fn get_rows_or_cols<'tab>(
         cells: &'tab [TableCell],
         kind: CellGroupKind,
@@ -230,14 +312,26 @@ impl Table {
         rows
     }
 
+    /// Returns all rows in the table.
     pub fn rows(&self) -> Vec<CellGroup<'_>> {
         Self::get_rows_or_cols(&self.cells, CellGroupKind::Row)
     }
 
+    /// Returns all columns in the table.
     pub fn columns(&self) -> Vec<CellGroup<'_>> {
         Self::get_rows_or_cols(&self.cells, CellGroupKind::Column)
     }
 
+    /// Checks if a character's center is within a bounding box.
+    ///
+    /// # Arguments
+    ///
+    /// * `char` - The character to check.
+    /// * `bbox` - The bounding box to check against.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the character center is inside the bounding box.
     #[inline]
     fn char_in_bbox(char: &Char, bbox: &BboxKey) -> bool {
         let v_mid = (char.bbox.1 + char.bbox.3) / 2.0;
@@ -246,6 +340,12 @@ impl Table {
         h_mid >= x1 && h_mid < x2 && v_mid >= y1 && v_mid < y2
     }
 
+    /// Extracts text content for all cells in the table.
+    ///
+    /// # Arguments
+    ///
+    /// * `chars` - The characters from the page.
+    /// * `settings` - Optional word extraction settings.
     pub fn extract_text(&mut self, chars: &[Char], settings: Option<&WordsExtractSettings>) {
         let default_settings = WordsExtractSettings::default();
         let base_settings = settings.unwrap_or(&default_settings);
@@ -276,6 +376,14 @@ impl Table {
     }
 }
 
+/// Filters edges by minimum length.
+///
+/// Removes edges shorter than the specified minimum length.
+///
+/// # Arguments
+///
+/// * `edges` - The edges to filter (modified in place).
+/// * `min_len` - The minimum length threshold.
 fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     edges.retain(|edge| match edge.orientation {
         Orientation::Horizontal => (edge.x2 - edge.x1) >= min_len,
@@ -283,6 +391,17 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
+/// Finds all intersections between horizontal and vertical edges.
+///
+/// # Arguments
+///
+/// * `edges` - A HashMap of edges by orientation.
+/// * `intersection_x_tolerance` - X-tolerance for intersection detection.
+/// * `intersection_y_tolerance` - Y-tolerance for intersection detection.
+///
+/// # Returns
+///
+/// A HashMap mapping intersection points to the edges that meet there.
 fn edges_to_intersections(
     edges: &mut HashMap<Orientation, Vec<Edge>>,
     intersection_x_tolerance: OrderedFloat<f32>,
@@ -326,11 +445,23 @@ fn edges_to_intersections(
     intersections
 }
 
+/// Converts a slice of edges to a set of bounding box keys.
 #[inline]
 fn edges_to_set(edges: &[Edge]) -> HashSet<BboxKey> {
     edges.iter().map(|e| e.to_bbox_key()).collect()
 }
 
+/// Converts edge intersections into table cell bounding boxes.
+///
+/// Finds the smallest rectangular cells formed by the intersecting edges.
+///
+/// # Arguments
+///
+/// * `intersections` - The intersection points and their connecting edges.
+///
+/// # Returns
+///
+/// A vector of bounding boxes representing table cells.
 fn intersections_to_cells(
     intersections: HashMap<Point, HashMap<Orientation, Vec<Edge>>>,
 ) -> Vec<BboxKey> {
@@ -407,11 +538,31 @@ fn intersections_to_cells(
         .collect()
 }
 
+/// Extracts the four corner points of a bounding box.
+///
+/// # Arguments
+///
+/// * `bbox` - The bounding box.
+///
+/// # Returns
+///
+/// An array of the four corner points.
 fn bbox_to_corners(bbox: &BboxKey) -> [Point; 4] {
     let (x1, y1, x2, y2) = *bbox;
     [(x1, y1), (x1, y2), (x2, y1), (x2, y2)]
 }
 
+/// Groups cells into separate tables based on connectivity.
+///
+/// Cells that share corners are grouped into the same table.
+///
+/// # Arguments
+///
+/// * `cells` - All detected cell bounding boxes.
+///
+/// # Returns
+///
+/// A vector of tables, each containing its cells' bounding boxes.
 pub fn cells_to_tables(cells: &[BboxKey]) -> Vec<Vec<BboxKey>> {
     let n = cells.len();
     let mut used = vec![false; n];
@@ -476,16 +627,37 @@ pub fn cells_to_tables(cells: &[BboxKey]) -> Vec<Vec<BboxKey>> {
 
     tables.into_iter().filter(|t| t.len() > 1).collect()
 }
+/// Finds tables in PDF pages using edge detection.
 pub(crate) struct TableFinder {
+    /// The settings for table finding.
     settings: Rc<TfSettings>,
 }
 
 impl TableFinder {
+    /// Creates a new TableFinder with the specified settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `settings` - The table finder settings.
+    ///
+    /// # Returns
+    ///
+    /// A new TableFinder instance.
     pub(crate) fn new(settings: Rc<TfSettings>) -> Self {
         TableFinder {
             settings: settings.clone(),
         }
     }
+
+    /// Extracts and processes edges from a PDF page.
+    ///
+    /// # Arguments
+    ///
+    /// * `page` - The PDF page to extract edges from.
+    ///
+    /// # Returns
+    ///
+    /// A HashMap of edges grouped by orientation.
     pub(crate) fn get_edges(&self, page: &Page) -> HashMap<Orientation, Vec<Edge>> {
         let settings = self.settings.as_ref();
 
@@ -523,6 +695,16 @@ impl TableFinder {
     }
 }
 
+/// Finds all table cell bounding boxes in a PDF page.
+///
+/// # Arguments
+///
+/// * `pdf_page` - The PDF page to analyze.
+/// * `tf_settings` - The table finder settings.
+///
+/// # Returns
+///
+/// A vector of bounding boxes for detected cells.
 pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
     let table_finder = TableFinder::new(tf_settings.clone());
     let edges = table_finder.get_edges(pdf_page);
@@ -534,6 +716,18 @@ pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Ve
     intersections_to_cells(intersections)
 }
 
+/// Creates Table objects from cell bounding boxes.
+///
+/// # Arguments
+///
+/// * `cells` - The cell bounding boxes.
+/// * `extract_text` - Whether to extract text from cells.
+/// * `pdf_page` - The PDF page (required if extract_text is true).
+/// * `we_settings` - Optional word extraction settings.
+///
+/// # Returns
+///
+/// A vector of Table objects.
 pub fn find_tables_from_cells(
     cells: &[BboxKey],
     extract_text: bool,
@@ -562,6 +756,20 @@ pub fn find_tables_from_cells(
         .map(|table_cells_bbox| Table::new(0, table_cells_bbox, extract_text, chars, we_settings))
         .collect()
 }
+/// Finds all tables in a PDF page.
+///
+/// This is the main entry point for table detection. It extracts edges,
+/// finds intersections, builds cells, and groups them into tables.
+///
+/// # Arguments
+///
+/// * `pdf_page` - The PDF page to analyze.
+/// * `tf_settings` - The table finder settings.
+/// * `extract_text` - Whether to extract text content from cells.
+///
+/// # Returns
+///
+/// A vector of Table objects found in the page.
 pub fn find_tables(pdf_page: &Page, tf_settings: Rc<TfSettings>, extract_text: bool) -> Vec<Table> {
     let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone());
     find_tables_from_cells(

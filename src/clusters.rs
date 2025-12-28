@@ -40,14 +40,16 @@ fn cluster_list(
     groups
 }
 
-/// Creates a dictionary mapping values to their cluster index
+/// Creates a dictionary mapping values to their cluster indices.
 ///
 /// # Arguments
-/// * `values` - An iterable collection of values to cluster
-/// * `tolerance` - The tolerance value for clustering
+///
+/// * `values` - A vector of values to cluster.
+/// * `tolerance` - The tolerance value for clustering.
 ///
 /// # Returns
-/// A HashMap mapping each value to its cluster index
+///
+/// A HashMap mapping each value to its cluster index.
 fn make_cluster_dict(
     values: Vec<OrderedFloat<f32>>,
     tolerance: OrderedFloat<f32>,
@@ -69,6 +71,24 @@ fn make_cluster_dict(
 
     result
 }
+/// Clusters objects based on a key function and tolerance.
+///
+/// Groups objects together if their key values are within the specified tolerance.
+///
+/// # Arguments
+///
+/// * `xs` - The objects to cluster.
+/// * `key_fn` - A function that extracts a numeric key from each object.
+/// * `tolerance` - The maximum difference for objects to be in the same cluster.
+///
+/// # Returns
+///
+/// A vector of vectors, where each inner vector is a cluster of objects.
+///
+/// # Type Parameters
+///
+/// * `T` - The type of objects being clustered (must implement Clone).
+/// * `F` - The key extraction function type.
 pub(crate) fn cluster_objects<T, F>(
     xs: &[T],
     key_fn: F,
@@ -146,7 +166,7 @@ mod tests {
             |s: &String| OrderedFloat(s.len() as f32),
             OrderedFloat(0.0),
         );
-        // 按长度分组: ["a", "b"] (长度1), ["ab"] (长度2), ["abc"] (长度3)
+
         assert_eq!(
             result,
             vec![

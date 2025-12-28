@@ -4,41 +4,64 @@ use pdfium_render::prelude::PdfPage as PdfiumPage;
 use pdfium_render::prelude::*;
 use std::cell::RefCell;
 use std::cmp;
+
+/// Represents a PDF page with extracted objects.
+///
+/// This struct wraps a Pdfium page and provides methods to extract
+/// and access various objects like characters, lines, and rectangles.
 pub struct Page {
+    /// The underlying Pdfium page object.
     pub inner: PdfiumPage<'static>,
+    /// The zero-based index of this page in the document.
     pub page_idx: usize,
+    /// Cached extracted objects from the page.
     pub objects: RefCell<Option<Objects>>,
-    // pub most_chars_rotation_degrees: RefCell<f32>,
 }
 
 impl Page {
+    /// Creates a new Page instance and automatically extracts objects.
+    ///
+    /// # Arguments
+    ///
+    /// * `inner` - The Pdfium page object.
+    /// * `page_idx` - The zero-based index of the page.
+    ///
+    /// # Returns
+    ///
+    /// A new Page instance with extracted objects.
     pub fn new(inner: PdfiumPage<'static>, page_idx: usize) -> Self {
         let page = Self {
             inner,
             page_idx,
             objects: RefCell::new(None),
-            // most_chars_rotation_degrees: RefCell::new(0.0),
         };
         page.extract_objects();
         page
     }
 
+    /// Clears the cached objects to free memory.
     pub fn clear(&self) {
         self.objects.replace(None);
     }
 
+    /// Returns the width of the page in points.
     pub fn width(&self) -> f32 {
         self.inner.width().value
     }
 
+    /// Returns the height of the page in points.
     pub fn height(&self) -> f32 {
         self.inner.height().value
     }
 
+    /// Returns the rotation of the page.
     pub fn rotation_degrees(&self) -> PdfPageRenderRotation {
         self.inner.rotation().unwrap()
     }
 
+    /// Extracts objects from the page if not already cached.
+    ///
+    /// Objects include characters, lines, and rectangles found in the page content.
     pub fn extract_objects(&self) {
         if self.objects.borrow().is_none() {
             let objects = self.extract_objects_from_page();
@@ -46,6 +69,11 @@ impl Page {
         }
     }
 
+    /// Extracts all objects from the page content.
+    ///
+    /// # Returns
+    ///
+    /// An Objects struct containing all extracted characters, lines, and rectangles.
     fn extract_objects_from_page(&self) -> Objects {
         let mut objects = Objects {
             rects: vec![],
@@ -64,6 +92,17 @@ impl Page {
         objects
     }
 
+    /// Converts a y-coordinate from top-origin to bottom-origin coordinate system.
+    ///
+    /// PDF uses bottom-left as origin, but for table extraction we use top-left.
+    ///
+    /// # Arguments
+    ///
+    /// * `y` - The y-coordinate in top-origin system.
+    ///
+    /// # Returns
+    ///
+    /// The converted y-coordinate in bottom-origin system.
     #[inline]
     fn get_v_coord_with_bottom_origin(&self, y: f32) -> OrderedFloat<f32> {
         if self.rotation_degrees() == PdfPageRenderRotation::Degrees90
@@ -107,6 +146,11 @@ impl Page {
     //     }
     // }
 
+    /// Processes and extracts all text characters from the page.
+    ///
+    /// # Arguments
+    ///
+    /// * `objects` - The Objects struct to populate with extracted characters.
     fn process_chars(&self, objects: &mut Objects) {
         let text = self.inner.text().unwrap();
 
@@ -140,6 +184,12 @@ impl Page {
         // }
     }
 
+    /// Processes a path object and extracts lines or rectangles.
+    ///
+    /// # Arguments
+    ///
+    /// * `objects` - The Objects struct to populate.
+    /// * `obj` - The PDF path object to process.
     fn process_path_obj(&self, objects: &mut Objects, obj: &PdfPagePathObject) {
         let n_segs = obj.segments().len();
         let mut points = Vec::with_capacity(n_segs as usize);
@@ -181,6 +231,14 @@ impl Page {
         }
     }
 
+    /// Recursively processes XObject form objects.
+    ///
+    /// XObject forms can contain nested path objects and other forms.
+    ///
+    /// # Arguments
+    ///
+    /// * `objects` - The Objects struct to populate.
+    /// * `obj` - The XObject form object to process.
     fn process_x_object_form_obj(&self, objects: &mut Objects, obj: &PdfPageXObjectFormObject) {
         if !obj.is_empty() {
             for sub_obj in obj.iter() {

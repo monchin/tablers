@@ -3,19 +3,30 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use std::ops::BitOr;
 
+/// Default tolerance for snapping nearby edges together.
 static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
+/// Default tolerance for joining overlapping edges.
 static DEFAULT_JOIN_TOLERANCE: f32 = 3.0;
+/// Default tolerance for detecting edge intersections.
 static DEFAULT_INTERSECTION_TOLERANCE: f32 = 3.0;
+/// Default minimum words required for vertical text-based edge detection.
 static DEFAULT_MIN_WORDS_VERTICAL: usize = 3;
+/// Default minimum words required for horizontal text-based edge detection.
 static DEFAULT_MIN_WORDS_HORIZONTAL: usize = 1;
+/// Default x-tolerance for word extraction.
 static DEFAULT_X_TOLERANCE: f32 = 3.0;
+/// Default y-tolerance for word extraction.
 static DEFAULT_Y_TOLERANCE: f32 = 3.0;
 
+/// Strategy types for edge detection in table finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum StrategyType {
+    /// Use visible lines and rectangle borders.
     Lines = 1,
+    /// Use only explicit line objects (stricter than Lines).
     LinesStrict = 2,
+    /// Infer edges from text alignment.
     Text = 4,
 }
 
@@ -35,24 +46,42 @@ impl BitOr<StrategyType> for StrategyType {
     }
 }
 
+/// Settings for table finding operations.
+///
+/// Controls how edges are detected, snapped, joined, and how intersections
+/// are identified when finding tables in a PDF page.
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct TfSettings {
+    /// Strategy for detecting vertical edges.
     pub vertical_strategy: StrategyType,
+    /// Strategy for detecting horizontal edges.
     pub horizontal_strategy: StrategyType,
+    /// Tolerance for snapping vertical edges together.
     pub snap_x_tolerance: OrderedFloat<f32>,
+    /// Tolerance for snapping horizontal edges together.
     pub snap_y_tolerance: OrderedFloat<f32>,
+    /// Tolerance for joining horizontal edges.
     pub join_x_tolerance: OrderedFloat<f32>,
+    /// Tolerance for joining vertical edges.
     pub join_y_tolerance: OrderedFloat<f32>,
+    /// Minimum length for edges to be included.
     pub edge_min_length: OrderedFloat<f32>,
+    /// Minimum length for edges before merging.
     pub edge_min_length_prefilter: OrderedFloat<f32>,
+    /// Minimum words for vertical text-based edge detection.
     pub min_words_vertical: usize,
+    /// Minimum words for horizontal text-based edge detection.
     pub min_words_horizontal: usize,
+    /// X-tolerance for detecting edge intersections.
     pub intersection_x_tolerance: OrderedFloat<f32>,
+    /// Y-tolerance for detecting edge intersections.
     pub intersection_y_tolerance: OrderedFloat<f32>,
+    /// Settings for text/word extraction.
     pub text_settings: WordsExtractSettings,
 }
 impl Default for TfSettings {
+    /// Creates a TfSettings instance with default values.
     fn default() -> Self {
         TfSettings {
             vertical_strategy: StrategyType::Lines,
@@ -72,8 +101,21 @@ impl Default for TfSettings {
     }
 }
 
-// Helper methods for strategy conversion (not exposed to Python)
+/// Helper methods for strategy conversion (not exposed to Python).
 impl TfSettings {
+    /// Converts a strategy string to its enum representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `strategy_str` - The strategy name ("lines", "lines_strict", or "text").
+    ///
+    /// # Returns
+    ///
+    /// The corresponding StrategyType enum value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if an invalid strategy string is provided.
     fn strategy_str_to_enum(strategy_str: &str) -> StrategyType {
         match strategy_str {
             "lines" => StrategyType::Lines,
@@ -83,6 +125,15 @@ impl TfSettings {
         }
     }
 
+    /// Converts a StrategyType enum to its string representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `strategy` - The strategy enum value.
+    ///
+    /// # Returns
+    ///
+    /// The string name of the strategy.
     fn strategy_enum_to_str(strategy: StrategyType) -> &'static str {
         match strategy {
             StrategyType::Lines => "lines",
@@ -94,6 +145,15 @@ impl TfSettings {
 
 #[pymethods]
 impl TfSettings {
+    /// Creates a new TfSettings instance from keyword arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `kwargs` - Optional dictionary of settings to override defaults.
+    ///
+    /// # Returns
+    ///
+    /// A new TfSettings instance.
     #[new]
     #[pyo3(signature = (**kwargs))]
     pub fn py_new(kwargs: Option<&Bound<'_, PyDict>>) -> Self {
@@ -457,25 +517,40 @@ impl TfSettings {
     }
 }
 
+/// Specifies how to split words at punctuation characters.
 #[derive(Debug, Clone)]
 pub enum SplitPunctuation {
+    /// Split at all standard punctuation characters.
     All,
+    /// Split at a custom set of characters.
     Custom(String),
 }
 
+/// Settings for word extraction from PDF text.
+///
+/// Controls how characters are grouped into words, including
+/// tolerance values and text direction handling.
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct WordsExtractSettings {
+    /// X-axis tolerance for grouping characters into words.
     pub x_tolerance: OrderedFloat<f32>,
+    /// Y-axis tolerance for grouping characters into lines.
     pub y_tolerance: OrderedFloat<f32>,
+    /// Whether to preserve blank/whitespace characters.
     pub keep_blank_chars: bool,
+    /// Whether to use the PDF's text flow order.
     pub use_text_flow: bool,
+    /// Whether text reads in clockwise direction.
     pub text_read_in_clockwise: bool,
+    /// Optional punctuation splitting configuration.
     pub split_at_punctuation: Option<SplitPunctuation>,
+    /// Whether to expand ligatures into individual characters.
     pub expand_ligatures: bool,
 }
 
 impl Default for WordsExtractSettings {
+    /// Creates a WordsExtractSettings instance with default values.
     fn default() -> Self {
         WordsExtractSettings {
             x_tolerance: OrderedFloat::from(DEFAULT_X_TOLERANCE),
@@ -489,8 +564,9 @@ impl Default for WordsExtractSettings {
     }
 }
 
-// Helper methods for WordsExtractSettings (not exposed to Python)
+/// Helper methods for WordsExtractSettings (not exposed to Python).
 impl WordsExtractSettings {
+    /// Converts the split_at_punctuation setting to a string.
     fn split_punctuation_to_str(&self) -> Option<String> {
         match &self.split_at_punctuation {
             Some(SplitPunctuation::All) => Some("all".to_string()),
@@ -499,6 +575,7 @@ impl WordsExtractSettings {
         }
     }
 
+    /// Converts a string to SplitPunctuation setting.
     fn str_to_split_punctuation(value: Option<&str>) -> Option<SplitPunctuation> {
         match value {
             Some("all") => Some(SplitPunctuation::All),
@@ -510,6 +587,15 @@ impl WordsExtractSettings {
 
 #[pymethods]
 impl WordsExtractSettings {
+    /// Creates a new WordsExtractSettings instance from keyword arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `kwargs` - Optional dictionary of settings to override defaults.
+    ///
+    /// # Returns
+    ///
+    /// A new WordsExtractSettings instance.
     #[new]
     #[pyo3(signature = (**kwargs))]
     pub fn py_new(kwargs: Option<&Bound<'_, PyDict>>) -> Self {
