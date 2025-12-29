@@ -15,12 +15,26 @@ repos:
   - id: ty-check
     exclude: .*test.*.py$
 
--   repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
-    hooks:
-    -   id: cargo-check
-        args: ["--workspace"]
-    -   id: fmt
-        args: ["--", "--check"]
-    -   id: clippy
-        args: ["--", "-D", "warnings"]
+- repo: local
+  # must install pdm by `uv tool install pdm`
+  hooks:
+    - id: cargo-fmt
+      name: cargo fmt
+      entry: pdm run cargo fmt --all -- --check
+      language: system
+      pass_filenames: false
+      types: [rust]
+      
+    - id: cargo-check
+      name: cargo check
+      entry: pdm run cargo check
+      language: system
+      pass_filenames: false
+      types: [rust]
+      
+    - id: cargo-clippy
+      name: cargo clippy
+      entry: pdm run cargo clippy -- -D warnings
+      language: system
+      pass_filenames: false
+      types: [rust]

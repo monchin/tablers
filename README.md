@@ -335,4 +335,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [pdfium-render](https://github.com/nickswalker/pdfium-render) - Rust bindings for PDFium
 - [PyO3](https://github.com/PyO3/pyo3) - Rust bindings for Python
-

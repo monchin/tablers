@@ -97,6 +97,14 @@ impl PdfiumRuntime {
     fn get_inner(&self) -> Rc<Pdfium> {
         Rc::clone(&self.inner)
     }
+
+    /// Creates a new PdfiumRuntime from an existing Pdfium instance (for testing).
+    #[cfg(test)]
+    fn from_pdfium(pdfium: Pdfium) -> Self {
+        Self {
+            inner: Rc::new(pdfium),
+        }
+    }
 }
 
 /// Shared inner state for the Document.
@@ -624,4 +632,125 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(get_edges, m)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_utils::load_pdfium;
+
+    #[test]
+    fn test_open_encrypted_pdf_from_path_with_password() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+        let runtime = PdfiumRuntime::from_pdfium(pdfium);
+
+        let pdf_path = format!(
+            "{}/tests/data/test-encryption-pswd-qwerty.pdf",
+            project_root
+        );
+        let doc = runtime.open_doc_from_path(&pdf_path, Some("qwerty"));
+
+        assert!(
+            doc.is_ok(),
+            "Should open encrypted PDF with correct password"
+        );
+        let doc = doc.unwrap();
+        assert!(doc.pages().len() > 0, "Document should have pages");
+    }
+
+    #[test]
+    fn test_open_encrypted_pdf_from_path_without_password_fails() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+        let runtime = PdfiumRuntime::from_pdfium(pdfium);
+
+        let pdf_path = format!(
+            "{}/tests/data/test-encryption-pswd-qwerty.pdf",
+            project_root
+        );
+        let doc = runtime.open_doc_from_path(&pdf_path, None);
+
+        assert!(
+            doc.is_err(),
+            "Should fail to open encrypted PDF without password"
+        );
+    }
+
+    #[test]
+    fn test_open_encrypted_pdf_from_path_with_wrong_password_fails() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+        let runtime = PdfiumRuntime::from_pdfium(pdfium);
+
+        let pdf_path = format!(
+            "{}/tests/data/test-encryption-pswd-qwerty.pdf",
+            project_root
+        );
+        let doc = runtime.open_doc_from_path(&pdf_path, Some("wrong_password"));
+
+        assert!(
+            doc.is_err(),
+            "Should fail to open encrypted PDF with wrong password"
+        );
+    }
+
+    #[test]
+    fn test_open_encrypted_pdf_from_bytes_with_password() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+        let runtime = PdfiumRuntime::from_pdfium(pdfium);
+
+        let pdf_path = format!(
+            "{}/tests/data/test-encryption-pswd-qwerty.pdf",
+            project_root
+        );
+        let bytes = std::fs::read(&pdf_path).unwrap();
+        let doc = runtime.open_doc_from_bytes(&bytes, Some("qwerty"));
+
+        assert!(
+            doc.is_ok(),
+            "Should open encrypted PDF from bytes with correct password"
+        );
+        let doc = doc.unwrap();
+        assert!(doc.pages().len() > 0, "Document should have pages");
+    }
+
+    #[test]
+    fn test_open_encrypted_pdf_from_bytes_without_password_fails() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+        let runtime = PdfiumRuntime::from_pdfium(pdfium);
+
+        let pdf_path = format!(
+            "{}/tests/data/test-encryption-pswd-qwerty.pdf",
+            project_root
+        );
+        let bytes = std::fs::read(&pdf_path).unwrap();
+        let doc = runtime.open_doc_from_bytes(&bytes, None);
+
+        assert!(
+            doc.is_err(),
+            "Should fail to open encrypted PDF from bytes without password"
+        );
+    }
+
+    #[test]
+    fn test_open_encrypted_pdf_from_bytes_with_wrong_password_fails() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+        let runtime = PdfiumRuntime::from_pdfium(pdfium);
+
+        let pdf_path = format!(
+            "{}/tests/data/test-encryption-pswd-qwerty.pdf",
+            project_root
+        );
+        let bytes = std::fs::read(&pdf_path).unwrap();
+        let doc = runtime.open_doc_from_bytes(&bytes, Some("wrong_password"));
+
+        assert!(
+            doc.is_err(),
+            "Should fail to open encrypted PDF from bytes with wrong password"
+        );
+    }
 }

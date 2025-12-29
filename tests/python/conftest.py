@@ -52,3 +52,32 @@ def edge_test_pdf_bytes(edge_test_pdf_path: Path) -> bytes:
 def words_extract_pdf_bytes(words_extract_pdf_path: Path) -> bytes:
     """Return the content of words-extract.pdf as bytes."""
     return words_extract_pdf_path.read_bytes()
+
+
+@pytest.fixture
+def encrypted_pdf_path() -> Path:
+    """Return path to the encrypted PDF file (password: qwerty)."""
+    return TEST_DATA_DIR / "test-encryption-pswd-qwerty.pdf"
+
+
+@pytest.fixture
+def encrypted_pdf_password() -> str:
+    """Return the password for the encrypted PDF."""
+    return "qwerty"
+
+
+@pytest.fixture
+def encrypted_doc(
+    encrypted_pdf_path: Path, encrypted_pdf_password: str
+) -> Generator[Document, None, None]:
+    """Open and return a Document for the encrypted PDF, closing it after the test."""
+    doc = Document(path=encrypted_pdf_path, password=encrypted_pdf_password)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def encrypted_pdf_bytes(encrypted_pdf_path: Path) -> bytes:
+    """Return the content of the encrypted PDF as bytes."""
+    return encrypted_pdf_path.read_bytes()

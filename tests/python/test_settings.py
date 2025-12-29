@@ -2,7 +2,6 @@
 Tests for TfSettings and WordsExtractSettings classes.
 """
 
-import pytest
 from tablers import TfSettings, WordsExtractSettings
 
 

@@ -170,7 +170,6 @@ class TestFindTablesFromCells:
 
     def test_single_cell(self, edge_test_doc: Document) -> None:
         """find_tables_from_cells should handle a single cell."""
-        page = edge_test_doc.get_page(0)
         single_cell = [(0.0, 0.0, 100.0, 100.0)]
         tables = find_tables_from_cells(single_cell, extract_text=False)
         assert isinstance(tables, list)

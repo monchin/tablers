@@ -215,3 +215,64 @@ class TestPage:
         page = edge_test_doc.get_page(0)
         page.extract_objects()
         assert page.objects is not None
+
+
+class TestEncryptedPDF:
+    """Tests for opening and reading encrypted PDF documents."""
+
+    def test_open_encrypted_pdf_with_password(
+        self, encrypted_pdf_path: Path, encrypted_pdf_password: str
+    ) -> None:
+        """Encrypted PDF can be opened with correct password."""
+        doc = Document(path=encrypted_pdf_path, password=encrypted_pdf_password)
+        assert not doc.is_closed()
+        assert doc.page_count > 0
+        doc.close()
+
+    def test_open_encrypted_pdf_from_bytes_with_password(
+        self, encrypted_pdf_bytes: bytes, encrypted_pdf_password: str
+    ) -> None:
+        """Encrypted PDF can be opened from bytes with correct password."""
+        doc = Document(bytes=encrypted_pdf_bytes, password=encrypted_pdf_password)
+        assert not doc.is_closed()
+        assert doc.page_count > 0
+        doc.close()
+
+    def test_open_encrypted_pdf_without_password_raises(self, encrypted_pdf_path: Path) -> None:
+        """Opening an encrypted PDF without password should raise an error."""
+        with pytest.raises(RuntimeError):
+            Document(path=encrypted_pdf_path)
+
+    def test_open_encrypted_pdf_with_wrong_password_raises(self, encrypted_pdf_path: Path) -> None:
+        """Opening an encrypted PDF with wrong password should raise an error."""
+        with pytest.raises(RuntimeError):
+            Document(path=encrypted_pdf_path, password="wrong_password")
+
+    def test_encrypted_pdf_page_access(self, encrypted_doc: Document) -> None:
+        """Pages can be accessed from an encrypted PDF."""
+        page = encrypted_doc.get_page(0)
+        assert isinstance(page, Page)
+        assert page.width > 0
+        assert page.height > 0
+
+    def test_encrypted_pdf_extract_objects(self, encrypted_doc: Document) -> None:
+        """Objects can be extracted from an encrypted PDF page."""
+        page = encrypted_doc.get_page(0)
+        page.extract_objects()
+        assert page.objects is not None
+
+    def test_encrypted_pdf_context_manager(
+        self, encrypted_pdf_path: Path, encrypted_pdf_password: str
+    ) -> None:
+        """Encrypted PDF can be used as a context manager."""
+        with Document(path=encrypted_pdf_path, password=encrypted_pdf_password) as doc:
+            assert not doc.is_closed()
+            assert doc.page_count > 0
+        # After exiting the context, document should be closed
+
+    def test_encrypted_pdf_iteration(self, encrypted_doc: Document) -> None:
+        """Pages can be iterated from an encrypted PDF."""
+        pages = list(encrypted_doc.pages())
+        assert len(pages) == encrypted_doc.page_count
+        for page in pages:
+            assert isinstance(page, Page)
