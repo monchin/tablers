@@ -35,7 +35,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install tools
-        run: uv tool install ruff ty pdm
+        run: |
+          uv tool install ruff
+          uv tool install ty
+          uv tool install pdm
 
       - name: Install dependencies
         run: pdm sync
@@ -84,7 +87,9 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install tools
-        run: uv tool install pdm maturin
+        run: |
+          uv tool install pdm
+          uv tool install maturin
 
       - name: Install dependencies
         run: pdm sync
