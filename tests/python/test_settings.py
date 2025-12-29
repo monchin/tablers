@@ -2,6 +2,7 @@
 Tests for TfSettings and WordsExtractSettings classes.
 """
 
+import pytest
 from tablers import TfSettings, WordsExtractSettings
 
 
@@ -227,3 +228,173 @@ class TestTfSettings:
         assert settings.snap_x_tolerance == 5.0
         assert settings.snap_y_tolerance == 5.0
         assert settings.edge_min_length == 15.0
+
+
+class TestNonNegativeValidation:
+    """Tests for non-negative value validation in settings."""
+
+    # WordsExtractSettings negative value tests
+    def test_words_extract_settings_negative_x_tolerance_raises(self) -> None:
+        """WordsExtractSettings raises ValueError for negative x_tolerance."""
+        with pytest.raises(ValueError, match="x_tolerance.*non-negative"):
+            WordsExtractSettings(x_tolerance=-1.0)
+
+    def test_words_extract_settings_negative_y_tolerance_raises(self) -> None:
+        """WordsExtractSettings raises ValueError for negative y_tolerance."""
+        with pytest.raises(ValueError, match="y_tolerance.*non-negative"):
+            WordsExtractSettings(y_tolerance=-0.5)
+
+    def test_words_extract_settings_zero_tolerance_valid(self) -> None:
+        """WordsExtractSettings accepts zero for tolerance values."""
+        settings = WordsExtractSettings(x_tolerance=0.0, y_tolerance=0.0)
+        assert settings.x_tolerance == 0.0
+        assert settings.y_tolerance == 0.0
+
+    def test_words_extract_settings_setter_negative_x_tolerance_raises(self) -> None:
+        """WordsExtractSettings setter raises ValueError for negative x_tolerance."""
+        settings = WordsExtractSettings()
+        with pytest.raises(ValueError, match="x_tolerance.*non-negative"):
+            settings.x_tolerance = -1.0
+
+    def test_words_extract_settings_setter_negative_y_tolerance_raises(self) -> None:
+        """WordsExtractSettings setter raises ValueError for negative y_tolerance."""
+        settings = WordsExtractSettings()
+        with pytest.raises(ValueError, match="y_tolerance.*non-negative"):
+            settings.y_tolerance = -0.1
+
+    # TfSettings negative value tests
+    def test_tf_settings_negative_snap_x_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative snap_x_tolerance."""
+        with pytest.raises(ValueError, match="snap_x_tolerance.*non-negative"):
+            TfSettings(snap_x_tolerance=-1.0)
+
+    def test_tf_settings_negative_snap_y_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative snap_y_tolerance."""
+        with pytest.raises(ValueError, match="snap_y_tolerance.*non-negative"):
+            TfSettings(snap_y_tolerance=-2.0)
+
+    def test_tf_settings_negative_join_x_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative join_x_tolerance."""
+        with pytest.raises(ValueError, match="join_x_tolerance.*non-negative"):
+            TfSettings(join_x_tolerance=-0.5)
+
+    def test_tf_settings_negative_join_y_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative join_y_tolerance."""
+        with pytest.raises(ValueError, match="join_y_tolerance.*non-negative"):
+            TfSettings(join_y_tolerance=-3.0)
+
+    def test_tf_settings_negative_edge_min_length_raises(self) -> None:
+        """TfSettings raises ValueError for negative edge_min_length."""
+        with pytest.raises(ValueError, match="edge_min_length.*non-negative"):
+            TfSettings(edge_min_length=-5.0)
+
+    def test_tf_settings_negative_edge_min_length_prefilter_raises(self) -> None:
+        """TfSettings raises ValueError for negative edge_min_length_prefilter."""
+        with pytest.raises(ValueError, match="edge_min_length_prefilter.*non-negative"):
+            TfSettings(edge_min_length_prefilter=-1.0)
+
+    def test_tf_settings_negative_intersection_x_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative intersection_x_tolerance."""
+        with pytest.raises(ValueError, match="intersection_x_tolerance.*non-negative"):
+            TfSettings(intersection_x_tolerance=-1.0)
+
+    def test_tf_settings_negative_intersection_y_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative intersection_y_tolerance."""
+        with pytest.raises(ValueError, match="intersection_y_tolerance.*non-negative"):
+            TfSettings(intersection_y_tolerance=-2.5)
+
+    def test_tf_settings_negative_text_x_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative text_x_tolerance."""
+        with pytest.raises(ValueError, match="text_x_tolerance.*non-negative"):
+            TfSettings(text_x_tolerance=-1.0)
+
+    def test_tf_settings_negative_text_y_tolerance_raises(self) -> None:
+        """TfSettings raises ValueError for negative text_y_tolerance."""
+        with pytest.raises(ValueError, match="text_y_tolerance.*non-negative"):
+            TfSettings(text_y_tolerance=-0.5)
+
+    def test_tf_settings_zero_values_valid(self) -> None:
+        """TfSettings accepts zero for all numeric tolerance values."""
+        settings = TfSettings(
+            snap_x_tolerance=0.0,
+            snap_y_tolerance=0.0,
+            join_x_tolerance=0.0,
+            join_y_tolerance=0.0,
+            edge_min_length=0.0,
+            edge_min_length_prefilter=0.0,
+            intersection_x_tolerance=0.0,
+            intersection_y_tolerance=0.0,
+            text_x_tolerance=0.0,
+            text_y_tolerance=0.0,
+        )
+        assert settings.snap_x_tolerance == 0.0
+        assert settings.snap_y_tolerance == 0.0
+        assert settings.join_x_tolerance == 0.0
+        assert settings.join_y_tolerance == 0.0
+        assert settings.edge_min_length == 0.0
+        assert settings.edge_min_length_prefilter == 0.0
+        assert settings.intersection_x_tolerance == 0.0
+        assert settings.intersection_y_tolerance == 0.0
+        assert settings.text_x_tolerance == 0.0
+        assert settings.text_y_tolerance == 0.0
+
+    # TfSettings setter tests
+    def test_tf_settings_setter_negative_snap_x_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative snap_x_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="snap_x_tolerance.*non-negative"):
+            settings.snap_x_tolerance = -1.0
+
+    def test_tf_settings_setter_negative_snap_y_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative snap_y_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="snap_y_tolerance.*non-negative"):
+            settings.snap_y_tolerance = -1.0
+
+    def test_tf_settings_setter_negative_join_x_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative join_x_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="join_x_tolerance.*non-negative"):
+            settings.join_x_tolerance = -1.0
+
+    def test_tf_settings_setter_negative_join_y_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative join_y_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="join_y_tolerance.*non-negative"):
+            settings.join_y_tolerance = -1.0
+
+    def test_tf_settings_setter_negative_edge_min_length_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative edge_min_length."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="edge_min_length.*non-negative"):
+            settings.edge_min_length = -1.0
+
+    def test_tf_settings_setter_negative_edge_min_length_prefilter_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative edge_min_length_prefilter."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="edge_min_length_prefilter.*non-negative"):
+            settings.edge_min_length_prefilter = -1.0
+
+    def test_tf_settings_setter_negative_intersection_x_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative intersection_x_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="intersection_x_tolerance.*non-negative"):
+            settings.intersection_x_tolerance = -1.0
+
+    def test_tf_settings_setter_negative_intersection_y_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative intersection_y_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="intersection_y_tolerance.*non-negative"):
+            settings.intersection_y_tolerance = -1.0
+
+    def test_tf_settings_setter_negative_text_x_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative text_x_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="text_x_tolerance.*non-negative"):
+            settings.text_x_tolerance = -1.0
+
+    def test_tf_settings_setter_negative_text_y_tolerance_raises(self) -> None:
+        """TfSettings setter raises ValueError for negative text_y_tolerance."""
+        settings = TfSettings()
+        with pytest.raises(ValueError, match="text_y_tolerance.*non-negative"):
+            settings.text_y_tolerance = -1.0

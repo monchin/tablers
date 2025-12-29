@@ -84,8 +84,8 @@ impl WordExtractor {
         };
 
         Self {
-            x_tolerance: word_extract_settings.x_tolerance,
-            y_tolerance: word_extract_settings.y_tolerance,
+            x_tolerance: *word_extract_settings.x_tolerance,
+            y_tolerance: *word_extract_settings.y_tolerance,
             keep_blank_chars: word_extract_settings.keep_blank_chars,
             use_text_flow: word_extract_settings.use_text_flow,
             text_read_in_clockwise: word_extract_settings.text_read_in_clockwise,

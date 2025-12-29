@@ -455,7 +455,7 @@ impl PyPage {
 #[pyfunction]
 pub fn get_edges(page: &PyPage, settings: Option<&Bound<'_, PyDict>>) -> PyResult<Py<PyDict>> {
     page.check_valid()?;
-    let settings = Rc::new(TfSettings::py_new(settings));
+    let settings = Rc::new(TfSettings::py_new(settings)?);
     let edges = TableFinder::new(settings).get_edges(&page.inner);
 
     Python::attach(|py| {
@@ -531,7 +531,7 @@ fn py_find_all_cells_bboxes(
     if let Some(tf_settings) = tf_settings {
         settings = Rc::new(tf_settings);
     } else {
-        settings = Rc::new(TfSettings::py_new(kwargs));
+        settings = Rc::new(TfSettings::py_new(kwargs)?);
     };
     let cells = find_all_cells_bboxes(&page.inner, settings.clone());
     Ok(cells.iter().map(rs_bbox_to_py_bbox).collect())
@@ -567,7 +567,10 @@ fn py_find_tables_from_cells(
         })
         .collect::<PyResult<Vec<_>>>()?;
     let settings_value = if extract_text {
-        Some(we_settings.unwrap_or_else(|| WordsExtractSettings::py_new(kwargs)))
+        Some(match we_settings {
+            Some(s) => s,
+            None => WordsExtractSettings::py_new(kwargs)?,
+        })
     } else {
         None
     };
@@ -612,7 +615,7 @@ fn py_find_tables(
     if let Some(tf_settings) = tf_settings {
         settings = Rc::new(tf_settings);
     } else {
-        settings = Rc::new(TfSettings::py_new(kwargs));
+        settings = Rc::new(TfSettings::py_new(kwargs)?);
     };
     let tables = find_tables(&page.inner, settings.clone(), extract_text);
     Ok(tables)

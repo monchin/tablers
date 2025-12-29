@@ -11,12 +11,21 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
-from typing import Literal, TypeAlias, TypedDict
+from typing import Annotated, Literal, TypeAlias, TypedDict
 
 if sys.version_info < (3, 11):
     from typing_extensions import Self, Unpack
 else:
     from typing import Self, Unpack
+
+def validate_non_negative(value: int | float) -> bool:
+    return value >= 0
+
+NonNegativeFloat: TypeAlias = Annotated[float, validate_non_negative]
+"""A non-negative floating point number."""
+
+NonNegativeInt: TypeAlias = Annotated[int, validate_non_negative]
+"""A non-negative integer."""
 
 Point: TypeAlias = tuple[float, float]
 """A 2D point represented as (x, y) coordinates."""
@@ -426,28 +435,28 @@ class WordsExtractSettingsItems(TypedDict, total=False):
     Attributes
     ----------
     x_tolerance : float
-        X-axis tolerance for grouping characters into words.
+        X-axis tolerance for grouping characters into words. Default: 3.0
     y_tolerance : float
-        Y-axis tolerance for grouping characters into lines.
+        Y-axis tolerance for grouping characters into lines. Default: 3.0
     keep_blank_chars : bool
-        Whether to preserve blank/whitespace characters.
+        Whether to preserve blank/whitespace characters. Default: False
     use_text_flow : bool
-        Whether to use the PDF's text flow order.
+        Whether to use the PDF's text flow order. Default: False
     text_read_in_clockwise : bool
-        Whether text reads in clockwise direction.
+        Whether text reads in clockwise direction. Default: True
     split_at_punctuation : {"all"} or str or None
-        Punctuation splitting configuration.
+        Punctuation splitting configuration. Default: None
     expand_ligatures : bool
-        Whether to expand ligatures into individual characters.
+        Whether to expand ligatures into individual characters. Default: True
     """
 
-    x_tolerance: float
-    y_tolerance: float
-    keep_blank_chars: bool
-    use_text_flow: bool
-    text_read_in_clockwise: bool
-    split_at_punctuation: Literal["all"] | str | None
-    expand_ligatures: bool
+    x_tolerance: NonNegativeFloat  # Default: 3.0
+    y_tolerance: NonNegativeFloat  # Default: 3.0
+    keep_blank_chars: bool  # Default: False
+    use_text_flow: bool  # Default: False
+    text_read_in_clockwise: bool  # Default: True
+    split_at_punctuation: Literal["all"] | str | None  # Default: None
+    expand_ligatures: bool  # Default: True
 
 class WordsExtractSettings:
     """
@@ -498,64 +507,64 @@ class TfSettingItems(TypedDict, total=False):
     Attributes
     ----------
     vertical_strategy : {"lines", "lines_strict", "text"}
-        Strategy for detecting vertical edges.
+        Strategy for detecting vertical edges. Default: "lines_strict"
     horizontal_strategy : {"lines", "lines_strict", "text"}
-        Strategy for detecting horizontal edges.
+        Strategy for detecting horizontal edges. Default: "lines_strict"
     snap_x_tolerance : float
-        Tolerance for snapping vertical edges together.
+        Tolerance for snapping vertical edges together. Default: 3.0
     snap_y_tolerance : float
-        Tolerance for snapping horizontal edges together.
+        Tolerance for snapping horizontal edges together. Default: 3.0
     join_x_tolerance : float
-        Tolerance for joining horizontal edges.
+        Tolerance for joining horizontal edges. Default: 3.0
     join_y_tolerance : float
-        Tolerance for joining vertical edges.
+        Tolerance for joining vertical edges. Default: 3.0
     edge_min_length : float
-        Minimum length for edges to be included.
+        Minimum length for edges to be included. Default: 3.0
     edge_min_length_prefilter : float
-        Minimum length for edges before merging.
+        Minimum length for edges before merging. Default: 1.0
     min_words_vertical : int
-        Minimum words for vertical text-based edge detection.
+        Minimum words for vertical text-based edge detection. Default: 3
     min_words_horizontal : int
-        Minimum words for horizontal text-based edge detection.
+        Minimum words for horizontal text-based edge detection. Default: 1
     intersection_x_tolerance : float
-        X-tolerance for detecting edge intersections.
+        X-tolerance for detecting edge intersections. Default: 3.0
     intersection_y_tolerance : float
-        Y-tolerance for detecting edge intersections.
+        Y-tolerance for detecting edge intersections. Default: 3.0
     text_x_tolerance : float
-        X-tolerance for text extraction.
+        X-tolerance for text extraction. Default: 3.0
     text_y_tolerance : float
-        Y-tolerance for text extraction.
+        Y-tolerance for text extraction. Default: 3.0
     text_keep_blank_chars : bool
-        Whether to keep blank characters in text.
+        Whether to keep blank characters in text. Default: False
     text_use_text_flow : bool
-        Whether to use PDF text flow order.
+        Whether to use PDF text flow order. Default: False
     text_read_in_clockwise : bool
-        Whether text reads clockwise.
+        Whether text reads clockwise. Default: True
     text_split_at_punctuation : {"all"} or str or None
-        Punctuation splitting for text.
+        Punctuation splitting for text. Default: None
     text_expand_ligatures : bool
-        Whether to expand ligatures in text.
+        Whether to expand ligatures in text. Default: True
     """
 
-    vertical_strategy: Literal["lines", "lines_strict", "text"]
-    horizontal_strategy: Literal["lines", "lines_strict", "text"]
-    snap_x_tolerance: float
-    snap_y_tolerance: float
-    join_x_tolerance: float
-    join_y_tolerance: float
-    edge_min_length: float
-    edge_min_length_prefilter: float
-    min_words_vertical: int
-    min_words_horizontal: int
-    intersection_x_tolerance: float
-    intersection_y_tolerance: float
-    text_x_tolerance: float
-    text_y_tolerance: float
-    text_keep_blank_chars: bool
-    text_use_text_flow: bool
-    text_read_in_clockwise: bool
-    text_split_at_punctuation: Literal["all"] | str | None
-    text_expand_ligatures: bool
+    vertical_strategy: Literal["lines", "lines_strict", "text"]  # Default: "lines_strict"
+    horizontal_strategy: Literal["lines", "lines_strict", "text"]  # Default: "lines_strict"
+    snap_x_tolerance: NonNegativeFloat  # Default: 3.0
+    snap_y_tolerance: NonNegativeFloat  # Default: 3.0
+    join_x_tolerance: NonNegativeFloat  # Default: 3.0
+    join_y_tolerance: NonNegativeFloat  # Default: 3.0
+    edge_min_length: NonNegativeFloat  # Default: 3.0
+    edge_min_length_prefilter: NonNegativeFloat  # Default: 1.0
+    min_words_vertical: NonNegativeInt  # Default: 3
+    min_words_horizontal: NonNegativeInt  # Default: 1
+    intersection_x_tolerance: NonNegativeFloat  # Default: 3.0
+    intersection_y_tolerance: NonNegativeFloat  # Default: 3.0
+    text_x_tolerance: NonNegativeFloat  # Default: 3.0
+    text_y_tolerance: NonNegativeFloat  # Default: 3.0
+    text_keep_blank_chars: bool  # Default: False
+    text_use_text_flow: bool  # Default: False
+    text_read_in_clockwise: bool  # Default: True
+    text_split_at_punctuation: Literal["all"] | str | None  # Default: None
+    text_expand_ligatures: bool  # Default: True
 
 class TfSettings:
     """

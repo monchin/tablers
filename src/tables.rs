@@ -665,11 +665,11 @@ impl TableFinder {
         let objects = objects_opt.as_ref().expect("Objects should be extracted");
         let mut edges_all = make_edges(objects, self.settings.clone());
         let mut v_edges = edges_all.remove(&Orientation::Vertical).unwrap_or_default();
-        filter_edges_by_min_len(&mut v_edges, settings.edge_min_length_prefilter);
+        filter_edges_by_min_len(&mut v_edges, *settings.edge_min_length_prefilter);
         let mut h_edges = edges_all
             .remove(&Orientation::Horizontal)
             .unwrap_or_default();
-        filter_edges_by_min_len(&mut h_edges, settings.edge_min_length_prefilter);
+        filter_edges_by_min_len(&mut h_edges, *settings.edge_min_length_prefilter);
 
         let edges_prefiltered = HashMap::from([
             (Orientation::Vertical, v_edges),
@@ -677,16 +677,16 @@ impl TableFinder {
         ]);
         let mut edges_merged = merge_edges(
             edges_prefiltered,
-            settings.snap_x_tolerance,
-            settings.snap_y_tolerance,
-            settings.join_x_tolerance,
-            settings.join_y_tolerance,
+            *settings.snap_x_tolerance,
+            *settings.snap_y_tolerance,
+            *settings.join_x_tolerance,
+            *settings.join_y_tolerance,
         );
         if let Some(h_edges) = edges_merged.get_mut(&Orientation::Horizontal) {
-            filter_edges_by_min_len(h_edges, settings.edge_min_length);
+            filter_edges_by_min_len(h_edges, *settings.edge_min_length);
         }
         if let Some(v_edges) = edges_merged.get_mut(&Orientation::Vertical) {
-            filter_edges_by_min_len(v_edges, settings.edge_min_length);
+            filter_edges_by_min_len(v_edges, *settings.edge_min_length);
         }
         edges_merged
     }
@@ -707,8 +707,8 @@ pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Ve
     let edges = table_finder.get_edges(pdf_page);
     let intersections = edges_to_intersections(
         &mut edges.clone(),
-        table_finder.settings.intersection_x_tolerance,
-        table_finder.settings.intersection_y_tolerance,
+        *table_finder.settings.intersection_x_tolerance,
+        *table_finder.settings.intersection_y_tolerance,
     );
     intersections_to_cells(intersections)
 }

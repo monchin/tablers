@@ -577,7 +577,7 @@ pub(crate) fn make_edges(
         }
 
         for rect in rects {
-            if ((v_strat & 0b11u8) != 0) && (rect.bbox.2 - rect.bbox.0 < snap_x_tol) {
+            if ((v_strat & 0b11u8) != 0) && (rect.bbox.2 - rect.bbox.0 < *snap_x_tol) {
                 let x = (rect.bbox.0 + rect.bbox.2) / 2.0;
                 edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
                     orientation: Orientation::Vertical,
@@ -588,7 +588,7 @@ pub(crate) fn make_edges(
                     width: rect.bbox.2 - rect.bbox.0,
                     color: rect.fill_color,
                 });
-            } else if ((h_strat & 0b11u8) != 0) && (rect.bbox.3 - rect.bbox.1 < snap_y_tol) {
+            } else if ((h_strat & 0b11u8) != 0) && (rect.bbox.3 - rect.bbox.1 < *snap_y_tol) {
                 let y = (rect.bbox.1 + rect.bbox.3) / 2.0;
                 edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
                     orientation: Orientation::Horizontal,
