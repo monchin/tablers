@@ -867,7 +867,11 @@ mod tests {
 
         let edges_by_orientation = make_edges(
             &pdf_page.objects.borrow().as_ref().unwrap(),
-            Rc::new(TfSettings::default()),
+            Rc::new(TfSettings {
+                vertical_strategy: StrategyType::Lines,
+                horizontal_strategy: StrategyType::Lines,
+                ..Default::default()
+            }),
         );
 
         let total: usize = edges_by_orientation.values().map(|v| v.len()).sum();

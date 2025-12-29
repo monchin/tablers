@@ -84,8 +84,8 @@ impl Default for TfSettings {
     /// Creates a TfSettings instance with default values.
     fn default() -> Self {
         TfSettings {
-            vertical_strategy: StrategyType::Lines,
-            horizontal_strategy: StrategyType::Lines,
+            vertical_strategy: StrategyType::LinesStrict, // LinesStrict is more intuitive for default behavior
+            horizontal_strategy: StrategyType::LinesStrict,
             snap_x_tolerance: OrderedFloat::from(DEFAULT_SNAP_TOLERANCE),
             snap_y_tolerance: OrderedFloat::from(DEFAULT_SNAP_TOLERANCE),
             join_x_tolerance: OrderedFloat::from(DEFAULT_JOIN_TOLERANCE),
@@ -744,8 +744,8 @@ mod tests {
     #[test]
     fn test_tf_settings_default() {
         let settings = TfSettings::default();
-        assert_eq!(settings.vertical_strategy, StrategyType::Lines);
-        assert_eq!(settings.horizontal_strategy, StrategyType::Lines);
+        assert_eq!(settings.vertical_strategy, StrategyType::LinesStrict);
+        assert_eq!(settings.horizontal_strategy, StrategyType::LinesStrict);
         assert_eq!(settings.snap_x_tolerance, OrderedFloat(3.0));
         assert_eq!(settings.snap_y_tolerance, OrderedFloat(3.0));
         assert_eq!(settings.join_x_tolerance, OrderedFloat(3.0));
