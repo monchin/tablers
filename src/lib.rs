@@ -374,6 +374,13 @@ impl PyPage {
 
 #[pymethods]
 impl PyPage {
+    /// Returns the index of the page within the document.
+    #[getter]
+    fn page_idx(&self) -> PyResult<usize> {
+        self.check_valid()?;
+        Ok(self.inner.page_idx)
+    }
+
     /// Returns the width of the page in points.
     #[getter]
     fn width(&self) -> PyResult<f32> {
@@ -455,12 +462,12 @@ pub fn get_edges(page: &PyPage, settings: Option<&Bound<'_, PyDict>>) -> PyResul
         let res = PyDict::new(py);
         let horizontal_edges: Vec<Edge> = edges
             .get(&Orientation::Horizontal)
-            .map(|edges| edges.clone())
+            .cloned()
             .unwrap_or_default();
         res.set_item("h", horizontal_edges)?;
         let vertical_edges: Vec<Edge> = edges
             .get(&Orientation::Vertical)
-            .map(|edges| edges.clone())
+            .cloned()
             .unwrap_or_default();
         res.set_item("v", vertical_edges)?;
         Ok(res.unbind())
@@ -527,7 +534,7 @@ fn py_find_all_cells_bboxes(
         settings = Rc::new(TfSettings::py_new(kwargs));
     };
     let cells = find_all_cells_bboxes(&page.inner, settings.clone());
-    Ok(cells.iter().map(|bbox| rs_bbox_to_py_bbox(bbox)).collect())
+    Ok(cells.iter().map(rs_bbox_to_py_bbox).collect())
 }
 
 /// Constructs tables from a list of cell bounding boxes.

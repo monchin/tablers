@@ -1,7 +1,7 @@
 use ordered_float::OrderedFloat;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use std::ops::BitOr;
+use std::ops::BitAnd;
 
 /// Default tolerance for snapping nearby edges together.
 static DEFAULT_SNAP_TOLERANCE: f32 = 3.0;
@@ -30,19 +30,19 @@ pub enum StrategyType {
     Text = 4,
 }
 
-impl BitOr<u8> for StrategyType {
+impl BitAnd<u8> for StrategyType {
     type Output = u8;
 
-    fn bitor(self, rhs: u8) -> Self::Output {
-        (self as u8) | rhs
+    fn bitand(self, rhs: u8) -> Self::Output {
+        (self as u8) & rhs
     }
 }
 
-impl BitOr<StrategyType> for StrategyType {
+impl BitAnd<StrategyType> for StrategyType {
     type Output = u8;
 
-    fn bitor(self, rhs: StrategyType) -> Self::Output {
-        (self as u8) | (rhs as u8)
+    fn bitand(self, rhs: StrategyType) -> Self::Output {
+        (self as u8) & (rhs as u8)
     }
 }
 
@@ -791,12 +791,18 @@ mod tests {
     }
 
     #[test]
-    fn test_strategy_type_bitor() {
-        assert_eq!(StrategyType::Lines | 0u8, 1u8);
-        assert_eq!(StrategyType::LinesStrict | 0u8, 2u8);
-        assert_eq!(StrategyType::Text | 0u8, 4u8);
-        assert_eq!(StrategyType::Lines | StrategyType::LinesStrict, 3u8);
-        assert_eq!(StrategyType::Lines | StrategyType::Text, 5u8);
+    fn test_strategy_type_bitand() {
+        // BitAnd with matching bit returns the value
+        assert_eq!(StrategyType::Lines & 1u8, 1u8);
+        assert_eq!(StrategyType::LinesStrict & 2u8, 2u8);
+        assert_eq!(StrategyType::Text & 4u8, 4u8);
+        // BitAnd with non-matching bit returns 0
+        assert_eq!(StrategyType::Lines & 0u8, 0u8);
+        assert_eq!(StrategyType::Lines & StrategyType::LinesStrict, 0u8);
+        assert_eq!(StrategyType::Lines & StrategyType::Text, 0u8);
+        // BitAnd with combined flags
+        assert_eq!(StrategyType::Lines & 3u8, 1u8); // 3 = Lines | LinesStrict
+        assert_eq!(StrategyType::Text & 7u8, 4u8); // 7 = Lines | LinesStrict | Text
     }
 
     // WordsExtractSettings tests

@@ -217,8 +217,7 @@ impl Table {
         we_settings: Option<&WordsExtractSettings>,
     ) -> Self {
         let bbox = get_table_bbox(cells_bbox);
-        let cells;
-        cells = cells_bbox
+        let cells = cells_bbox
             .iter()
             .map(|bbox| TableCell {
                 text: "".to_string(),
@@ -304,7 +303,7 @@ impl Table {
                 .collect();
 
             let row_data: Vec<Option<&'tab TableCell>> =
-                xs.iter().map(|x| xdict.get(&x).copied()).collect();
+                xs.iter().map(|x| xdict.get(x).copied()).collect();
 
             rows.push(CellGroup::new(row_data));
         }
@@ -476,16 +475,16 @@ fn intersections_to_cells(
         };
 
         if p1.0 == p2.0 {
-            let set1 = edges_to_set(&inter1.get(&Orientation::Vertical).unwrap());
-            let set2 = edges_to_set(&inter2.get(&Orientation::Vertical).unwrap());
+            let set1 = edges_to_set(inter1.get(&Orientation::Vertical).unwrap());
+            let set2 = edges_to_set(inter2.get(&Orientation::Vertical).unwrap());
             if !set1.is_disjoint(&set2) {
                 return true;
             }
         }
 
         if p1.1 == p2.1 {
-            let set1 = edges_to_set(&inter1.get(&Orientation::Horizontal).unwrap());
-            let set2 = edges_to_set(&inter1.get(&Orientation::Horizontal).unwrap());
+            let set1 = edges_to_set(inter1.get(&Orientation::Horizontal).unwrap());
+            let set2 = edges_to_set(inter1.get(&Orientation::Horizontal).unwrap());
             if !set1.is_disjoint(&set2) {
                 return true;
             }
@@ -533,9 +532,7 @@ fn intersections_to_cells(
         None
     };
 
-    (0..n_points)
-        .filter_map(|i| find_smallest_cell(i))
-        .collect()
+    (0..n_points).filter_map(find_smallest_cell).collect()
 }
 
 /// Extracts the four corner points of a bounding box.

@@ -180,7 +180,7 @@ impl Char {
 
 impl HasBbox for Char {
     fn bbox(&self) -> BboxKey {
-        self.bbox.clone()
+        self.bbox
     }
 }
 
@@ -215,7 +215,7 @@ pub enum LineType {
 ///
 /// `true` if the points form a rectangle, `false` otherwise.
 pub(crate) fn is_rect(points: &[Point]) -> bool {
-    if (!(points.len() == 5)) || points[0] != points[4] {
+    if points.len() != 5 || points[0] != points[4] {
         return false;
     }
     if points[0].0 == points[1].0

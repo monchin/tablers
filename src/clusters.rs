@@ -108,7 +108,7 @@ where
     let mut cluster_tuples: Vec<(T, usize)> = xs
         .iter()
         .map(|x| {
-            let key_value = OrderedFloat(key_fn(&x));
+            let key_value = OrderedFloat(key_fn(x));
             let cluster_id = cluster_dict.get(&key_value).copied().unwrap_or(0);
             (x.clone(), cluster_id)
         })

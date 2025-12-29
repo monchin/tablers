@@ -173,7 +173,7 @@ impl Page {
 
             objects.chars.push(Char {
                 unicode_char: character.unicode_string(),
-                bbox: bbox,
+                bbox,
                 rotation_degrees: OrderedFloat::from(rotation_degrees),
                 upright: rotation_degrees == 0.0 || rotation_degrees == 180.0,
             })
@@ -216,15 +216,15 @@ impl Page {
                 )
             };
             objects.rects.push(Rect {
-                bbox: bbox,
+                bbox,
                 fill_color: obj.fill_color().unwrap(),
                 stroke_color: obj.stroke_color().unwrap(),
                 stroke_width: obj.stroke_width().unwrap().value,
             });
         } else if points[0] != points[points.len() - 1] {
             objects.lines.push(Line {
-                points: points,
-                line_type: line_type,
+                points,
+                line_type,
                 color: obj.stroke_color().unwrap(),
                 width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),
             });

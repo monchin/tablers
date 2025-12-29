@@ -35,12 +35,13 @@ pub(crate) struct Word {
     /// The bounding box of the word.
     pub bbox: BboxKey,
     /// The rotation of the word in degrees.
+    #[allow(dead_code)]
     pub rotation_degrees: OrderedFloat<f32>,
 }
 
 impl HasBbox for Word {
     fn bbox(&self) -> BboxKey {
-        self.bbox.clone()
+        self.bbox
     }
 }
 
@@ -284,7 +285,7 @@ impl WordExtractor {
         let mut result = Vec::with_capacity(chars.len());
         let rotation_degrees_key = |char: &Char| char.rotation_degrees;
 
-        let rotation_clusters = cluster_objects(&chars, rotation_degrees_key, OrderedFloat(0.001));
+        let rotation_clusters = cluster_objects(chars, rotation_degrees_key, OrderedFloat(0.001));
 
         for rotation_cluster in rotation_clusters {
             if rotation_cluster.is_empty() {
@@ -325,12 +326,10 @@ impl WordExtractor {
                     } else {
                         sc.sort_by(|a, b| a.bbox.0.partial_cmp(&b.bbox.0).unwrap());
                     }
+                } else if self.text_read_in_clockwise {
+                    sc.sort_by(|a, b| b.bbox.1.partial_cmp(&a.bbox.1).unwrap());
                 } else {
-                    if self.text_read_in_clockwise {
-                        sc.sort_by(|a, b| b.bbox.1.partial_cmp(&a.bbox.1).unwrap());
-                    } else {
-                        sc.sort_by(|a, b| a.bbox.1.partial_cmp(&b.bbox.1).unwrap());
-                    }
+                    sc.sort_by(|a, b| a.bbox.1.partial_cmp(&b.bbox.1).unwrap());
                 }
                 result.extend(sc);
             }

@@ -11,6 +11,9 @@ use std::cmp;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Type alias for edge property getter functions.
+type EdgePropGetter = fn(&Edge) -> OrderedFloat<f32>;
+
 /// Attribute type for edge snapping operations.
 #[derive(Debug, Clone, Copy)]
 enum EdgeAttr {
@@ -129,7 +132,7 @@ pub fn words_to_edges_v(words: &[Word], word_threshold: usize) -> Vec<Edge> {
     clusters.extend(by_x1);
     clusters.extend(by_center);
 
-    clusters.sort_by(|a, b| b.len().cmp(&a.len()));
+    clusters.sort_by_key(|a| std::cmp::Reverse(a.len()));
     let large_clusters: Vec<_> = clusters
         .into_iter()
         .filter(|cluster| cluster.len() >= word_threshold)
@@ -152,10 +155,7 @@ pub fn words_to_edges_v(words: &[Word], word_threshold: usize) -> Vec<Edge> {
         return Vec::new();
     }
 
-    let mut sorted_rects: Vec<BboxKey> = condensed_bboxes
-        .into_iter()
-        .map(|(x1, y1, x2, y2)| (x1, y1, x2, y2))
-        .collect();
+    let mut sorted_rects: Vec<BboxKey> = condensed_bboxes.into_iter().collect();
     sorted_rects.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
     // 计算边界值
@@ -250,10 +250,7 @@ fn snap_objects(edges: Vec<Edge>, attr: EdgeAttr, tolerance: OrderedFloat<f32>) 
     let clusters = cluster_objects(&edges, attr_getter, tolerance);
     let mut result = Vec::new();
     for cluster in clusters {
-        let avg = cluster
-            .iter()
-            .map(|edge| attr_getter(edge))
-            .sum::<OrderedFloat<f32>>()
+        let avg = cluster.iter().map(&attr_getter).sum::<OrderedFloat<f32>>()
             / OrderedFloat(cluster.len() as f32);
         for edge in cluster {
             let move_value = avg - attr_getter(&edge);
@@ -284,10 +281,7 @@ fn join_edge_group(
     if edges.is_empty() {
         return vec![];
     }
-    let (get_min_prop, get_max_prop): (
-        fn(&Edge) -> OrderedFloat<f32>,
-        fn(&Edge) -> OrderedFloat<f32>,
-    ) = match orient {
+    let (get_min_prop, get_max_prop): (EdgePropGetter, EdgePropGetter) = match orient {
         Orientation::Vertical => (|e| e.y1, |e| e.y2),
         Orientation::Horizontal => (|e| e.x1, |e| e.x2),
     };
@@ -337,7 +331,7 @@ fn merge_one_kind_edges(
     snap_tolerance: OrderedFloat<f32>,
     join_tolerance: OrderedFloat<f32>,
 ) -> Vec<Edge> {
-    let get_prop: fn(&Edge) -> OrderedFloat<f32> = match orient {
+    let get_prop: EdgePropGetter = match orient {
         Orientation::Vertical => |e| e.x1,
         Orientation::Horizontal => |e| e.y1,
     };
@@ -353,10 +347,7 @@ fn merge_one_kind_edges(
     edges
         .chunk_by(|e1, e2| get_prop(e1) == get_prop(e2))
         .map(|slice| slice.to_vec())
-        .flat_map(|group| {
-            let joined = join_edge_group(group, orient, join_tolerance);
-            joined
-        })
+        .flat_map(|group| join_edge_group(group, orient, join_tolerance))
         .collect()
 }
 
@@ -554,12 +545,12 @@ pub(crate) fn make_edges(
         }
     }
 
-    if ((h_strat | 0b11u8) != 0) || ((v_strat | 0b11u8) != 0) {
+    if ((h_strat & 0b11u8) != 0) || ((v_strat & 0b11u8) != 0) {
         // 0b11: Lines or LinesStrict
         for line in lines {
             if line.line_type == LineType::Straight {
                 let (p1, p2) = (line.points[0], line.points[1]);
-                if ((v_strat | 0b11u8) != 0) && ((p1.0 - p2.0).abs() < snap_x_tol.into_inner()) {
+                if ((v_strat & 0b11u8) != 0) && ((p1.0 - p2.0).abs() < snap_x_tol.into_inner()) {
                     edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
                         orientation: Orientation::Vertical,
                         x1: p1.0,
@@ -569,7 +560,7 @@ pub(crate) fn make_edges(
                         width: line.width,
                         color: line.color,
                     });
-                } else if ((h_strat | 0b11u8) != 0)
+                } else if ((h_strat & 0b11u8) != 0)
                     && ((p1.1 - p2.1).abs() < snap_y_tol.into_inner())
                 {
                     edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
@@ -586,7 +577,7 @@ pub(crate) fn make_edges(
         }
 
         for rect in rects {
-            if ((v_strat | 0b11u8) != 0) && (rect.bbox.2 - rect.bbox.0 < snap_x_tol) {
+            if ((v_strat & 0b11u8) != 0) && (rect.bbox.2 - rect.bbox.0 < snap_x_tol) {
                 let x = (rect.bbox.0 + rect.bbox.2) / 2.0;
                 edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
                     orientation: Orientation::Vertical,
@@ -597,7 +588,7 @@ pub(crate) fn make_edges(
                     width: rect.bbox.2 - rect.bbox.0,
                     color: rect.fill_color,
                 });
-            } else if ((h_strat | 0b11u8) != 0) && (rect.bbox.3 - rect.bbox.1 < snap_y_tol) {
+            } else if ((h_strat & 0b11u8) != 0) && (rect.bbox.3 - rect.bbox.1 < snap_y_tol) {
                 let y = (rect.bbox.1 + rect.bbox.3) / 2.0;
                 edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
                     orientation: Orientation::Horizontal,

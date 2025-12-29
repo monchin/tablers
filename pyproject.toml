@@ -40,7 +40,7 @@ python-source = "python"
 
 [tool.pdm.scripts]
 fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}
-lint = {composite = ["ruff check .", "ty check ."]}
+lint = {composite = ["cargo check", "cargo clippy", "ruff check .", "ty check ."]}
 test = {composite = ["cargo test", "pytest tests/python"]}
 pre_build = "python scripts/pre-build.py"
 post_build = "python scripts/post-build.py"
