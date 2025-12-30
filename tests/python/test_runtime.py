@@ -35,8 +35,8 @@ class TestGetDefaultPdfiumPath:
             assert path.suffix == ".dll"
             assert path.name == "pdfium.dll"
         elif system == "Linux":
-            assert path.suffix == ".so"
-            assert path.name == "libpdfium.so"
+            assert path.suffix == ".1"
+            assert path.name == "libpdfium.so.1"
         elif system == "Darwin":
             assert path.suffix == ".dylib"
             assert path.name == "libpdfium.dylib"
