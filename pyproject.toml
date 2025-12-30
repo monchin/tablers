@@ -11,12 +11,15 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
+description = "A blazingly fast PDF table extraction library powered by Rust"
 authors = [
     { name = "monchin", email = "pazzinter@126.com" }
 ]
 dynamic = ["version"]
 license = {text = "MIT"}
 keywords = ["pdf", "table-extraction"]
+readme = "README.md"
+Changelog = "https://github.com/monchin/tablers/blob/master/CHANGELOG.md"
 
 [build-system]
 requires = ["maturin>=1.10,<2.0"]
