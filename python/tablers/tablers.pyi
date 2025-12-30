@@ -46,18 +46,34 @@ class PdfiumRuntime:
     This class holds the Pdfium instance and provides the foundation
     for opening and working with PDF documents.
 
+    If the library has already been initialized, creating a new PdfiumRuntime
+    will reuse the existing instance and ignore the provided path.
+
     Parameters
     ----------
     dll_path : Path or str
         The file path to the Pdfium dynamic library (.dll, .so, or .dylib).
+        This is only used on the first initialization; subsequent calls
+        will reuse the existing instance.
 
     Notes
     -----
-    This class is typically not used directly. The library automatically
-    initializes a runtime based on the operating system.
+    This class is typically not used directly. Use `get_runtime()` to obtain
+    a runtime instance, which handles initialization automatically.
     """
 
     def __init__(self, dll_path: Path | str): ...
+    @staticmethod
+    def is_initialized() -> bool:
+        """
+        Check if the Pdfium library has been initialized.
+
+        Returns
+        -------
+        bool
+            True if the library has been initialized, False otherwise.
+        """
+        ...
 
 class PageIterator(Iterator[Page]):
     """

@@ -10,6 +10,31 @@ use pyo3::types::{PyDict, PyList};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::OnceLock;
+
+/// Global storage for the Pdfium instance.
+/// This ensures that `bind_to_library` is only called once per process.
+static PDFIUM: OnceLock<Pdfium> = OnceLock::new();
+
+/// Gets a reference to the global Pdfium instance, initializing it if necessary.
+/// This is used internally by test_utils to share the same Pdfium instance.
+#[cfg(test)]
+pub(crate) fn get_or_init_pdfium() -> &'static Pdfium {
+    PDFIUM.get_or_init(|| {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+
+        #[cfg(target_os = "windows")]
+        let pdfium_path = format!("{}/python/tablers/pdfium.dll", project_root);
+        #[cfg(target_os = "macos")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
+        #[cfg(target_os = "linux")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+
+        let bindings =
+            Pdfium::bind_to_library(&pdfium_path).expect("Failed to bind Pdfium library");
+        Pdfium::new(bindings)
+    })
+}
 mod clusters;
 mod edges;
 mod objects;
@@ -34,6 +59,9 @@ pub struct PdfiumRuntime {
 impl PdfiumRuntime {
     /// Creates a new PdfiumRuntime instance by loading the Pdfium library from the specified path.
     ///
+    /// If the library has already been initialized, the existing instance is reused
+    /// and the provided path is ignored.
+    ///
     /// # Arguments
     ///
     /// * `path` - The file path to the Pdfium dynamic library.
@@ -43,20 +71,113 @@ impl PdfiumRuntime {
     /// A new `PdfiumRuntime` instance or a Python error if the library fails to load.
     #[new]
     fn py_new(path: String) -> PyResult<Self> {
-        let bindings = Pdfium::bind_to_library(path).map_err(|e| {
+        // If already initialized, reuse the existing instance
+        if let Some(pdfium) = PDFIUM.get() {
+            return Ok(Self {
+                inner: Rc::new(pdfium.clone()),
+            });
+        }
+
+        // First initialization
+        let bindings = Pdfium::bind_to_library(&path).map_err(|e| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
                 "Failed to bind Pdfium: {:?}",
                 e
             ))
         })?;
         let pdfium = Pdfium::new(bindings);
+
+        // Try to set the global instance (may fail if another thread set it first)
+        let _ = PDFIUM.set(pdfium);
+
+        // Return the global instance (either ours or the one set by another thread)
         Ok(Self {
-            inner: Rc::new(pdfium),
+            inner: Rc::new(PDFIUM.get().unwrap().clone()),
         })
+    }
+
+    /// Returns whether the Pdfium library has been initialized.
+    #[staticmethod]
+    #[pyo3(name = "is_initialized")]
+    fn py_is_initialized() -> bool {
+        PDFIUM.get().is_some()
     }
 }
 
 impl PdfiumRuntime {
+    /// Creates a new PdfiumRuntime by initializing the Pdfium library from the specified path.
+    ///
+    /// If the library has already been initialized, the existing instance is reused
+    /// and the provided path is ignored.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The file path to the Pdfium dynamic library.
+    ///
+    /// # Returns
+    ///
+    /// A new `PdfiumRuntime` instance or a `PdfiumError` if the library fails to load.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let runtime = PdfiumRuntime::new("path/to/pdfium.dll")?;
+    /// ```
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, PdfiumError> {
+        // If already initialized, reuse the existing instance
+        if let Some(pdfium) = PDFIUM.get() {
+            return Ok(Self {
+                inner: Rc::new(pdfium.clone()),
+            });
+        }
+
+        // First initialization
+        let bindings = Pdfium::bind_to_library(path.as_ref())?;
+        let pdfium = Pdfium::new(bindings);
+
+        // Try to set the global instance (may fail if another thread set it first)
+        let _ = PDFIUM.set(pdfium);
+
+        // Return the global instance (either ours or the one set by another thread)
+        Ok(Self {
+            inner: Rc::new(PDFIUM.get().unwrap().clone()),
+        })
+    }
+
+    /// Gets an existing PdfiumRuntime if the library has already been initialized.
+    ///
+    /// # Returns
+    ///
+    /// `Some(PdfiumRuntime)` if the library has been initialized, `None` otherwise.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// if let Some(runtime) = PdfiumRuntime::get() {
+    ///     // Use existing runtime
+    /// } else {
+    ///     // Initialize with PdfiumRuntime::new()
+    /// }
+    /// ```
+    pub fn get() -> Option<Self> {
+        PDFIUM.get().map(|pdfium| Self {
+            inner: Rc::new(pdfium.clone()),
+        })
+    }
+
+    /// Returns whether the Pdfium library has been initialized.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// if PdfiumRuntime::is_initialized() {
+    ///     let runtime = PdfiumRuntime::get().unwrap();
+    /// }
+    /// ```
+    pub fn is_initialized() -> bool {
+        PDFIUM.get().is_some()
+    }
+
     /// Opens a PDF document from a file path.
     ///
     /// # Arguments
@@ -774,5 +895,94 @@ mod tests {
             doc.is_err(),
             "Should fail to open encrypted PDF from bytes with wrong password"
         );
+    }
+
+    #[test]
+    fn test_pdfium_runtime_new_initializes_global() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+
+        #[cfg(target_os = "windows")]
+        let pdfium_path = format!("{}/python/tablers/pdfium.dll", project_root);
+        #[cfg(target_os = "macos")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
+        #[cfg(target_os = "linux")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+
+        // Create a runtime using the public API
+        let runtime = PdfiumRuntime::new(&pdfium_path);
+        assert!(runtime.is_ok(), "Should successfully create PdfiumRuntime");
+
+        // After first call, is_initialized should be true
+        assert!(
+            PdfiumRuntime::is_initialized(),
+            "Should be initialized after new()"
+        );
+    }
+
+    #[test]
+    fn test_pdfium_runtime_get_returns_some_when_initialized() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+
+        #[cfg(target_os = "windows")]
+        let pdfium_path = format!("{}/python/tablers/pdfium.dll", project_root);
+        #[cfg(target_os = "macos")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
+        #[cfg(target_os = "linux")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+
+        // Ensure initialized (may already be from another test)
+        let _ = PdfiumRuntime::new(&pdfium_path);
+
+        // get() should return Some
+        let runtime = PdfiumRuntime::get();
+        assert!(
+            runtime.is_some(),
+            "get() should return Some when initialized"
+        );
+    }
+
+    #[test]
+    fn test_pdfium_runtime_new_reuses_existing() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+
+        #[cfg(target_os = "windows")]
+        let pdfium_path = format!("{}/python/tablers/pdfium.dll", project_root);
+        #[cfg(target_os = "macos")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
+        #[cfg(target_os = "linux")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+
+        // First call
+        let runtime1 = PdfiumRuntime::new(&pdfium_path);
+        assert!(runtime1.is_ok(), "First new() should succeed");
+
+        // Second call with a different (non-existent) path should still succeed
+        // because it reuses the existing instance
+        let runtime2 = PdfiumRuntime::new("/nonexistent/path/to/pdfium.dll");
+        assert!(
+            runtime2.is_ok(),
+            "Second new() should succeed by reusing existing instance"
+        );
+    }
+
+    #[test]
+    fn test_pdfium_runtime_can_open_document() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+
+        #[cfg(target_os = "windows")]
+        let pdfium_path = format!("{}/python/tablers/pdfium.dll", project_root);
+        #[cfg(target_os = "macos")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
+        #[cfg(target_os = "linux")]
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+
+        let runtime = PdfiumRuntime::new(&pdfium_path).expect("Should create runtime");
+
+        let pdf_path = format!("{}/tests/data/edge-test.pdf", project_root);
+        let doc = runtime.open_doc_from_path(&pdf_path, None);
+
+        assert!(doc.is_ok(), "Should open PDF document");
+        let doc = doc.unwrap();
+        assert!(doc.pages().len() > 0, "Document should have pages");
     }
 }

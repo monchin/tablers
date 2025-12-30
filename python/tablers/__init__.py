@@ -46,24 +46,78 @@ from .tablers import (
 
 SYSTEM: Final = platform.system()
 
-if SYSTEM == "Windows":
-    PDFIUM_RT = PdfiumRuntime(str(Path(__file__).parent / "pdfium.dll"))
-elif SYSTEM == "Linux":
-    PDFIUM_RT = PdfiumRuntime(str(Path(__file__).parent / "libpdfium.so"))
-elif SYSTEM == "Darwin":
-    PDFIUM_RT = PdfiumRuntime(str(Path(__file__).parent / "libpdfium.dylib"))
-else:
-    raise RuntimeError(f"Unsupported system: {SYSTEM}")
+# Default pdfium library paths based on the operating system
+PKG_DIR: Final = Path(__file__).parent
+_PDFIUM_PATHS: Final = {
+    "Windows": PKG_DIR / "pdfium.dll",
+    "Linux": PKG_DIR / "libpdfium.so",
+    "Darwin": PKG_DIR / "libpdfium.dylib",
+}
+
+
+def get_default_pdfium_path() -> Path:
+    """
+    Get the default path to the bundled Pdfium library for the current OS.
+
+    Returns
+    -------
+    Path
+        The path to the bundled Pdfium dynamic library.
+
+    Raises
+    ------
+    RuntimeError
+        If the current operating system is not supported.
+    """
+    if SYSTEM not in _PDFIUM_PATHS:
+        raise RuntimeError(f"Unsupported system: {SYSTEM}")
+    return _PDFIUM_PATHS[SYSTEM]
+
+
+def get_runtime(path: Path | str | None = None) -> PdfiumRuntime:
+    """
+    Get a PdfiumRuntime instance, reusing the existing one if already initialized.
+
+    If the Pdfium library has already been initialized (either from Python or Rust),
+    the existing instance is reused and the provided path is ignored.
+
+    Parameters
+    ----------
+    path : Path or str, optional
+        The path to the Pdfium dynamic library.
+        If not provided, the bundled library path is used.
+
+    Returns
+    -------
+    PdfiumRuntime
+        A PdfiumRuntime instance.
+
+    Examples
+    --------
+    >>> runtime = get_runtime()  # Uses bundled library
+    >>> runtime = get_runtime("/custom/path/to/pdfium.dll")  # Custom path (only used on first call)
+    """
+    if path is None:
+        path = get_default_pdfium_path()
+    return PdfiumRuntime(str(path))
+
+
+# Initialize the global runtime using the default path
+# This will reuse an existing instance if already initialized from Rust
+PDFIUM_RT = get_runtime()
 
 
 __all__ = [
     "Document",
     "Page",
+    "PdfiumRuntime",
     "TfSettings",
     "WordsExtractSettings",
     "find_all_cells_bboxes",
     "find_tables_from_cells",
     "find_tables",
+    "get_default_pdfium_path",
+    "get_runtime",
     "__version__",
 ]
 
