@@ -325,7 +325,7 @@ pdm test
 ## Requirements
 
 - Python >= 3.10
-- Supported platforms: Windows (x64), Linux (x64), macOS (ARM64)
+- Supported platforms: Windows (x64), Linux (x64) with glibc >= 2.34, macOS (ARM64)
 
 ## License
 
