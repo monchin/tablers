@@ -28,7 +28,7 @@ pub(crate) fn get_or_init_pdfium() -> &'static Pdfium {
         #[cfg(target_os = "macos")]
         let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
         #[cfg(target_os = "linux")]
-        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so.1", project_root);
 
         let bindings =
             Pdfium::bind_to_library(&pdfium_path).expect("Failed to bind Pdfium library");
@@ -906,7 +906,7 @@ mod tests {
         #[cfg(target_os = "macos")]
         let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
         #[cfg(target_os = "linux")]
-        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so.1", project_root);
 
         // Create a runtime using the public API
         let runtime = PdfiumRuntime::new(&pdfium_path);
@@ -928,7 +928,7 @@ mod tests {
         #[cfg(target_os = "macos")]
         let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
         #[cfg(target_os = "linux")]
-        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so.1", project_root);
 
         // Ensure initialized (may already be from another test)
         let _ = PdfiumRuntime::new(&pdfium_path);
@@ -950,7 +950,7 @@ mod tests {
         #[cfg(target_os = "macos")]
         let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
         #[cfg(target_os = "linux")]
-        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so.1", project_root);
 
         // First call
         let runtime1 = PdfiumRuntime::new(&pdfium_path);
@@ -974,7 +974,7 @@ mod tests {
         #[cfg(target_os = "macos")]
         let pdfium_path = format!("{}/python/tablers/libpdfium.dylib", project_root);
         #[cfg(target_os = "linux")]
-        let pdfium_path = format!("{}/python/tablers/libpdfium.so", project_root);
+        let pdfium_path = format!("{}/python/tablers/libpdfium.so.1", project_root);
 
         let runtime = PdfiumRuntime::new(&pdfium_path).expect("Should create runtime");
 

@@ -37,6 +37,7 @@ test = [
 
 [tool.maturin]
 python-source = "python"
+compatibility = "manylinux_2_34"
 
 [tool.pdm.scripts]
 fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}

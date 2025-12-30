@@ -50,7 +50,7 @@ SYSTEM: Final = platform.system()
 PKG_DIR: Final = Path(__file__).parent
 _PDFIUM_PATHS: Final = {
     "Windows": PKG_DIR / "pdfium.dll",
-    "Linux": PKG_DIR / "libpdfium.so",
+    "Linux": PKG_DIR / "libpdfium.so.1",
     "Darwin": PKG_DIR / "libpdfium.dylib",
 }
 
