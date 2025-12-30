@@ -12,6 +12,7 @@ crate-type = ["cdylib"]
 itertools = "0.14.0"
 once_cell = "1.21.3"
 ordered-float = "5.1.0"
-pdfium-render = "0.8.37"
+# pdfium-render issue #236 to deal with pdf with page_count >= 65535
+pdfium-render = { git = "https://github.com/ajrcarey/pdfium-render", rev = "0dbad90b" }
 pyo3 = { version = "0.27", features = ["abi3-py310"] }
 thiserror = "2.0"

@@ -100,9 +100,9 @@ impl PdfiumRuntime {
 
     /// Creates a new PdfiumRuntime from an existing Pdfium instance (for testing).
     #[cfg(test)]
-    fn from_pdfium(pdfium: Pdfium) -> Self {
+    fn from_pdfium(pdfium: &Pdfium) -> Self {
         Self {
-            inner: Rc::new(pdfium),
+            inner: Rc::new(pdfium.clone()),
         }
     }
 }
@@ -213,7 +213,13 @@ impl Document {
         let doc = inner.doc.as_ref().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
         })?;
-        Ok(doc.pages().len().into())
+        let count: i32 = doc.pages().len();
+        if count < 0 {
+            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Invalid page count",
+            ));
+        }
+        Ok(count as usize)
     }
 
     /// Retrieves a specific page from the document by index.
@@ -230,7 +236,13 @@ impl Document {
         let doc = inner.doc.as_ref().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
         })?;
-        let page_count: usize = doc.pages().len().into();
+        let count: i32 = doc.pages().len();
+        if count < 0 {
+            return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
+                "Invalid page count",
+            ));
+        }
+        let page_count: usize = count as usize;
         if page_idx >= page_count {
             return Err(PyErr::new::<pyo3::exceptions::PyIndexError, _>(format!(
                 "Page index {} out of range (0..{})",
