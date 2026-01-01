@@ -439,10 +439,43 @@ class Table:
         The bounding box of the entire table (x1, y1, x2, y2).
     cells : list of TableCell
         All cells contained in the table.
+    page_index : int
+        The index of the page containing this table.
+    text_extracted : bool
+        Whether text has been extracted for cells.
     """
 
     bbox: BBox
     cells: list[TableCell]
+    page_index: int
+    text_extracted: bool
+
+    def to_csv(self) -> str:
+        """
+        Convert the table to a CSV formatted string.
+
+        Returns
+        -------
+        str
+            The table data formatted as a CSV string, with rows separated
+            by newlines and cells separated by commas.
+
+        Raises
+        ------
+        ValueError
+            If text has not been extracted. Call extract_text first or
+            use `extract_text=True` when finding tables.
+
+        Examples
+        --------
+        >>> from tablers import Document, find_tables
+        >>> doc = Document("example.pdf")
+        >>> page = doc.get_page(0)
+        >>> tables = find_tables(page, extract_text=True)
+        >>> csv_content = tables[0].to_csv()
+        >>> print(csv_content)
+        """
+        ...
 
 class WordsExtractSettingsItems(TypedDict, total=False):
     """

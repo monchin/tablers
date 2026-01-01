@@ -62,6 +62,27 @@ impl<'tab> CellGroup<'tab> {
     }
 }
 
+/// Escapes a string field for CSV format.
+///
+/// Fields containing commas, double quotes, or newlines are wrapped in double quotes.
+/// Any double quotes within the field are escaped by doubling them.
+///
+/// # Arguments
+///
+/// * `field` - The string field to escape.
+///
+/// # Returns
+///
+/// The escaped CSV field.
+fn escape_csv_field(field: &str) -> String {
+    if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
+        let escaped = field.replace('"', "\"\"");
+        format!("\"{}\"", escaped)
+    } else {
+        field.to_string()
+    }
+}
+
 /// Gets a coordinate value from a bounding box by axis index.
 ///
 /// # Arguments
@@ -151,6 +172,21 @@ impl Table {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
+    }
+
+    /// Converts the table to a CSV formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the CSV string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a PyValueError if text_extracted is false.
+    #[pyo3(name = "to_csv")]
+    fn to_csv_py(&self) -> PyResult<String> {
+        self.to_csv()
+            .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 }
 
@@ -372,6 +408,38 @@ impl Table {
             }
         }
         self.text_extracted = true;
+    }
+
+    /// Converts the table to a CSV formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the CSV string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `text_extracted` is false.
+    pub fn to_csv(&self) -> Result<String, &'static str> {
+        if !self.text_extracted {
+            return Err("Text has not been extracted. Call extract_text first.");
+        }
+
+        let rows = self.rows();
+        let csv_rows: Vec<String> = rows
+            .iter()
+            .map(|row| {
+                row.cells
+                    .iter()
+                    .map(|cell| {
+                        let text = cell.map(|c| c.text.as_str()).unwrap_or("");
+                        escape_csv_field(text)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .collect();
+
+        Ok(csv_rows.join("\n"))
     }
 }
 
@@ -1012,5 +1080,152 @@ mod tests {
         filter_edges_by_min_len(&mut edges, of(10.0));
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].x2, of(15.0)); // Only the long horizontal edge remains
+    }
+
+    #[test]
+    fn test_escape_csv_field_simple() {
+        assert_eq!(escape_csv_field("hello"), "hello");
+        assert_eq!(escape_csv_field("world"), "world");
+    }
+
+    #[test]
+    fn test_escape_csv_field_with_comma() {
+        assert_eq!(escape_csv_field("hello,world"), "\"hello,world\"");
+    }
+
+    #[test]
+    fn test_escape_csv_field_with_quotes() {
+        assert_eq!(escape_csv_field("say \"hi\""), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn test_escape_csv_field_with_newline() {
+        assert_eq!(escape_csv_field("line1\nline2"), "\"line1\nline2\"");
+        assert_eq!(escape_csv_field("line1\r\nline2"), "\"line1\r\nline2\"");
+    }
+
+    #[test]
+    fn test_to_csv_basic() {
+        // Create a 2x2 table with text
+        let cells = vec![
+            TableCell {
+                text: "A".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "B".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "C".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "D".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let csv = table.to_csv().unwrap();
+        assert_eq!(csv, "A,B\nC,D");
+    }
+
+    #[test]
+    fn test_to_csv_with_empty_cells() {
+        // Create a table with some empty cells
+        let cells = vec![
+            TableCell {
+                text: "abc ".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "q".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "w".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+            TableCell {
+                text: "1 ".to_string(),
+                bbox: (of(0.0), of(20.0), of(10.0), of(30.0)),
+            },
+            TableCell {
+                text: "2".to_string(),
+                bbox: (of(10.0), of(20.0), of(20.0), of(30.0)),
+            },
+            TableCell {
+                text: "3 ".to_string(),
+                bbox: (of(0.0), of(30.0), of(10.0), of(40.0)),
+            },
+            TableCell {
+                text: "4 ".to_string(),
+                bbox: (of(10.0), of(30.0), of(20.0), of(40.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(40.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let csv = table.to_csv().unwrap();
+        assert_eq!(csv, "abc ,q\n,w\n1 ,2\n3 ,4 ");
+    }
+
+    #[test]
+    fn test_to_csv_without_text_extracted() {
+        let cells = vec![TableCell {
+            text: "".to_string(),
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+        }];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            page_index: 0,
+            text_extracted: false,
+        };
+
+        let result = table.to_csv();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Text has not been extracted. Call extract_text first."
+        );
+    }
+
+    #[test]
+    fn test_to_csv_with_special_chars() {
+        // Create a table with special CSV characters
+        let cells = vec![
+            TableCell {
+                text: "hello,world".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "say \"hi\"".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(10.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let csv = table.to_csv().unwrap();
+        assert_eq!(csv, "\"hello,world\",\"say \"\"hi\"\"\"");
     }
 }
