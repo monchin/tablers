@@ -62,6 +62,27 @@ impl<'tab> CellGroup<'tab> {
     }
 }
 
+/// Escapes a string field for CSV format.
+///
+/// Fields containing commas, double quotes, or newlines are wrapped in double quotes.
+/// Any double quotes within the field are escaped by doubling them.
+///
+/// # Arguments
+///
+/// * `field` - The string field to escape.
+///
+/// # Returns
+///
+/// The escaped CSV field.
+fn escape_csv_field(field: &str) -> String {
+    if field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r') {
+        let escaped = field.replace('"', "\"\"");
+        format!("\"{}\"", escaped)
+    } else {
+        field.to_string()
+    }
+}
+
 /// Gets a coordinate value from a bounding box by axis index.
 ///
 /// # Arguments
@@ -151,6 +172,21 @@ impl Table {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
+    }
+
+    /// Converts the table to a CSV formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the CSV string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a PyValueError if text_extracted is false.
+    #[pyo3(name = "to_csv")]
+    fn to_csv_py(&self) -> PyResult<String> {
+        self.to_csv()
+            .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 }
 
@@ -372,6 +408,38 @@ impl Table {
             }
         }
         self.text_extracted = true;
+    }
+
+    /// Converts the table to a CSV formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the CSV string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `text_extracted` is false.
+    pub fn to_csv(&self) -> Result<String, &'static str> {
+        if !self.text_extracted {
+            return Err("Text has not been extracted. Call extract_text first.");
+        }
+
+        let rows = self.rows();
+        let csv_rows: Vec<String> = rows
+            .iter()
+            .map(|row| {
+                row.cells
+                    .iter()
+                    .map(|cell| {
+                        let text = cell.map(|c| c.text.as_str()).unwrap_or("");
+                        escape_csv_field(text)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(",")
+            })
+            .collect();
+
+        Ok(csv_rows.join("\n"))
     }
 }
 
