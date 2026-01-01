@@ -83,6 +83,24 @@ fn escape_csv_field(field: &str) -> String {
     }
 }
 
+/// Escapes a string field for Markdown table format.
+///
+/// Pipe characters are escaped with backslash, and newlines are replaced with `<br>`.
+///
+/// # Arguments
+///
+/// * `field` - The string field to escape.
+///
+/// # Returns
+///
+/// The escaped Markdown field.
+fn escape_markdown_field(field: &str) -> String {
+    field
+        .replace('|', "\\|")
+        .replace('\r', "")
+        .replace('\n', "<br>")
+}
+
 /// Gets a coordinate value from a bounding box by axis index.
 ///
 /// # Arguments
@@ -184,8 +202,23 @@ impl Table {
     ///
     /// Returns a PyValueError if text_extracted is false.
     #[pyo3(name = "to_csv")]
-    fn to_csv_py(&self) -> PyResult<String> {
+    fn py_to_csv(&self) -> PyResult<String> {
         self.to_csv()
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Converts the table to a Markdown formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the Markdown string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a PyValueError if text_extracted is false.
+    #[pyo3(name = "to_markdown")]
+    fn py_to_markdown(&self) -> PyResult<String> {
+        self.to_markdown()
             .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 }
@@ -440,6 +473,57 @@ impl Table {
             .collect();
 
         Ok(csv_rows.join("\n"))
+    }
+
+    /// Converts the table to a Markdown formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the Markdown table string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `text_extracted` is false.
+    pub fn to_markdown(&self) -> Result<String, &'static str> {
+        if !self.text_extracted {
+            return Err("Text has not been extracted. Call extract_text first.");
+        }
+
+        let rows = self.rows();
+        if rows.is_empty() {
+            return Ok(String::new());
+        }
+
+        let col_count = rows.first().map(|r| r.cells.len()).unwrap_or(0);
+        if col_count == 0 {
+            return Ok(String::new());
+        }
+
+        let mut md_rows: Vec<String> = Vec::new();
+
+        // Generate all rows
+        for row in &rows {
+            let row_str = row
+                .cells
+                .iter()
+                .map(|cell| {
+                    let text = cell.map(|c| c.text.as_str()).unwrap_or("");
+                    escape_markdown_field(text)
+                })
+                .collect::<Vec<_>>()
+                .join(" | ");
+            md_rows.push(format!("| {} |", row_str));
+        }
+
+        // Insert separator after header row
+        let separator = format!("| {} |", vec!["---"; col_count].join(" | "));
+        if md_rows.len() > 1 {
+            md_rows.insert(1, separator);
+        } else if !md_rows.is_empty() {
+            md_rows.push(separator);
+        }
+
+        Ok(md_rows.join("\n"))
     }
 }
 
@@ -1227,5 +1311,179 @@ mod tests {
 
         let csv = table.to_csv().unwrap();
         assert_eq!(csv, "\"hello,world\",\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn test_escape_markdown_field_simple() {
+        assert_eq!(escape_markdown_field("hello"), "hello");
+        assert_eq!(escape_markdown_field("world"), "world");
+    }
+
+    #[test]
+    fn test_escape_markdown_field_with_pipe() {
+        assert_eq!(escape_markdown_field("a|b"), "a\\|b");
+        assert_eq!(escape_markdown_field("|start"), "\\|start");
+        assert_eq!(escape_markdown_field("end|"), "end\\|");
+    }
+
+    #[test]
+    fn test_escape_markdown_field_with_newline() {
+        assert_eq!(escape_markdown_field("line1\nline2"), "line1<br>line2");
+        assert_eq!(escape_markdown_field("line1\r\nline2"), "line1<br>line2");
+    }
+
+    #[test]
+    fn test_to_markdown_basic() {
+        // Create a 2x2 table with text
+        let cells = vec![
+            TableCell {
+                text: "A".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "B".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "C".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "D".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let markdown = table.to_markdown().unwrap();
+        assert_eq!(markdown, "| A | B |\n| --- | --- |\n| C | D |");
+    }
+
+    #[test]
+    fn test_to_markdown_with_empty_cells() {
+        // Create a table with some empty cells
+        let cells = vec![
+            TableCell {
+                text: "abc ".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "q".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "w".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+            TableCell {
+                text: "1 ".to_string(),
+                bbox: (of(0.0), of(20.0), of(10.0), of(30.0)),
+            },
+            TableCell {
+                text: "2".to_string(),
+                bbox: (of(10.0), of(20.0), of(20.0), of(30.0)),
+            },
+            TableCell {
+                text: "3 ".to_string(),
+                bbox: (of(0.0), of(30.0), of(10.0), of(40.0)),
+            },
+            TableCell {
+                text: "4 ".to_string(),
+                bbox: (of(10.0), of(30.0), of(20.0), of(40.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(40.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let markdown = table.to_markdown().unwrap();
+        assert_eq!(
+            markdown,
+            "| abc  | q |\n| --- | --- |\n|  | w |\n| 1  | 2 |\n| 3  | 4  |"
+        );
+    }
+
+    #[test]
+    fn test_to_markdown_without_text_extracted() {
+        let cells = vec![TableCell {
+            text: "".to_string(),
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+        }];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            page_index: 0,
+            text_extracted: false,
+        };
+
+        let result = table.to_markdown();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Text has not been extracted. Call extract_text first."
+        );
+    }
+
+    #[test]
+    fn test_to_markdown_with_special_chars() {
+        // Create a table with special Markdown characters
+        let cells = vec![
+            TableCell {
+                text: "hello|world".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "line1\nline2".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(10.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let markdown = table.to_markdown().unwrap();
+        assert_eq!(
+            markdown,
+            "| hello\\|world | line1<br>line2 |\n| --- | --- |"
+        );
+    }
+
+    #[test]
+    fn test_to_markdown_single_row() {
+        // Create a table with only one row
+        let cells = vec![
+            TableCell {
+                text: "Header1".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "Header2".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(10.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let markdown = table.to_markdown().unwrap();
+        assert_eq!(markdown, "| Header1 | Header2 |\n| --- | --- |");
     }
 }

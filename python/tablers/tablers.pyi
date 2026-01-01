@@ -477,6 +477,37 @@ class Table:
         """
         ...
 
+    def to_markdown(self) -> str:
+        """
+        Convert the table to a Markdown formatted string.
+
+        Returns
+        -------
+        str
+            The table data formatted as a Markdown table string, with rows separated
+            by newlines and cells separated by pipes. The first row is treated as
+            the header row with a separator line below it.
+
+        Raises
+        ------
+        ValueError
+            If text has not been extracted. Call extract_text first or
+            use `extract_text=True` when finding tables.
+
+        Examples
+        --------
+        >>> from tablers import Document, find_tables
+        >>> doc = Document("example.pdf")
+        >>> page = doc.get_page(0)
+        >>> tables = find_tables(page, extract_text=True)
+        >>> markdown_content = tables[0].to_markdown()
+        >>> print(markdown_content)
+        | Header1 | Header2 |
+        | --- | --- |
+        | Cell1 | Cell2 |
+        """
+        ...
+
 class WordsExtractSettingsItems(TypedDict, total=False):
     """
     TypedDict for WordsExtractSettings keyword arguments.

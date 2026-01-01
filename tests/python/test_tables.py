@@ -253,6 +253,64 @@ class TestTableToCsv:
             assert table.page_index >= 0
 
 
+class TestTableToMarkdown:
+    """Tests for Table.to_markdown() method."""
+
+    def test_to_markdown_basic(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_markdown should return a valid Markdown string."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        assert len(tables) == 1
+        table = tables[0]
+        markdown_output = table.to_markdown()
+        assert isinstance(markdown_output, str)
+        assert len(markdown_output) > 0
+
+    def test_to_markdown_expected_content(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_markdown should produce the expected Markdown content."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        markdown_output = table.to_markdown()
+        # Expected format based on CSV: "abc ,q  \n,w  \n1 ,2  \n3 ,4 "
+        # This means 4 rows, 2 columns: [["abc ", "q  "], ["", "w  "], ["1 ", "2  "], ["3 ", "4 "]]
+        expected_markdown = "| abc  | q   |\n| --- | --- |\n|  | w   |\n| 1  | 2   |\n| 3  | 4  |"
+        assert markdown_output == expected_markdown
+
+    def test_to_markdown_without_text_extraction_raises(self, edge_test_doc: Document) -> None:
+        """to_markdown should raise ValueError if text has not been extracted."""
+        page = edge_test_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+        if tables:
+            table = tables[0]
+            assert table.text_extracted is False
+            with pytest.raises(ValueError):
+                table.to_markdown()
+
+    def test_to_markdown_has_separator(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_markdown output should contain the --- separator line."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        markdown_output = table.to_markdown()
+        lines = markdown_output.split("\n")
+        assert len(lines) >= 2
+        # Second line should be the separator
+        assert lines[1].startswith("|")
+        assert "---" in lines[1]
+
+    def test_to_markdown_pipe_format(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_markdown output should use pipe characters for columns."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        markdown_output = table.to_markdown()
+        lines = markdown_output.split("\n")
+        for line in lines:
+            assert line.startswith("|")
+            assert line.endswith("|")
+
+
 class TestTableExtractionIntegration:
     """Integration tests for table extraction workflow."""
 
