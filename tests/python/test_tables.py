@@ -138,6 +138,14 @@ class TestFindTables:
             tables = find_tables(page, extract_text=False)
             assert isinstance(tables, list)
 
+    def test_multiple_move_to_in_one_seg(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """find_tables should work with multiple move_to in one segment."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        assert len(tables) == 1
+        table = tables[0]
+        assert len(table.cells) == 7
+
 
 class TestFindTablesFromCells:
     """Tests for find_tables_from_cells function."""

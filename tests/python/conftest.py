@@ -25,6 +25,12 @@ def words_extract_pdf_path() -> Path:
 
 
 @pytest.fixture
+def multiple_move_to_in_one_seg_path() -> Path:
+    """Return path to the multiple-move-to-in-one-seg.pdf file."""
+    return TEST_DATA_DIR / "multiple-move-to-in-one-seg.pdf"
+
+
+@pytest.fixture
 def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for edge-test.pdf, closing it after the test."""
     doc = Document(path=edge_test_pdf_path)
@@ -37,6 +43,17 @@ def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
 def words_extract_doc(words_extract_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for words-extract.pdf, closing it after the test."""
     doc = Document(path=words_extract_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def multiple_move_to_in_one_seg_doc(
+    multiple_move_to_in_one_seg_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for multiple-move-to-in-one-seg.pdf, closing it after the test."""
+    doc = Document(path=multiple_move_to_in_one_seg_path)
     yield doc
     if not doc.is_closed():
         doc.close()
