@@ -205,6 +205,54 @@ class TestFindTablesFromCells:
             assert isinstance(table.cells, list)
 
 
+class TestTableToCsv:
+    """Tests for Table.to_csv() method."""
+
+    def test_to_csv_basic(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_csv should return a valid CSV string."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        assert len(tables) == 1
+        table = tables[0]
+        csv_output = table.to_csv()
+        assert isinstance(csv_output, str)
+        assert len(csv_output) > 0
+
+    def test_to_csv_expected_content(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_csv should produce the expected CSV content."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        csv_output = table.to_csv()
+        expected_csv = "abc ,q  \n,w  \n1 ,2  \n3 ,4 "
+        assert csv_output == expected_csv
+
+    def test_to_csv_without_text_extraction_raises(self, edge_test_doc: Document) -> None:
+        """to_csv should raise ValueError if text has not been extracted."""
+        page = edge_test_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+        if tables:
+            table = tables[0]
+            assert table.text_extracted is False
+            with pytest.raises(ValueError):
+                table.to_csv()
+
+    def test_to_csv_text_extracted_flag(self, edge_test_doc: Document) -> None:
+        """text_extracted flag should be True after extract_text=True."""
+        page = edge_test_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        for table in tables:
+            assert table.text_extracted is True
+
+    def test_to_csv_page_index(self, edge_test_doc: Document) -> None:
+        """page_index should be accessible on Table."""
+        page = edge_test_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        for table in tables:
+            assert isinstance(table.page_index, int)
+            assert table.page_index >= 0
+
+
 class TestTableExtractionIntegration:
     """Integration tests for table extraction workflow."""
 
