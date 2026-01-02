@@ -101,6 +101,32 @@ fn escape_markdown_field(field: &str) -> String {
         .replace('\n', "<br>")
 }
 
+/// Escapes a string field for HTML format.
+///
+/// Special HTML characters are escaped to their entity equivalents:
+/// - `&` becomes `&amp;`
+/// - `<` becomes `&lt;`
+/// - `>` becomes `&gt;`
+/// - `"` becomes `&quot;`
+/// - Newlines are replaced with `<br>`
+///
+/// # Arguments
+///
+/// * `field` - The string field to escape.
+///
+/// # Returns
+///
+/// The escaped HTML field.
+fn escape_html_field(field: &str) -> String {
+    field
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\r', "")
+        .replace('\n', "<br>")
+}
+
 /// Gets a coordinate value from a bounding box by axis index.
 ///
 /// # Arguments
@@ -219,6 +245,21 @@ impl Table {
     #[pyo3(name = "to_markdown")]
     fn py_to_markdown(&self) -> PyResult<String> {
         self.to_markdown()
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Converts the table to an HTML formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the HTML string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a PyValueError if text_extracted is false.
+    #[pyo3(name = "to_html")]
+    fn py_to_html(&self) -> PyResult<String> {
+        self.to_html()
             .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 }
@@ -524,6 +565,45 @@ impl Table {
         }
 
         Ok(md_rows.join("\n"))
+    }
+
+    /// Converts the table to an HTML formatted string.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing the HTML table string, or an error if text has not been extracted.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `text_extracted` is false.
+    pub fn to_html(&self) -> Result<String, &'static str> {
+        if !self.text_extracted {
+            return Err("Text has not been extracted. Call extract_text first.");
+        }
+
+        let rows = self.rows();
+        if rows.is_empty() {
+            return Ok("<table>\n</table>".to_string());
+        }
+
+        let mut html_parts: Vec<String> = Vec::new();
+        html_parts.push("<table>".to_string());
+
+        // Generate all rows
+        for row in &rows {
+            let cells_html: Vec<String> = row
+                .cells
+                .iter()
+                .map(|cell| {
+                    let text = cell.map(|c| c.text.as_str()).unwrap_or("");
+                    format!("<td>{}</td>", escape_html_field(text))
+                })
+                .collect();
+            html_parts.push(format!("<tr>{}</tr>", cells_html.join("")));
+        }
+
+        html_parts.push("</table>".to_string());
+        Ok(html_parts.join("\n"))
     }
 }
 
@@ -1485,5 +1565,216 @@ mod tests {
 
         let markdown = table.to_markdown().unwrap();
         assert_eq!(markdown, "| Header1 | Header2 |\n| --- | --- |");
+    }
+
+    #[test]
+    fn test_escape_html_field_simple() {
+        assert_eq!(escape_html_field("hello"), "hello");
+        assert_eq!(escape_html_field("world"), "world");
+    }
+
+    #[test]
+    fn test_escape_html_field_with_ampersand() {
+        assert_eq!(escape_html_field("a & b"), "a &amp; b");
+        assert_eq!(escape_html_field("&start"), "&amp;start");
+    }
+
+    #[test]
+    fn test_escape_html_field_with_angle_brackets() {
+        assert_eq!(escape_html_field("<tag>"), "&lt;tag&gt;");
+        assert_eq!(escape_html_field("a < b > c"), "a &lt; b &gt; c");
+    }
+
+    #[test]
+    fn test_escape_html_field_with_quotes() {
+        assert_eq!(escape_html_field("say \"hi\""), "say &quot;hi&quot;");
+    }
+
+    #[test]
+    fn test_escape_html_field_with_newline() {
+        assert_eq!(escape_html_field("line1\nline2"), "line1<br>line2");
+        assert_eq!(escape_html_field("line1\r\nline2"), "line1<br>line2");
+    }
+
+    #[test]
+    fn test_escape_html_field_complex() {
+        assert_eq!(
+            escape_html_field("<a href=\"test\">link & text</a>"),
+            "&lt;a href=&quot;test&quot;&gt;link &amp; text&lt;/a&gt;"
+        );
+    }
+
+    #[test]
+    fn test_to_html_basic() {
+        // Create a 2x2 table with text
+        let cells = vec![
+            TableCell {
+                text: "A".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "B".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "C".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "D".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let html = table.to_html().unwrap();
+        assert_eq!(
+            html,
+            "<table>\n<tr><td>A</td><td>B</td></tr>\n<tr><td>C</td><td>D</td></tr>\n</table>"
+        );
+    }
+
+    #[test]
+    fn test_to_html_with_empty_cells() {
+        // Create a table with some empty cells
+        let cells = vec![
+            TableCell {
+                text: "abc ".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "q".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "w".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+            TableCell {
+                text: "1 ".to_string(),
+                bbox: (of(0.0), of(20.0), of(10.0), of(30.0)),
+            },
+            TableCell {
+                text: "2".to_string(),
+                bbox: (of(10.0), of(20.0), of(20.0), of(30.0)),
+            },
+            TableCell {
+                text: "3 ".to_string(),
+                bbox: (of(0.0), of(30.0), of(10.0), of(40.0)),
+            },
+            TableCell {
+                text: "4 ".to_string(),
+                bbox: (of(10.0), of(30.0), of(20.0), of(40.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(40.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let html = table.to_html().unwrap();
+        assert_eq!(
+            html,
+            "<table>\n<tr><td>abc </td><td>q</td></tr>\n<tr><td></td><td>w</td></tr>\n<tr><td>1 </td><td>2</td></tr>\n<tr><td>3 </td><td>4 </td></tr>\n</table>"
+        );
+    }
+
+    #[test]
+    fn test_to_html_without_text_extracted() {
+        let cells = vec![TableCell {
+            text: "".to_string(),
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+        }];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            page_index: 0,
+            text_extracted: false,
+        };
+
+        let result = table.to_html();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Text has not been extracted. Call extract_text first."
+        );
+    }
+
+    #[test]
+    fn test_to_html_with_special_chars() {
+        // Create a table with special HTML characters
+        let cells = vec![
+            TableCell {
+                text: "<script>alert('xss')</script>".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "a & b".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(10.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let html = table.to_html().unwrap();
+        assert_eq!(
+            html,
+            "<table>\n<tr><td>&lt;script&gt;alert('xss')&lt;/script&gt;</td><td>a &amp; b</td></tr>\n</table>"
+        );
+    }
+
+    #[test]
+    fn test_to_html_empty_table() {
+        let table = Table {
+            cells: vec![],
+            bbox: (of(0.0), of(0.0), of(0.0), of(0.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let html = table.to_html().unwrap();
+        assert_eq!(html, "<table>\n</table>");
+    }
+
+    #[test]
+    fn test_to_html_single_row() {
+        // Create a table with only one row
+        let cells = vec![
+            TableCell {
+                text: "Header1".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "Header2".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(10.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let html = table.to_html().unwrap();
+        assert_eq!(
+            html,
+            "<table>\n<tr><td>Header1</td><td>Header2</td></tr>\n</table>"
+        );
     }
 }

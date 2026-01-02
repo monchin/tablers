@@ -508,6 +508,38 @@ class Table:
         """
         ...
 
+    def to_html(self) -> str:
+        """
+        Convert the table to an HTML formatted string.
+
+        Returns
+        -------
+        str
+            The table data formatted as an HTML table string, with rows wrapped
+            in `<tr>` tags and cells wrapped in `<td>` tags. Special HTML
+            characters are escaped.
+
+        Raises
+        ------
+        ValueError
+            If text has not been extracted. Call extract_text first or
+            use `extract_text=True` when finding tables.
+
+        Examples
+        --------
+        >>> from tablers import Document, find_tables
+        >>> doc = Document("example.pdf")
+        >>> page = doc.get_page(0)
+        >>> tables = find_tables(page, extract_text=True)
+        >>> html_content = tables[0].to_html()
+        >>> print(html_content)
+        <table>
+        <tr><td>Header1</td><td>Header2</td></tr>
+        <tr><td>Cell1</td><td>Cell2</td></tr>
+        </table>
+        """
+        ...
+
 class WordsExtractSettingsItems(TypedDict, total=False):
     """
     TypedDict for WordsExtractSettings keyword arguments.

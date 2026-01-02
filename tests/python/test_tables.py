@@ -311,6 +311,85 @@ class TestTableToMarkdown:
             assert line.endswith("|")
 
 
+class TestTableToHtml:
+    """Tests for Table.to_html() method."""
+
+    def test_to_html_basic(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_html should return a valid HTML string."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        assert len(tables) == 1
+        table = tables[0]
+        html_output = table.to_html()
+        assert isinstance(html_output, str)
+        assert len(html_output) > 0
+
+    def test_to_html_expected_content(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_html should produce the expected HTML content."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        html_output = table.to_html()
+        # Expected format based on CSV: "abc ,q  \n,w  \n1 ,2  \n3 ,4 "
+        # This means 4 rows, 2 columns: [["abc ", "q  "], ["", "w  "], ["1 ", "2  "], ["3 ", "4 "]]
+        expected_html = (
+            "<table>\n"
+            "<tr><td>abc </td><td>q  </td></tr>\n"
+            "<tr><td></td><td>w  </td></tr>\n"
+            "<tr><td>1 </td><td>2  </td></tr>\n"
+            "<tr><td>3 </td><td>4 </td></tr>\n"
+            "</table>"
+        )
+        assert html_output == expected_html
+
+    def test_to_html_without_text_extraction_raises(self, edge_test_doc: Document) -> None:
+        """to_html should raise ValueError if text has not been extracted."""
+        page = edge_test_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+        if tables:
+            table = tables[0]
+            assert table.text_extracted is False
+            with pytest.raises(ValueError):
+                table.to_html()
+
+    def test_to_html_has_table_tags(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_html output should contain table tags."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        html_output = table.to_html()
+        assert html_output.startswith("<table>")
+        assert html_output.endswith("</table>")
+
+    def test_to_html_has_row_tags(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_html output should contain tr tags for rows."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        html_output = table.to_html()
+        assert "<tr>" in html_output
+        assert "</tr>" in html_output
+
+    def test_to_html_has_cell_tags(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_html output should contain td tags for cells."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        html_output = table.to_html()
+        assert "<td>" in html_output
+        assert "</td>" in html_output
+
+    def test_to_html_row_count(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_html should have the correct number of rows."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        html_output = table.to_html()
+        # Should have 4 rows based on the CSV output
+        row_count = html_output.count("<tr>")
+        assert row_count == 4
+
+
 class TestTableExtractionIntegration:
     """Integration tests for table extraction workflow."""
 
