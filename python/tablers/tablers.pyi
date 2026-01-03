@@ -560,6 +560,8 @@ class WordsExtractSettingsItems(TypedDict, total=False):
         Punctuation splitting configuration. Default: None
     expand_ligatures : bool
         Whether to expand ligatures into individual characters. Default: True
+    need_strip : bool
+        Whether to strip leading/trailing whitespace from cell text. Default: True
     """
 
     x_tolerance: NonNegativeFloat  # Default: 3.0
@@ -569,6 +571,7 @@ class WordsExtractSettingsItems(TypedDict, total=False):
     text_read_in_clockwise: bool  # Default: True
     split_at_punctuation: Literal["all"] | str | None  # Default: None
     expand_ligatures: bool  # Default: True
+    need_strip: bool  # Default: True
 
 class WordsExtractSettings:
     """
@@ -593,6 +596,8 @@ class WordsExtractSettings:
         Punctuation splitting configuration.
     expand_ligatures : bool
         Whether to expand ligatures into individual characters.
+    need_strip : bool
+        Whether to strip leading/trailing whitespace from cell text.
 
     Parameters
     ----------
@@ -607,6 +612,7 @@ class WordsExtractSettings:
     text_read_in_clockwise: bool
     split_at_punctuation: str | None
     expand_ligatures: bool
+    need_strip: bool
 
     def __init__(self, **kwargs: Unpack[WordsExtractSettingsItems]) -> None: ...
     def __repr__(self) -> str: ...
@@ -642,6 +648,8 @@ class TfSettingItems(TypedDict, total=False):
         X-tolerance for detecting edge intersections. Default: 3.0
     intersection_y_tolerance : float
         Y-tolerance for detecting edge intersections. Default: 3.0
+    include_single_cell : bool
+        Whether to include tables with only a single cell. Default: False
     text_x_tolerance : float
         X-tolerance for text extraction. Default: 3.0
     text_y_tolerance : float
@@ -656,6 +664,8 @@ class TfSettingItems(TypedDict, total=False):
         Punctuation splitting for text. Default: None
     text_expand_ligatures : bool
         Whether to expand ligatures in text. Default: True
+    text_need_strip : bool
+        Whether to strip leading/trailing whitespace from cell text. Default: True
     """
 
     vertical_strategy: Literal["lines", "lines_strict", "text"]  # Default: "lines_strict"
@@ -670,6 +680,8 @@ class TfSettingItems(TypedDict, total=False):
     min_words_horizontal: NonNegativeInt  # Default: 1
     intersection_x_tolerance: NonNegativeFloat  # Default: 3.0
     intersection_y_tolerance: NonNegativeFloat  # Default: 3.0
+    include_single_cell: bool  # Default: False
+    text_need_strip: bool  # Default: True
     text_x_tolerance: NonNegativeFloat  # Default: 3.0
     text_y_tolerance: NonNegativeFloat  # Default: 3.0
     text_keep_blank_chars: bool  # Default: False
@@ -711,6 +723,10 @@ class TfSettings:
         X-tolerance for detecting edge intersections.
     intersection_y_tolerance : float
         Y-tolerance for detecting edge intersections.
+    include_single_cell : bool
+        Whether to include tables with only a single cell.
+    text_need_strip : bool
+        Whether to strip leading/trailing whitespace from cell text.
     text_settings : WordsExtractSettings
         Settings for text/word extraction.
     text_x_tolerance : float
@@ -746,6 +762,8 @@ class TfSettings:
     min_words_horizontal: int
     intersection_x_tolerance: float
     intersection_y_tolerance: float
+    include_single_cell: bool
+    text_need_strip: bool
     text_settings: WordsExtractSettings
     text_x_tolerance: float
     text_y_tolerance: float
@@ -793,8 +811,7 @@ def find_tables_from_cells(
     cells: list[BBox],
     extract_text: bool,
     page: Page | None = None,
-    we_settings: WordsExtractSettings | None = None,
-    need_strip: bool = True,
+    tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
     """
@@ -808,10 +825,8 @@ def find_tables_from_cells(
         Whether to extract text content from cells.
     page : Page, optional
         The PDF page (required if extract_text is True).
-    we_settings : WordsExtractSettings, optional
-        Word extraction settings for text extraction.
-    need_strip : bool, default True
-        Whether to strip leading/trailing whitespace from cell text.
+    tf_settings : TfSettings, optional
+        Table finder settings for text extraction and single cell filtering.
     **kwargs : TfSettingItems
         Additional keyword arguments for settings.
 
@@ -839,7 +854,6 @@ def find_tables(
     page: Page,
     extract_text: bool,
     tf_settings: TfSettings | None = None,
-    need_strip: bool = True,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
     """
@@ -856,8 +870,6 @@ def find_tables(
         Whether to extract text content from table cells.
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
-    need_strip : bool, default True
-        Whether to strip leading/trailing whitespace from cell text.
     **kwargs : TfSettingItems
         Additional keyword arguments passed to TfSettings.
 

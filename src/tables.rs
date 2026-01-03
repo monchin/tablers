@@ -803,7 +803,7 @@ fn bbox_to_corners(bbox: &BboxKey) -> [Point; 4] {
 /// # Returns
 ///
 /// A vector of tables, each containing its cells' bounding boxes.
-pub fn cells_to_tables(cells: &[BboxKey]) -> Vec<Vec<BboxKey>> {
+pub fn cells_to_tables(cells: &[BboxKey], include_single_cell: bool) -> Vec<Vec<BboxKey>> {
     let n = cells.len();
     let mut used = vec![false; n];
     let mut tables: Vec<Vec<BboxKey>> = Vec::new();
@@ -865,7 +865,11 @@ pub fn cells_to_tables(cells: &[BboxKey]) -> Vec<Vec<BboxKey>> {
         min_a.cmp(&min_b)
     });
 
-    tables.into_iter().filter(|t| t.len() > 1).collect()
+    if include_single_cell {
+        tables
+    } else {
+        tables.into_iter().filter(|t| t.len() > 1).collect()
+    }
 }
 /// Finds tables in PDF pages using edge detection.
 pub(crate) struct TableFinder {
@@ -963,8 +967,7 @@ pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Ve
 /// * `cells` - The cell bounding boxes.
 /// * `extract_text` - Whether to extract text from cells.
 /// * `pdf_page` - The PDF page (required if extract_text is true).
-/// * `we_settings` - Optional word extraction settings.
-/// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
+/// * `tf_settings` - Optional table finder settings.
 ///
 /// # Returns
 ///
@@ -973,10 +976,11 @@ pub fn find_tables_from_cells(
     cells: &[BboxKey],
     extract_text: bool,
     pdf_page: Option<&Page>,
-    we_settings: Option<&WordsExtractSettings>,
-    need_strip: bool,
+    tf_settings: Option<&TfSettings>,
 ) -> Vec<Table> {
-    let tables_bbox = cells_to_tables(cells);
+    let include_single_cell = tf_settings.is_some_and(|s| s.include_single_cell);
+    let need_strip = tf_settings.is_none_or(|s| s.text_settings.need_strip);
+    let tables_bbox = cells_to_tables(cells, include_single_cell);
 
     let objects_guard = if extract_text {
         let page = match pdf_page {
@@ -993,6 +997,7 @@ pub fn find_tables_from_cells(
     let chars: Option<&[Char]> = objects_guard
         .as_ref()
         .map(|g| &g.as_ref().unwrap().chars[..]);
+    let we_settings = tf_settings.map(|s| &s.text_settings);
     tables_bbox
         .iter()
         .map(|table_cells_bbox| {
@@ -1017,25 +1022,13 @@ pub fn find_tables_from_cells(
 /// * `pdf_page` - The PDF page to analyze.
 /// * `tf_settings` - The table finder settings.
 /// * `extract_text` - Whether to extract text content from cells.
-/// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
 ///
 /// # Returns
 ///
 /// A vector of Table objects found in the page.
-pub fn find_tables(
-    pdf_page: &Page,
-    tf_settings: Rc<TfSettings>,
-    extract_text: bool,
-    need_strip: bool,
-) -> Vec<Table> {
+pub fn find_tables(pdf_page: &Page, tf_settings: Rc<TfSettings>, extract_text: bool) -> Vec<Table> {
     let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone());
-    find_tables_from_cells(
-        &cells,
-        extract_text,
-        Some(pdf_page),
-        Some(&tf_settings.text_settings),
-        need_strip,
-    )
+    find_tables_from_cells(&cells, extract_text, Some(pdf_page), Some(&tf_settings))
 }
 
 #[cfg(test)]
@@ -1082,7 +1075,7 @@ mod tests {
             (of(0.0), of(10.0), of(10.0), of(20.0)),
             (of(10.0), of(10.0), of(20.0), of(20.0)),
         ];
-        let tables = cells_to_tables(&cells);
+        let tables = cells_to_tables(&cells, false);
         assert_eq!(tables.len(), 1);
         assert_eq!(tables[0].len(), 4);
     }
@@ -1098,22 +1091,31 @@ mod tests {
             (of(100.0), of(100.0), of(110.0), of(110.0)),
             (of(110.0), of(100.0), of(120.0), of(110.0)),
         ];
-        let tables = cells_to_tables(&cells);
+        let tables = cells_to_tables(&cells, false);
         assert_eq!(tables.len(), 2);
     }
 
     #[test]
     fn test_cells_to_tables_single_cell_excluded() {
-        // A single cell should not form a table (needs at least 2 cells)
+        // A single cell should not form a table (needs at least 2 cells) when include_single_cell is false
         let cells: Vec<BboxKey> = vec![(of(0.0), of(0.0), of(10.0), of(10.0))];
-        let tables = cells_to_tables(&cells);
+        let tables = cells_to_tables(&cells, false);
         assert_eq!(tables.len(), 0);
+    }
+
+    #[test]
+    fn test_cells_to_tables_single_cell_included() {
+        // A single cell should form a table when include_single_cell is true
+        let cells: Vec<BboxKey> = vec![(of(0.0), of(0.0), of(10.0), of(10.0))];
+        let tables = cells_to_tables(&cells, true);
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].len(), 1);
     }
 
     #[test]
     fn test_cells_to_tables_empty() {
         let cells: Vec<BboxKey> = vec![];
-        let tables = cells_to_tables(&cells);
+        let tables = cells_to_tables(&cells, false);
         assert_eq!(tables.len(), 0);
     }
 

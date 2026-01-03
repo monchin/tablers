@@ -178,6 +178,8 @@ pub struct TfSettings {
     pub intersection_x_tolerance: NonNegativeF32,
     /// Y-tolerance for detecting edge intersections.
     pub intersection_y_tolerance: NonNegativeF32,
+    /// Whether to include tables with only a single cell.
+    pub include_single_cell: bool,
     /// Settings for text/word extraction.
     pub text_settings: WordsExtractSettings,
 }
@@ -197,6 +199,7 @@ impl Default for TfSettings {
             min_words_horizontal: DEFAULT_MIN_WORDS_HORIZONTAL,
             intersection_x_tolerance: NonNegativeF32::new_unchecked(DEFAULT_INTERSECTION_TOLERANCE),
             intersection_y_tolerance: NonNegativeF32::new_unchecked(DEFAULT_INTERSECTION_TOLERANCE),
+            include_single_cell: false,
             text_settings: WordsExtractSettings::default(),
         }
     }
@@ -317,6 +320,12 @@ impl TfSettings {
                         settings.intersection_y_tolerance =
                             NonNegativeF32::new(v, "intersection_y_tolerance")?;
                     }
+                    "include_single_cell" => {
+                        settings.include_single_cell = value.extract::<bool>().unwrap()
+                    }
+                    "text_need_strip" => {
+                        settings.text_settings.need_strip = value.extract::<bool>().unwrap()
+                    }
                     "text_x_tolerance" => {
                         let v = value.extract::<f32>().unwrap();
                         settings.text_settings.x_tolerance =
@@ -417,10 +426,19 @@ impl TfSettings {
     }
 
     #[getter]
+    fn include_single_cell(&self) -> bool {
+        self.include_single_cell
+    }
+
+    #[getter]
     fn text_settings(&self) -> WordsExtractSettings {
         self.text_settings.clone()
     }
 
+    #[getter]
+    fn text_need_strip(&self) -> bool {
+        self.text_settings.need_strip
+    }
     #[getter]
     fn text_x_tolerance(&self) -> f32 {
         self.text_settings.x_tolerance.into_inner()
@@ -530,8 +548,17 @@ impl TfSettings {
     }
 
     #[setter]
+    fn set_include_single_cell(&mut self, value: bool) {
+        self.include_single_cell = value;
+    }
+
+    #[setter]
     fn set_text_settings(&mut self, value: WordsExtractSettings) {
         self.text_settings = value;
+    }
+    #[setter]
+    fn set_text_need_strip(&mut self, value: bool) {
+        self.text_settings.need_strip = value;
     }
 
     #[setter]
@@ -584,7 +611,7 @@ impl TfSettings {
              edge_min_length={}, edge_min_length_prefilter={}, \
              min_words_vertical={}, min_words_horizontal={}, \
              intersection_x_tolerance={}, intersection_y_tolerance={}, \
-             text_x_tolerance={}, text_y_tolerance={}, \
+             include_single_cell={}, text_need_strip={}, text_x_tolerance={}, text_y_tolerance={}, \
              text_keep_blank_chars={}, text_use_text_flow={}, \
              text_read_in_clockwise={}, text_split_at_punctuation={:?}, \
              text_expand_ligatures={})",
@@ -600,6 +627,8 @@ impl TfSettings {
             self.min_words_horizontal,
             self.intersection_x_tolerance,
             self.intersection_y_tolerance,
+            self.include_single_cell,
+            self.text_settings.need_strip,
             self.text_settings.x_tolerance,
             self.text_settings.y_tolerance,
             self.text_settings.keep_blank_chars,
@@ -624,6 +653,8 @@ impl TfSettings {
                 && self.min_words_horizontal == other.min_words_horizontal
                 && self.intersection_x_tolerance == other.intersection_x_tolerance
                 && self.intersection_y_tolerance == other.intersection_y_tolerance
+                && self.include_single_cell == other.include_single_cell
+                && self.text_settings.need_strip == other.text_settings.need_strip
                 && self.text_settings.x_tolerance == other.text_settings.x_tolerance
                 && self.text_settings.y_tolerance == other.text_settings.y_tolerance
                 && self.text_settings.keep_blank_chars == other.text_settings.keep_blank_chars
@@ -667,6 +698,8 @@ pub struct WordsExtractSettings {
     pub split_at_punctuation: Option<SplitPunctuation>,
     /// Whether to expand ligatures into individual characters.
     pub expand_ligatures: bool,
+    /// Whether to strip leading/trailing whitespace from cell text.
+    pub need_strip: bool,
 }
 
 impl Default for WordsExtractSettings {
@@ -680,6 +713,7 @@ impl Default for WordsExtractSettings {
             text_read_in_clockwise: true,
             split_at_punctuation: None,
             expand_ligatures: true,
+            need_strip: true,
         }
     }
 }
@@ -751,6 +785,7 @@ impl WordsExtractSettings {
                     "expand_ligatures" => {
                         settings.expand_ligatures = value.extract::<bool>().unwrap()
                     }
+                    "need_strip" => settings.need_strip = value.extract::<bool>().unwrap(),
                     _ => (), // Ignore unknown settings
                 }
             }
@@ -794,6 +829,11 @@ impl WordsExtractSettings {
         self.expand_ligatures
     }
 
+    #[getter]
+    fn need_strip(&self) -> bool {
+        self.need_strip
+    }
+
     // Setters
     #[setter]
     fn set_x_tolerance(&mut self, value: f32) -> PyResult<()> {
@@ -832,13 +872,18 @@ impl WordsExtractSettings {
         self.expand_ligatures = value;
     }
 
+    #[setter]
+    fn set_need_strip(&mut self, value: bool) {
+        self.need_strip = value;
+    }
+
     // Dataclass-like methods
     fn __repr__(&self) -> String {
         format!(
             "WordsExtractSettings(x_tolerance={}, y_tolerance={}, \
              keep_blank_chars={}, use_text_flow={}, \
              text_read_in_clockwise={}, split_at_punctuation={:?}, \
-             expand_ligatures={})",
+             expand_ligatures={}, need_strip={})",
             self.x_tolerance,
             self.y_tolerance,
             self.keep_blank_chars,
@@ -846,6 +891,7 @@ impl WordsExtractSettings {
             self.text_read_in_clockwise,
             self.split_punctuation_to_str(),
             self.expand_ligatures,
+            self.need_strip,
         )
     }
 
@@ -857,6 +903,7 @@ impl WordsExtractSettings {
                 && self.use_text_flow == other.use_text_flow
                 && self.text_read_in_clockwise == other.text_read_in_clockwise
                 && self.expand_ligatures == other.expand_ligatures
+                && self.need_strip == other.need_strip
         } else {
             false
         }

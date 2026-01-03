@@ -685,13 +685,12 @@ fn py_find_all_cells_bboxes(
 ///
 /// A list of Table objects constructed from the cells.
 #[pyfunction]
-#[pyo3(name = "find_tables_from_cells", signature = (cells, extract_text, pdf_page=None, we_settings=None, need_strip=true, **kwargs))]
+#[pyo3(name = "find_tables_from_cells", signature = (cells, extract_text, pdf_page=None, tf_settings=None, **kwargs))]
 fn py_find_tables_from_cells(
     cells: &Bound<'_, PyList>,
     extract_text: bool,
     pdf_page: Option<&PyPage>,
-    we_settings: Option<WordsExtractSettings>,
-    need_strip: bool,
+    tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<Table>> {
     let cells: Vec<BboxKey> = cells
@@ -701,15 +700,10 @@ fn py_find_tables_from_cells(
             Ok(py_bbox_to_rs_bbox(&bbox))
         })
         .collect::<PyResult<Vec<_>>>()?;
-    let settings_value = if extract_text {
-        Some(match we_settings {
-            Some(s) => s,
-            None => WordsExtractSettings::py_new(kwargs)?,
-        })
-    } else {
-        None
+    let settings_value = match tf_settings {
+        Some(s) => s,
+        None => TfSettings::py_new(kwargs)?,
     };
-    let settings = settings_value.as_ref();
 
     let page = match extract_text {
         true => match pdf_page {
@@ -723,7 +717,7 @@ fn py_find_tables_from_cells(
         false => None,
     };
 
-    let tables = find_tables_from_cells(&cells, extract_text, page, settings, need_strip);
+    let tables = find_tables_from_cells(&cells, extract_text, page, Some(&settings_value));
     Ok(tables)
 }
 /// Finds all tables in a PDF page.
@@ -733,19 +727,17 @@ fn py_find_tables_from_cells(
 /// * `page` - The PDF page to analyze.
 /// * `extract_text` - Whether to extract text content from table cells.
 /// * `tf_settings` - Optional TableFinder settings object.
-/// * `need_strip` - Whether to strip leading/trailing whitespace from cell text (default: true).
 /// * `kwargs` - Optional keyword arguments for settings.
 ///
 /// # Returns
 ///
 /// A list of Table objects found in the page.
 #[pyfunction]
-#[pyo3(name = "find_tables", signature = (page, extract_text, tf_settings=None, need_strip=true, **kwargs))]
+#[pyo3(name = "find_tables", signature = (page, extract_text, tf_settings=None, **kwargs))]
 fn py_find_tables(
     page: &PyPage,
     extract_text: bool,
     tf_settings: Option<TfSettings>,
-    need_strip: bool,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<Table>> {
     let settings;
@@ -754,7 +746,7 @@ fn py_find_tables(
     } else {
         settings = Rc::new(TfSettings::py_new(kwargs)?);
     };
-    let tables = find_tables(&page.inner, settings.clone(), extract_text, need_strip);
+    let tables = find_tables(&page.inner, settings.clone(), extract_text);
     Ok(tables)
 }
 
