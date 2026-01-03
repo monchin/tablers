@@ -1,5 +1,5 @@
 use ordered_float::OrderedFloat;
-use pdfium_render::prelude::PdfColor;
+use pdfium_render::prelude::{PdfColor, PdfPathSegmentType};
 use pyo3::prelude::*;
 
 /// Container for all extracted objects from a PDF page.
@@ -214,21 +214,26 @@ pub enum LineType {
 /// # Returns
 ///
 /// `true` if the points form a rectangle, `false` otherwise.
-pub(crate) fn is_rect(points: &[Point]) -> bool {
-    if points.len() != 5 || points[0] != points[4] {
+pub(crate) fn is_rect(points: &[(Point, PdfPathSegmentType)]) -> bool {
+    if points.len() != 5
+        || points[0].0 != points[4].0
+        || points[1..5]
+            .iter()
+            .any(|(_, t)| *t != PdfPathSegmentType::LineTo)
+    {
         return false;
     }
-    if points[0].0 == points[1].0
-        && points[1].1 == points[2].1
-        && points[2].0 == points[3].0
-        && points[3].1 == points[0].1
+    if points[0].0.0 == points[1].0.0
+        && points[1].0.1 == points[2].0.1
+        && points[2].0.0 == points[3].0.0
+        && points[3].0.1 == points[0].0.1
     {
         return true;
     }
-    if points[0].1 == points[1].1
-        && points[1].0 == points[2].0
-        && points[2].1 == points[3].1
-        && points[3].0 == points[0].0
+    if points[0].0.1 == points[1].0.1
+        && points[1].0.0 == points[2].0.0
+        && points[2].0.1 == points[3].0.1
+        && points[3].0.0 == points[0].0.0
     {
         return true;
     }
@@ -280,12 +285,27 @@ mod tests {
     #[test]
     fn test_is_rect_valid_rectangle_clockwise() {
         // A valid rectangle with 5 points (first == last), clockwise
-        let points: Vec<Point> = vec![
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
-            (OrderedFloat(0.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(0.0)),
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
+        let points = vec![
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::MoveTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
         ];
         assert!(is_rect(&points));
     }
@@ -293,12 +313,27 @@ mod tests {
     #[test]
     fn test_is_rect_valid_rectangle_counterclockwise() {
         // A valid rectangle with 5 points, counterclockwise order
-        let points: Vec<Point> = vec![
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
-            (OrderedFloat(10.0), OrderedFloat(0.0)),
-            (OrderedFloat(10.0), OrderedFloat(10.0)),
-            (OrderedFloat(0.0), OrderedFloat(10.0)),
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
+        let points = vec![
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::MoveTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
         ];
         assert!(is_rect(&points));
     }
@@ -306,12 +341,27 @@ mod tests {
     #[test]
     fn test_is_rect_invalid_not_closed() {
         // 5 points but first != last
-        let points: Vec<Point> = vec![
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
-            (OrderedFloat(0.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(0.0)),
-            (OrderedFloat(1.0), OrderedFloat(0.0)), // different from first
+        let points = vec![
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::MoveTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(1.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ), // different from first
         ];
         assert!(!is_rect(&points));
     }
@@ -319,11 +369,23 @@ mod tests {
     #[test]
     fn test_is_rect_invalid_wrong_count() {
         // Only 4 points
-        let points: Vec<Point> = vec![
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
-            (OrderedFloat(0.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(0.0)),
+        let points = vec![
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::MoveTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
         ];
         assert!(!is_rect(&points));
     }
@@ -331,12 +393,85 @@ mod tests {
     #[test]
     fn test_is_rect_invalid_not_rectangular() {
         // 5 points but not forming a rectangle
-        let points: Vec<Point> = vec![
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
-            (OrderedFloat(5.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(10.0)),
-            (OrderedFloat(10.0), OrderedFloat(0.0)),
-            (OrderedFloat(0.0), OrderedFloat(0.0)),
+        let points = vec![
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::MoveTo,
+            ),
+            (
+                (OrderedFloat(5.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+        ];
+        assert!(!is_rect(&points));
+    }
+
+    #[test]
+    fn test_is_rect_invalid_bezier_segments() {
+        // 5 points forming a rectangle shape but using BezierTo instead of LineTo
+        // This should NOT be recognized as a rectangle
+        let points = vec![
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::MoveTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::BezierTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::BezierTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::BezierTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::BezierTo,
+            ),
+        ];
+        assert!(!is_rect(&points));
+    }
+
+    #[test]
+    fn test_is_rect_invalid_mixed_segments() {
+        // 5 points forming a rectangle shape but with mixed LineTo and BezierTo
+        // This should NOT be recognized as a rectangle
+        let points = vec![
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::MoveTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(10.0), OrderedFloat(10.0)),
+                PdfPathSegmentType::BezierTo,
+            ), // one BezierTo
+            (
+                (OrderedFloat(10.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
+            (
+                (OrderedFloat(0.0), OrderedFloat(0.0)),
+                PdfPathSegmentType::LineTo,
+            ),
         ];
         assert!(!is_rect(&points));
     }

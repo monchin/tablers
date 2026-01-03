@@ -194,7 +194,6 @@ impl Page {
         let n_segs = obj.segments().len();
         let mut points_vec = Vec::new();
         let mut points = Vec::with_capacity(n_segs as usize);
-        let mut line_type = LineType::Curve;
         for seg in obj.segments().transform(obj.matrix().unwrap()).iter() {
             let x = OrderedFloat::from(seg.x().value);
             let y = self.get_v_coord_with_bottom_origin(seg.y().value);
@@ -202,13 +201,11 @@ impl Page {
             if seg.segment_type() == PdfPathSegmentType::MoveTo {
                 if !points.is_empty() {
                     points_vec.push(points.clone());
+                    points.clear();
                 }
-                points.clear();
-            }
-
-            points.push((x, y));
-            if seg.segment_type() == PdfPathSegmentType::LineTo && n_segs == 2 {
-                line_type = LineType::Straight;
+                points.push(((x, y), PdfPathSegmentType::MoveTo));
+            } else {
+                points.push(((x, y), seg.segment_type()));
             }
         }
 
@@ -220,8 +217,8 @@ impl Page {
         for points in points_vec {
             if is_rect(&points) {
                 let bbox = {
-                    let x_values: Vec<OrderedFloat<f32>> = points.iter().map(|p| p.0).collect();
-                    let y_values: Vec<OrderedFloat<f32>> = points.iter().map(|p| p.1).collect();
+                    let x_values: Vec<OrderedFloat<f32>> = points.iter().map(|p| p.0.0).collect();
+                    let y_values: Vec<OrderedFloat<f32>> = points.iter().map(|p| p.0.1).collect();
                     (
                         *x_values.iter().min().unwrap(),
                         *y_values.iter().min().unwrap(),
@@ -235,10 +232,17 @@ impl Page {
                     stroke_color: obj.stroke_color().unwrap(),
                     stroke_width: obj.stroke_width().unwrap().value,
                 });
+            } else if points.len() == 2 && points[1].1 == PdfPathSegmentType::LineTo {
+                objects.lines.push(Line {
+                    line_type: LineType::Straight,
+                    points: points.iter().map(|p| p.0).collect(),
+                    color: obj.stroke_color().unwrap(),
+                    width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),
+                });
             } else if points[0] != points[points.len() - 1] {
                 objects.lines.push(Line {
-                    points,
-                    line_type,
+                    line_type: LineType::Curve,
+                    points: points.iter().map(|p| p.0).collect(),
                     color: obj.stroke_color().unwrap(),
                     width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),
                 });
