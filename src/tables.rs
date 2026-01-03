@@ -315,6 +315,7 @@ impl Table {
     /// * `extract_text` - Whether to extract text content.
     /// * `chars` - Optional character array for text extraction.
     /// * `we_settings` - Optional word extraction settings.
+    /// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
     ///
     /// # Returns
     ///
@@ -325,6 +326,7 @@ impl Table {
         extract_text: bool,
         chars: Option<&[Char]>,
         we_settings: Option<&WordsExtractSettings>,
+        need_strip: bool,
     ) -> Self {
         let bbox = get_table_bbox(cells_bbox);
         let cells = cells_bbox
@@ -342,7 +344,7 @@ impl Table {
         };
         if extract_text {
             match chars {
-                Some(chars) => slf.extract_text(chars, we_settings),
+                Some(chars) => slf.extract_text(chars, we_settings, need_strip),
                 None => panic!("No chars provided"),
             };
         };
@@ -455,7 +457,13 @@ impl Table {
     ///
     /// * `chars` - The characters from the page.
     /// * `settings` - Optional word extraction settings.
-    pub fn extract_text(&mut self, chars: &[Char], settings: Option<&WordsExtractSettings>) {
+    /// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
+    pub fn extract_text(
+        &mut self,
+        chars: &[Char],
+        settings: Option<&WordsExtractSettings>,
+        need_strip: bool,
+    ) {
         let default_settings = WordsExtractSettings::default();
         let base_settings = settings.unwrap_or(&default_settings);
         let word_settings = WordsExtractSettings {
@@ -473,11 +481,14 @@ impl Table {
 
             if !cell_chars.is_empty() {
                 let words = word_extractor.extract_words(&cell_chars);
-                let text = words
+                let mut text = words
                     .iter()
-                    .map(|w| w.text.replace("\r\n", " ").replace('\n', " "))
+                    .map(|w| w.text.replace("\r\n", "\n").replace('\r', "\n"))
                     .collect::<Vec<_>>()
                     .join("");
+                if need_strip {
+                    text = text.trim().to_string();
+                }
                 cell.text = text;
             }
         }
@@ -953,6 +964,7 @@ pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Ve
 /// * `extract_text` - Whether to extract text from cells.
 /// * `pdf_page` - The PDF page (required if extract_text is true).
 /// * `we_settings` - Optional word extraction settings.
+/// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
 ///
 /// # Returns
 ///
@@ -962,6 +974,7 @@ pub fn find_tables_from_cells(
     extract_text: bool,
     pdf_page: Option<&Page>,
     we_settings: Option<&WordsExtractSettings>,
+    need_strip: bool,
 ) -> Vec<Table> {
     let tables_bbox = cells_to_tables(cells);
 
@@ -982,7 +995,16 @@ pub fn find_tables_from_cells(
         .map(|g| &g.as_ref().unwrap().chars[..]);
     tables_bbox
         .iter()
-        .map(|table_cells_bbox| Table::new(0, table_cells_bbox, extract_text, chars, we_settings))
+        .map(|table_cells_bbox| {
+            Table::new(
+                0,
+                table_cells_bbox,
+                extract_text,
+                chars,
+                we_settings,
+                need_strip,
+            )
+        })
         .collect()
 }
 /// Finds all tables in a PDF page.
@@ -995,17 +1017,24 @@ pub fn find_tables_from_cells(
 /// * `pdf_page` - The PDF page to analyze.
 /// * `tf_settings` - The table finder settings.
 /// * `extract_text` - Whether to extract text content from cells.
+/// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
 ///
 /// # Returns
 ///
 /// A vector of Table objects found in the page.
-pub fn find_tables(pdf_page: &Page, tf_settings: Rc<TfSettings>, extract_text: bool) -> Vec<Table> {
+pub fn find_tables(
+    pdf_page: &Page,
+    tf_settings: Rc<TfSettings>,
+    extract_text: bool,
+    need_strip: bool,
+) -> Vec<Table> {
     let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone());
     find_tables_from_cells(
         &cells,
         extract_text,
         Some(pdf_page),
         Some(&tf_settings.text_settings),
+        need_strip,
     )
 }
 

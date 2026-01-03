@@ -224,7 +224,8 @@ class TestTableToCsv:
         tables = find_tables(page, extract_text=True)
         table = tables[0]
         csv_output = table.to_csv()
-        expected_csv = "abc ,q  \n,w  \n1 ,2  \n3 ,4 "
+        # With need_strip=True (default), cell text is stripped
+        expected_csv = "abc,q\n,w\n1,2\n3,4"
         assert csv_output == expected_csv
 
     def test_to_csv_without_text_extraction_raises(self, edge_test_doc: Document) -> None:
@@ -272,9 +273,8 @@ class TestTableToMarkdown:
         tables = find_tables(page, extract_text=True)
         table = tables[0]
         markdown_output = table.to_markdown()
-        # Expected format based on CSV: "abc ,q  \n,w  \n1 ,2  \n3 ,4 "
-        # This means 4 rows, 2 columns: [["abc ", "q  "], ["", "w  "], ["1 ", "2  "], ["3 ", "4 "]]
-        expected_markdown = "| abc  | q   |\n| --- | --- |\n|  | w   |\n| 1  | 2   |\n| 3  | 4  |"
+        # With need_strip=True (default), cell text is stripped
+        expected_markdown = "| abc | q |\n| --- | --- |\n|  | w |\n| 1 | 2 |\n| 3 | 4 |"
         assert markdown_output == expected_markdown
 
     def test_to_markdown_without_text_extraction_raises(self, edge_test_doc: Document) -> None:
@@ -330,14 +330,13 @@ class TestTableToHtml:
         tables = find_tables(page, extract_text=True)
         table = tables[0]
         html_output = table.to_html()
-        # Expected format based on CSV: "abc ,q  \n,w  \n1 ,2  \n3 ,4 "
-        # This means 4 rows, 2 columns: [["abc ", "q  "], ["", "w  "], ["1 ", "2  "], ["3 ", "4 "]]
+        # With need_strip=True (default), cell text is stripped
         expected_html = (
             "<table>\n"
-            "<tr><td>abc </td><td>q  </td></tr>\n"
-            "<tr><td></td><td>w  </td></tr>\n"
-            "<tr><td>1 </td><td>2  </td></tr>\n"
-            "<tr><td>3 </td><td>4 </td></tr>\n"
+            "<tr><td>abc</td><td>q</td></tr>\n"
+            "<tr><td></td><td>w</td></tr>\n"
+            "<tr><td>1</td><td>2</td></tr>\n"
+            "<tr><td>3</td><td>4</td></tr>\n"
             "</table>"
         )
         assert html_output == expected_html

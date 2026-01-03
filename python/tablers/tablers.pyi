@@ -794,6 +794,7 @@ def find_tables_from_cells(
     extract_text: bool,
     page: Page | None = None,
     we_settings: WordsExtractSettings | None = None,
+    need_strip: bool = True,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
     """
@@ -809,6 +810,8 @@ def find_tables_from_cells(
         The PDF page (required if extract_text is True).
     we_settings : WordsExtractSettings, optional
         Word extraction settings for text extraction.
+    need_strip : bool, default True
+        Whether to strip leading/trailing whitespace from cell text.
     **kwargs : TfSettingItems
         Additional keyword arguments for settings.
 
@@ -836,6 +839,7 @@ def find_tables(
     page: Page,
     extract_text: bool,
     tf_settings: TfSettings | None = None,
+    need_strip: bool = True,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
     """
@@ -852,6 +856,8 @@ def find_tables(
         Whether to extract text content from table cells.
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
+    need_strip : bool, default True
+        Whether to strip leading/trailing whitespace from cell text.
     **kwargs : TfSettingItems
         Additional keyword arguments passed to TfSettings.
 
