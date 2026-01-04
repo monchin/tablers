@@ -650,6 +650,12 @@ class TfSettingItems(TypedDict, total=False):
         Y-tolerance for detecting edge intersections. Default: 3.0
     include_single_cell : bool
         Whether to include tables with only a single cell. Default: False
+    min_rows : int or None
+        Minimum number of rows required for a table. None means would not filter by this arg.
+        Default: None
+    min_cols : int or None
+        Minimum number of columns required for a table. None means would not filter by this arg.
+        Default: None
     text_x_tolerance : float
         X-tolerance for text extraction. Default: 3.0
     text_y_tolerance : float
@@ -681,6 +687,8 @@ class TfSettingItems(TypedDict, total=False):
     intersection_x_tolerance: NonNegativeFloat  # Default: 3.0
     intersection_y_tolerance: NonNegativeFloat  # Default: 3.0
     include_single_cell: bool  # Default: False
+    min_rows: int | None  # Default: None
+    min_cols: int | None  # Default: None
     text_need_strip: bool  # Default: True
     text_x_tolerance: NonNegativeFloat  # Default: 3.0
     text_y_tolerance: NonNegativeFloat  # Default: 3.0
@@ -725,6 +733,10 @@ class TfSettings:
         Y-tolerance for detecting edge intersections.
     include_single_cell : bool
         Whether to include tables with only a single cell.
+    min_rows : int or None
+        Minimum number of rows required for a table. None means would not filter by this arg.
+    min_cols : int or None
+        Minimum number of columns required for a table. None means would not filter by this arg.
     text_need_strip : bool
         Whether to strip leading/trailing whitespace from cell text.
     text_settings : WordsExtractSettings
@@ -763,6 +775,8 @@ class TfSettings:
     intersection_x_tolerance: float
     intersection_y_tolerance: float
     include_single_cell: bool
+    min_rows: int | None
+    min_cols: int | None
     text_need_strip: bool
     text_settings: WordsExtractSettings
     text_x_tolerance: float

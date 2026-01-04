@@ -803,7 +803,11 @@ fn bbox_to_corners(bbox: &BboxKey) -> [Point; 4] {
 /// # Returns
 ///
 /// A vector of tables, each containing its cells' bounding boxes.
-pub fn cells_to_tables(cells: &[BboxKey], include_single_cell: bool) -> Vec<Vec<BboxKey>> {
+/// Groups cells into tables based on shared corners.
+///
+/// This function only groups cells - it does not perform any filtering.
+/// All filtering (single cell, min_rows, min_cols) should be done after this function.
+pub fn cells_to_tables(cells: &[BboxKey]) -> Vec<Vec<BboxKey>> {
     let n = cells.len();
     let mut used = vec![false; n];
     let mut tables: Vec<Vec<BboxKey>> = Vec::new();
@@ -865,10 +869,51 @@ pub fn cells_to_tables(cells: &[BboxKey], include_single_cell: bool) -> Vec<Vec<
         min_a.cmp(&min_b)
     });
 
-    if include_single_cell {
-        tables
-    } else {
-        tables.into_iter().filter(|t| t.len() > 1).collect()
+    tables
+}
+
+/// Counts the number of rows in a table (based on unique y1 values).
+fn count_rows(cells: &[BboxKey]) -> usize {
+    cells
+        .iter()
+        .map(|c| OrderedFloat(c.1))
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+}
+
+/// Counts the number of columns in a table (based on unique x1 values).
+fn count_cols(cells: &[BboxKey]) -> usize {
+    cells
+        .iter()
+        .map(|c| OrderedFloat(c.0))
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+}
+
+/// Filters tables based on settings criteria.
+fn filter_tables(
+    tables: Vec<Vec<BboxKey>>,
+    include_single_cell: bool,
+    min_rows: Option<usize>,
+    min_cols: Option<usize>,
+) -> Vec<Vec<BboxKey>> {
+    let tables_after_filter_single_cell: Vec<Vec<BboxKey>> = match include_single_cell {
+        true => tables,
+        false => tables.into_iter().filter(|t| t.len() > 1).collect(),
+    };
+    let tables_after_filter_rows = match min_rows {
+        Some(min_r) => tables_after_filter_single_cell
+            .into_iter()
+            .filter(|t| count_rows(t) >= min_r)
+            .collect(),
+        None => tables_after_filter_single_cell,
+    };
+    match min_cols {
+        Some(min_c) => tables_after_filter_rows
+            .into_iter()
+            .filter(|t| count_cols(t) >= min_c)
+            .collect(),
+        None => tables_after_filter_rows,
     }
 }
 /// Finds tables in PDF pages using edge detection.
@@ -979,8 +1024,12 @@ pub fn find_tables_from_cells(
     tf_settings: Option<&TfSettings>,
 ) -> Vec<Table> {
     let include_single_cell = tf_settings.is_some_and(|s| s.include_single_cell);
+    let min_rows = tf_settings.and_then(|s| s.min_rows);
+    let min_cols = tf_settings.and_then(|s| s.min_cols);
     let need_strip = tf_settings.is_none_or(|s| s.text_settings.need_strip);
-    let tables_bbox = cells_to_tables(cells, include_single_cell);
+
+    let tables_bbox = cells_to_tables(cells);
+    let tables_bbox = filter_tables(tables_bbox, include_single_cell, min_rows, min_cols);
 
     let objects_guard = if extract_text {
         let page = match pdf_page {
@@ -1075,7 +1124,7 @@ mod tests {
             (of(0.0), of(10.0), of(10.0), of(20.0)),
             (of(10.0), of(10.0), of(20.0), of(20.0)),
         ];
-        let tables = cells_to_tables(&cells, false);
+        let tables = cells_to_tables(&cells);
         assert_eq!(tables.len(), 1);
         assert_eq!(tables[0].len(), 4);
     }
@@ -1091,23 +1140,15 @@ mod tests {
             (of(100.0), of(100.0), of(110.0), of(110.0)),
             (of(110.0), of(100.0), of(120.0), of(110.0)),
         ];
-        let tables = cells_to_tables(&cells, false);
+        let tables = cells_to_tables(&cells);
         assert_eq!(tables.len(), 2);
     }
 
     #[test]
-    fn test_cells_to_tables_single_cell_excluded() {
-        // A single cell should not form a table (needs at least 2 cells) when include_single_cell is false
+    fn test_cells_to_tables_single_cell() {
+        // cells_to_tables should not filter - single cell should be included
         let cells: Vec<BboxKey> = vec![(of(0.0), of(0.0), of(10.0), of(10.0))];
-        let tables = cells_to_tables(&cells, false);
-        assert_eq!(tables.len(), 0);
-    }
-
-    #[test]
-    fn test_cells_to_tables_single_cell_included() {
-        // A single cell should form a table when include_single_cell is true
-        let cells: Vec<BboxKey> = vec![(of(0.0), of(0.0), of(10.0), of(10.0))];
-        let tables = cells_to_tables(&cells, true);
+        let tables = cells_to_tables(&cells);
         assert_eq!(tables.len(), 1);
         assert_eq!(tables[0].len(), 1);
     }
@@ -1115,8 +1156,60 @@ mod tests {
     #[test]
     fn test_cells_to_tables_empty() {
         let cells: Vec<BboxKey> = vec![];
-        let tables = cells_to_tables(&cells, false);
+        let tables = cells_to_tables(&cells);
         assert_eq!(tables.len(), 0);
+    }
+
+    #[test]
+    fn test_filter_tables_single_cell_excluded() {
+        let cells: Vec<BboxKey> = vec![(of(0.0), of(0.0), of(10.0), of(10.0))];
+        let tables = cells_to_tables(&cells);
+        let filtered = filter_tables(tables, false, None, None);
+        assert_eq!(filtered.len(), 0);
+    }
+
+    #[test]
+    fn test_filter_tables_single_cell_included() {
+        let cells: Vec<BboxKey> = vec![(of(0.0), of(0.0), of(10.0), of(10.0))];
+        let tables = cells_to_tables(&cells);
+        let filtered = filter_tables(tables, true, None, None);
+        assert_eq!(filtered.len(), 1);
+    }
+
+    #[test]
+    fn test_filter_tables_min_rows() {
+        // Create a 2x2 table (2 rows, 2 cols)
+        let cells: Vec<BboxKey> = vec![
+            (of(0.0), of(0.0), of(10.0), of(10.0)),
+            (of(10.0), of(0.0), of(20.0), of(10.0)),
+            (of(0.0), of(10.0), of(10.0), of(20.0)),
+            (of(10.0), of(10.0), of(20.0), of(20.0)),
+        ];
+        let tables = cells_to_tables(&cells);
+        // min_rows=2 should keep the table
+        let filtered = filter_tables(tables.clone(), false, Some(2), None);
+        assert_eq!(filtered.len(), 1);
+        // min_rows=3 should filter it out
+        let filtered = filter_tables(tables, false, Some(3), None);
+        assert_eq!(filtered.len(), 0);
+    }
+
+    #[test]
+    fn test_filter_tables_min_cols() {
+        // Create a 2x2 table (2 rows, 2 cols)
+        let cells: Vec<BboxKey> = vec![
+            (of(0.0), of(0.0), of(10.0), of(10.0)),
+            (of(10.0), of(0.0), of(20.0), of(10.0)),
+            (of(0.0), of(10.0), of(10.0), of(20.0)),
+            (of(10.0), of(10.0), of(20.0), of(20.0)),
+        ];
+        let tables = cells_to_tables(&cells);
+        // min_cols=2 should keep the table
+        let filtered = filter_tables(tables.clone(), false, Some(2), None);
+        assert_eq!(filtered.len(), 1);
+        // min_cols=3 should filter it out
+        let filtered = filter_tables(tables, false, None, Some(3));
+        assert_eq!(filtered.len(), 0);
     }
 
     #[test]
