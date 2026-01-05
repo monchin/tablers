@@ -60,6 +60,38 @@ impl<'tab> CellGroup<'tab> {
         );
         Self { cells, bbox }
     }
+
+    /// Converts to an owned PyCellGroup for Python.
+    pub fn to_owned(&self) -> PyCellGroup {
+        PyCellGroup {
+            cells: self.cells.iter().map(|c| c.cloned()).collect(),
+            bbox: self.bbox,
+        }
+    }
+}
+
+/// An owned version of CellGroup for Python interop.
+#[pyclass(name = "CellGroup")]
+#[derive(Debug, Clone)]
+pub struct PyCellGroup {
+    /// The cells in this group, with `None` for empty positions.
+    #[pyo3(get)]
+    pub cells: Vec<Option<TableCell>>,
+    /// The bounding box of the entire group.
+    pub bbox: BboxKey,
+}
+
+#[pymethods]
+impl PyCellGroup {
+    #[getter]
+    fn bbox(&self) -> (f32, f32, f32, f32) {
+        (
+            self.bbox.0.into_inner(),
+            self.bbox.1.into_inner(),
+            self.bbox.2.into_inner(),
+            self.bbox.3.into_inner(),
+        )
+    }
 }
 
 /// Escapes a string field for CSV format.
@@ -216,6 +248,22 @@ impl Table {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
+    }
+
+    /// Get rows
+    /// Returns a vector of rows, where each row is a vector of cells or None
+    #[getter]
+    #[pyo3(name = "rows")]
+    fn py_rows(&self) -> Vec<PyCellGroup> {
+        self.rows().iter().map(|r| r.to_owned()).collect()
+    }
+
+    /// Get columns
+    /// Returns a vector of columns, where each column is a vector of cells or None
+    #[getter]
+    #[pyo3(name = "columns")]
+    fn py_columns(&self) -> Vec<PyCellGroup> {
+        self.columns().iter().map(|c| c.to_owned()).collect()
     }
 
     /// Converts the table to a CSV formatted string.
@@ -806,7 +854,7 @@ fn bbox_to_corners(bbox: &BboxKey) -> [Point; 4] {
 /// Groups cells into tables based on shared corners.
 ///
 /// This function only groups cells - it does not perform any filtering.
-/// All filtering (single cell, min_rows, min_cols) should be done after this function.
+/// All filtering (single cell, min_rows, min_columns) should be done after this function.
 pub fn cells_to_tables(cells: &[BboxKey]) -> Vec<Vec<BboxKey>> {
     let n = cells.len();
     let mut used = vec![false; n];
@@ -895,7 +943,7 @@ fn filter_tables(
     tables: Vec<Vec<BboxKey>>,
     include_single_cell: bool,
     min_rows: Option<usize>,
-    min_cols: Option<usize>,
+    min_columns: Option<usize>,
 ) -> Vec<Vec<BboxKey>> {
     let tables_after_filter_single_cell: Vec<Vec<BboxKey>> = match include_single_cell {
         true => tables,
@@ -908,7 +956,7 @@ fn filter_tables(
             .collect(),
         None => tables_after_filter_single_cell,
     };
-    match min_cols {
+    match min_columns {
         Some(min_c) => tables_after_filter_rows
             .into_iter()
             .filter(|t| count_cols(t) >= min_c)
@@ -1025,11 +1073,11 @@ pub fn find_tables_from_cells(
 ) -> Vec<Table> {
     let include_single_cell = tf_settings.is_some_and(|s| s.include_single_cell);
     let min_rows = tf_settings.and_then(|s| s.min_rows);
-    let min_cols = tf_settings.and_then(|s| s.min_cols);
+    let min_columns = tf_settings.and_then(|s| s.min_columns);
     let need_strip = tf_settings.is_none_or(|s| s.text_settings.need_strip);
 
     let tables_bbox = cells_to_tables(cells);
-    let tables_bbox = filter_tables(tables_bbox, include_single_cell, min_rows, min_cols);
+    let tables_bbox = filter_tables(tables_bbox, include_single_cell, min_rows, min_columns);
 
     let objects_guard = if extract_text {
         let page = match pdf_page {
@@ -1195,7 +1243,7 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_tables_min_cols() {
+    fn test_filter_tables_min_columns() {
         // Create a 2x2 table (2 rows, 2 cols)
         let cells: Vec<BboxKey> = vec![
             (of(0.0), of(0.0), of(10.0), of(10.0)),
@@ -1204,10 +1252,10 @@ mod tests {
             (of(10.0), of(10.0), of(20.0), of(20.0)),
         ];
         let tables = cells_to_tables(&cells);
-        // min_cols=2 should keep the table
+        // min_columns=2 should keep the table
         let filtered = filter_tables(tables.clone(), false, Some(2), None);
         assert_eq!(filtered.len(), 1);
-        // min_cols=3 should filter it out
+        // min_columns=3 should filter it out
         let filtered = filter_tables(tables, false, None, Some(3));
         assert_eq!(filtered.len(), 0);
     }

@@ -429,6 +429,23 @@ class TableCell:
     bbox: BBox
     text: str
 
+class CellGroup:
+    """
+    Represents a group of table cells arranged in a row or column.
+
+    Cells may be `None` for empty positions in the grid.
+
+    Attributes
+    ----------
+    cells : list of TableCell or None
+        The cells in this group, with `None` for empty positions.
+    bbox : BBox
+        The bounding box of the entire group (x1, y1, x2, y2).
+    """
+
+    cells: list[TableCell | None]
+    bbox: BBox
+
 class Table:
     """
     Represents a table extracted from a PDF page.
@@ -439,6 +456,10 @@ class Table:
         The bounding box of the entire table (x1, y1, x2, y2).
     cells : list of TableCell
         All cells contained in the table.
+    rows : list of CellGroup
+        All rows in the table, where each row contains cells or None for empty positions.
+    columns : list of CellGroup
+        All columns in the table, where each column contains cells or None for empty positions.
     page_index : int
         The index of the page containing this table.
     text_extracted : bool
@@ -447,6 +468,8 @@ class Table:
 
     bbox: BBox
     cells: list[TableCell]
+    rows: list[CellGroup]
+    columns: list[CellGroup]
     page_index: int
     text_extracted: bool
 
@@ -653,7 +676,7 @@ class TfSettingItems(TypedDict, total=False):
     min_rows : int or None
         Minimum number of rows required for a table. None means would not filter by this arg.
         Default: None
-    min_cols : int or None
+    min_columns : int or None
         Minimum number of columns required for a table. None means would not filter by this arg.
         Default: None
     text_x_tolerance : float
@@ -688,7 +711,7 @@ class TfSettingItems(TypedDict, total=False):
     intersection_y_tolerance: NonNegativeFloat  # Default: 3.0
     include_single_cell: bool  # Default: False
     min_rows: int | None  # Default: None
-    min_cols: int | None  # Default: None
+    min_columns: int | None  # Default: None
     text_need_strip: bool  # Default: True
     text_x_tolerance: NonNegativeFloat  # Default: 3.0
     text_y_tolerance: NonNegativeFloat  # Default: 3.0
@@ -735,7 +758,7 @@ class TfSettings:
         Whether to include tables with only a single cell.
     min_rows : int or None
         Minimum number of rows required for a table. None means would not filter by this arg.
-    min_cols : int or None
+    min_columns : int or None
         Minimum number of columns required for a table. None means would not filter by this arg.
     text_need_strip : bool
         Whether to strip leading/trailing whitespace from cell text.
@@ -776,7 +799,7 @@ class TfSettings:
     intersection_y_tolerance: float
     include_single_cell: bool
     min_rows: int | None
-    min_cols: int | None
+    min_columns: int | None
     text_need_strip: bool
     text_settings: WordsExtractSettings
     text_x_tolerance: float

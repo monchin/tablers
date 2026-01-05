@@ -470,3 +470,64 @@ class TestTableExtractionIntegration:
         # Find tables with settings
         tables = find_tables(page, extract_text=True, tf_settings=tf_settings)
         assert isinstance(tables, list)
+
+
+class TestTableExtractionFilter:
+    def test_include_single_cell(self, tables_filter_test_doc: Document) -> None:
+        """Test table extraction with a single cell included."""
+        page = tables_filter_test_doc.get_page(0)
+        tables = find_tables(page, True, None, include_single_cell=True)
+        assert len(tables) == 4
+        assert len(tables[0].cells) == 1
+
+        tf_settings = TfSettings(include_single_cell=True)
+        tables_tf = find_tables(page, True, tf_settings)
+        assert len(tables_tf) == 4
+        assert len(tables_tf[0].cells) == 1
+
+    def test_exclude_single_cell(self, tables_filter_test_doc: Document) -> None:
+        """Test table extraction with a single cell excluded."""
+        page = tables_filter_test_doc.get_page(0)
+        tables = find_tables(page, True, None, include_single_cell=False)
+        assert len(tables) == 3
+        assert len(tables[0].cells) == 2
+
+        tf_settings = TfSettings(include_single_cell=False)
+        tables_tf = find_tables(page, True, tf_settings)
+        assert len(tables_tf) == 3
+        assert len(tables_tf[0].cells) == 2
+
+    def test_filter_by_min_columns_2(self, tables_filter_test_doc: Document) -> None:
+        """Test table extraction with a minimum number of columns."""
+        page = tables_filter_test_doc.get_page(0)
+        tables = find_tables(page, True, None, include_single_cell=True, min_columns=2)
+        assert len(tables) == 2
+        assert len(tables[0].columns) == 2 and len(tables[0].rows) == 1
+        assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
+
+        tf_settings = TfSettings(include_single_cell=False, min_columns=2)
+        tables_tf = find_tables(page, True, tf_settings)
+        assert len(tables_tf) == 2
+        assert len(tables[0].columns) == 2 and len(tables[0].rows) == 1
+        assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
+
+    def test_filter_by_min_rows_2(self, tables_filter_test_doc: Document) -> None:
+        """Test table extraction with a minimum number of rows."""
+        page = tables_filter_test_doc.get_page(0)
+        tables = find_tables(page, True, None, include_single_cell=True, min_rows=2)
+        assert len(tables) == 2
+        assert len(tables[0].columns) == 1 and len(tables[0].rows) == 2
+        assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
+
+        tf_settings = TfSettings(include_single_cell=False, min_rows=2)
+        tables_tf = find_tables(page, True, tf_settings)
+        assert len(tables_tf) == 2
+        assert len(tables[0].columns) == 1 and len(tables[0].rows) == 2
+        assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
+
+    def test_filter_by_min_rows_2_and_min_columns_2(self, tables_filter_test_doc: Document) -> None:
+        """Test table extraction with a minimum number of rows and columns."""
+        page = tables_filter_test_doc.get_page(0)
+        tables = find_tables(page, True, None, include_single_cell=True, min_rows=2, min_columns=2)
+        assert len(tables) == 1
+        assert len(tables[0].columns) == 2 and len(tables[0].rows) == 2

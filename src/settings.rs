@@ -183,7 +183,7 @@ pub struct TfSettings {
     /// Minimum number of rows required for a table (None means no minimum).
     pub min_rows: Option<usize>,
     /// Minimum number of columns required for a table (None means no minimum).
-    pub min_cols: Option<usize>,
+    pub min_columns: Option<usize>,
     /// Settings for text/word extraction.
     pub text_settings: WordsExtractSettings,
 }
@@ -205,7 +205,7 @@ impl Default for TfSettings {
             intersection_y_tolerance: NonNegativeF32::new_unchecked(DEFAULT_INTERSECTION_TOLERANCE),
             include_single_cell: false,
             min_rows: None,
-            min_cols: None,
+            min_columns: None,
             text_settings: WordsExtractSettings::default(),
         }
     }
@@ -330,7 +330,9 @@ impl TfSettings {
                         settings.include_single_cell = value.extract::<bool>().unwrap()
                     }
                     "min_rows" => settings.min_rows = value.extract::<Option<usize>>().unwrap(),
-                    "min_cols" => settings.min_cols = value.extract::<Option<usize>>().unwrap(),
+                    "min_columns" => {
+                        settings.min_columns = value.extract::<Option<usize>>().unwrap()
+                    }
                     "text_need_strip" => {
                         settings.text_settings.need_strip = value.extract::<bool>().unwrap()
                     }
@@ -444,8 +446,8 @@ impl TfSettings {
     }
 
     #[getter]
-    fn min_cols(&self) -> Option<usize> {
-        self.min_cols
+    fn min_columns(&self) -> Option<usize> {
+        self.min_columns
     }
 
     #[getter]
@@ -576,8 +578,8 @@ impl TfSettings {
     }
 
     #[setter]
-    fn set_min_cols(&mut self, value: Option<usize>) {
-        self.min_cols = value;
+    fn set_min_columns(&mut self, value: Option<usize>) {
+        self.min_columns = value;
     }
 
     #[setter]
@@ -639,7 +641,7 @@ impl TfSettings {
              edge_min_length={}, edge_min_length_prefilter={}, \
              min_words_vertical={}, min_words_horizontal={}, \
              intersection_x_tolerance={}, intersection_y_tolerance={}, \
-             include_single_cell={}, min_rows={:?}, min_cols={:?}, \
+             include_single_cell={}, min_rows={:?}, min_columns={:?}, \
              text_need_strip={}, text_x_tolerance={}, text_y_tolerance={}, \
              text_keep_blank_chars={}, text_use_text_flow={}, \
              text_read_in_clockwise={}, text_split_at_punctuation={:?}, \
@@ -658,7 +660,7 @@ impl TfSettings {
             self.intersection_y_tolerance,
             self.include_single_cell,
             self.min_rows,
-            self.min_cols,
+            self.min_columns,
             self.text_settings.need_strip,
             self.text_settings.x_tolerance,
             self.text_settings.y_tolerance,
@@ -686,7 +688,7 @@ impl TfSettings {
                 && self.intersection_y_tolerance == other.intersection_y_tolerance
                 && self.include_single_cell == other.include_single_cell
                 && self.min_rows == other.min_rows
-                && self.min_cols == other.min_cols
+                && self.min_columns == other.min_columns
                 && self.text_settings.need_strip == other.text_settings.need_strip
                 && self.text_settings.x_tolerance == other.text_settings.x_tolerance
                 && self.text_settings.y_tolerance == other.text_settings.y_tolerance
