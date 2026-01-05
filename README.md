@@ -43,6 +43,7 @@
 - 🐍 **Pythonic API** - Easy-to-use Python interface with full type hints
 - 📄 **Edge Detection** - Accurate table detection using line and rectangle edge analysis
 - 📝 **Text Extraction** - Extract text content from table cells with configurable settings
+- 📤 **Multiple Export Formats** - Export tables to CSV, Markdown, and HTML
 - 🔐 **Encrypted PDFs** - Support for password-protected PDF documents
 - 💾 **Memory Efficient** - Lazy page loading for handling large PDF files
 - 🖥️ **Cross-Platform** - Works on Windows, Linux, and macOS
@@ -196,6 +197,18 @@ class Table:
     
     @property
     def text_extracted(self) -> bool: ...
+    
+    @property
+    def rows(self) -> int: ...
+    
+    @property
+    def columns(self) -> int: ...
+    
+    def to_csv(self) -> str: ...
+    
+    def to_markdown(self) -> str: ...
+    
+    def to_html(self) -> str: ...
 ```
 
 ### TableCell
@@ -296,6 +309,58 @@ with Document("multi_page.pdf") as doc:
     print(f"Found {len(all_tables)} tables in total")
 ```
 
+### Exporting Tables
+
+Export tables to various formats:
+
+```python
+from tablers import Document, find_tables
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    tables = find_tables(page, extract_text=True)
+    
+    for i, table in enumerate(tables):
+        print(f"Table {i}: {table.rows} rows x {table.columns} columns")
+        
+        # Export to CSV
+        csv_content = table.to_csv()
+        with open(f"table_{i}.csv", "w") as f:
+            f.write(csv_content)
+        
+        # Export to Markdown
+        md_content = table.to_markdown()
+        print(md_content)
+        
+        # Export to HTML
+        html_content = table.to_html()
+        with open(f"table_{i}.html", "w") as f:
+            f.write(html_content)
+```
+
+### Filtering Tables
+
+Filter tables by size and whether single cell, see tests/data/table-filter-test.pdf
+
+```python
+from tablers import Document, find_tables
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    
+    # Only get tables with at least 2 rows and 3 columns
+    tables = find_tables(
+        page,
+        extract_text=True,
+        min_rows=2,
+        min_cols=3,
+        include_single_cell=False  # Exclude single-cell tables (default)
+    )
+    
+    for table in tables:
+        print(f"Table: {table.rows}x{table.columns}")
+```
+
 ## Development
 
 ### Building from Source
@@ -304,7 +369,9 @@ with Document("multi_page.pdf") as doc:
 install rustup
 install uv
 
-uv tool install maturin pdm pre-commit
+uv tool install maturin
+uv tool install pdm
+uv tool install pre-commit
 uv python install 3.10(or higher)
 ```
 ```bash
@@ -333,5 +400,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- [pdfium-render](https://github.com/nickswalker/pdfium-render) - Rust bindings for PDFium
+- [pdfium-render](https://github.com/ajrcarey/pdfium-render) - Rust bindings for PDFium
 - [PyO3](https://github.com/PyO3/pyo3) - Rust bindings for Python

@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-01-05
+### Added
+- Add CSV export for tables (`to_csv`) (#5)
+- Add Markdown export for tables (`to_markdown`)
+- Add HTML export for tables (`to_html`)
+- Add `min_rows` and `min_cols` settings for table filtering (default: None, no filter)
+- Add `include_single_cell` setting to configure whether to include tables with only one cell (default: false)
+- Add `need_strip` option to table extraction functions for whitespace and line feed handling (default: true)
+- Add `rows` and `columns` properties for Python bindings
+
+### Fixed
+- Fix handling of multiple MoveTo commands in one path segment
+- Improve rectangle detection with better path segment type handling
+
 ## [0.1.1] - 2025-12-30
 ### Fixed
 - Fix the bug that linux whl does not contains `libpdfium.so` (fixed by renaming it to `libpdfium.so.1`)
