@@ -242,6 +242,7 @@ Represents a group of cells in a table.
 class CellGroup:
     cells: list[TableCell | None]
     bbox: tuple[float, float, float, float]
+```
 
 ## Advanced Usage
 
