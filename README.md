@@ -27,6 +27,7 @@
 <p align="center">
   <a href="#features">Features</a> •
   <a href="#motivation">Motivation</a> •
+  <a href="#benchmark">Benchmark</a> •
   <a href="#note">Note</a> •
   <a href="#installation">Installation</a> •
   <a href="#quick-start">Quick Start</a> •
@@ -50,6 +51,16 @@
 
 ## Motivation
 This project draws significant inspiration from the table extraction modules of [pdfplumber](https://github.com/jsvine/pdfplumber) and [PyMuPDF](https://github.com/pymupdf/PyMuPDF). During practical use, we observed that both pdfplumber and PyMuPDF exhibit performance limitations when extracting tables from large PDF files, which hindered efficient data processing. To address this issue, the current project was initiated.
+
+## Benchmark
+
+Performance comparison of tablers, pymupdf and pdfplumber for PDF table extraction:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/monchin/tablers-benchmark/master/table_extraction_benchmark.png" alt="Table Extraction Benchmark">
+</p>
+
+For more details, please refer to the [tablers-benchmark](https://github.com/monchin/tablers-benchmark) repository.
 
 ## Note
 This solution is primarily designed for text-based PDFs and does not support scanned PDFs.
@@ -199,10 +210,10 @@ class Table:
     def text_extracted(self) -> bool: ...
     
     @property
-    def rows(self) -> int: ...
+    def rows(self) -> list[CellGroup]: ...
     
     @property
-    def columns(self) -> int: ...
+    def columns(self) -> list[CellGroup]: ...
     
     def to_csv(self) -> str: ...
     
@@ -223,6 +234,14 @@ class TableCell:
     @property
     def bbox(self) -> tuple[float, float, float, float]: ...
 ```
+
+### CellGroup
+Represents a group of cells in a table.
+
+```python
+class CellGroup:
+    cells: list[TableCell | None]
+    bbox: tuple[float, float, float, float]
 
 ## Advanced Usage
 
