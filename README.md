@@ -373,7 +373,7 @@ with Document("example.pdf") as doc:
         page,
         extract_text=True,
         min_rows=2,
-        min_cols=3,
+        min_columns=3,
         include_single_cell=False  # Exclude single-cell tables (default)
     )
     

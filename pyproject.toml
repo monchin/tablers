@@ -28,6 +28,7 @@ build-backend = "maturin"
 [project.urls]
 Homepage = "https://github.com/monchin/tablers"
 Repository = "https://github.com/monchin/tablers"
+Documentation = "https://monchin.github.io/tablers/"
 
 [dependency-groups]
 stub = [
@@ -36,6 +37,9 @@ stub = [
 test = [
     "pytest>=9.0.2",
     "pytest-cov>=7.0.0",
+]
+docs = [
+    "mkdocs-material>=9.5.0",
 ]
 
 [tool.maturin]
@@ -48,6 +52,8 @@ lint = {composite = ["cargo check", "cargo clippy", "ruff check .", "ty check ."
 test = {composite = ["cargo test", "pytest tests/python"]}
 pre_build = "python scripts/pre-build.py"
 post_build = "python scripts/post-build.py"
+docs = "mkdocs serve"
+docs-build = "mkdocs build"
 
 [tool.ruff]
 line-length = 100
