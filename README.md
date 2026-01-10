@@ -24,16 +24,6 @@
   </a>
 </p>
 
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#motivation">Motivation</a> •
-  <a href="#benchmark">Benchmark</a> •
-  <a href="#note">Note</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#license">License</a>
-</p>
-
 ---
 
 ## Features

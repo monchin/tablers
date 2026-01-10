@@ -29,6 +29,7 @@ build-backend = "maturin"
 Homepage = "https://github.com/monchin/tablers"
 Repository = "https://github.com/monchin/tablers"
 Documentation = "https://monchin.github.io/tablers/"
+Changelog = "https://monchin.github.io/tablers/changelog/"
 
 [dependency-groups]
 stub = [
@@ -85,3 +86,7 @@ python = "./.venv"
 
 [tool.rumdl]
 disable = ["MD013", "MD033", "MD041"]
+
+[tool.rumdl.per-file-ignores]
+# ignore indent issues for this file for better display in mkdocs
+"docs/getting_started/installation.md" = ["MD007"]

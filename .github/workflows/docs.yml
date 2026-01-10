@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - docs  # Preview branch - remove after merging to main
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
