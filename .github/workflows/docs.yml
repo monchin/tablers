@@ -4,10 +4,13 @@ on:
   push:
     branches:
       - main
+      - docs  # Preview branch - remove after merging to main
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
       - '.github/workflows/docs.yml'
+      - 'README.md'
+      - 'CHANGELOG.md'
   workflow_dispatch:
 
 permissions:
