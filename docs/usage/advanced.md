@@ -265,5 +265,3 @@ except RuntimeError as e:
 
 - See [Settings Reference](../reference/settings.md) for all configuration options
 - Check the [API Reference](../reference/api.md) for complete documentation
-
-

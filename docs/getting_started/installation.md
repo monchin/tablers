@@ -68,7 +68,7 @@ Or run a simple test:
 from tablers import Document, find_tables
 
 # Check if the module loaded correctly
-print("Tablers installed successfully!")
+print("tablers installed successfully!")
 ```
 
 ## Troubleshooting
@@ -83,8 +83,4 @@ ldd --version
 
 ### Architecture Issues on macOS
 
-Tablers currently only supports Apple Silicon (ARM64) architecture on macOS. If you're using an Intel Mac, consider building from source and download pdfium binaries from https://github.com/bblanchon/pdfium-binaries
-
-### Dependency Issues on Windows
-
-Make sure you have Microsoft Visual C++ Redistributable installed. If you encounter DLL loading errors, download and install the latest version from the [Microsoft website](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+Tablers currently only supports Apple Silicon (ARM64) architecture on macOS. If you're using an Intel Mac, consider building from source and download pdfium binaries from [this project](https://github.com/bblanchon/pdfium-binaries) and replace the pdfium binaries in the `python/tablers` directory.

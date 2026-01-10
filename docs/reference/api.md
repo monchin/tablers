@@ -13,7 +13,7 @@ def find_tables(
     page: Page,
     extract_text: bool,
     tf_settings: TfSettings | None = None,
-    **kwargs
+    **kwargs: Unpack[TfSettingItems]
 ) -> list[Table]
 ```
 
@@ -23,8 +23,8 @@ def find_tables(
 |-----------|------|-------------|
 | `page` | `Page` | The PDF page to analyze |
 | `extract_text` | `bool` | Whether to extract text content from table cells |
-| `tf_settings` | `TfSettings \| None` | TableFinder settings object. If not provided, default settings are used |
-| `**kwargs` | | Additional keyword arguments passed to TfSettings |
+| `tf_settings` | `Optional[TfSettings]` | TableFinder settings object. If not provided, default settings are used |
+| `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
 
 **Returns:** `list[Table]` - A list of Table objects found in the page.
 
@@ -50,7 +50,7 @@ Find all table cell bounding boxes in a PDF page.
 def find_all_cells_bboxes(
     page: Page,
     tf_settings: TfSettings | None = None,
-    **kwargs
+    **kwargs: Unpack[TfSettingItems]
 ) -> list[tuple[float, float, float, float]]
 ```
 
@@ -59,8 +59,8 @@ def find_all_cells_bboxes(
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `page` | `Page` | The PDF page to analyze |
-| `tf_settings` | `TfSettings \| None` | TableFinder settings object |
-| `**kwargs` | | Additional keyword arguments passed to TfSettings |
+| `tf_settings` | `Optional[TfSettings]` | TableFinder settings object |
+| `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
 
 **Returns:** `list[BBox]` - A list of bounding boxes (x1, y1, x2, y2) for each detected cell.
 
@@ -87,7 +87,7 @@ def find_tables_from_cells(
     extract_text: bool,
     page: Page | None = None,
     tf_settings: TfSettings | None = None,
-    **kwargs
+    **kwargs: Unpack[TfSettingItems]
 ) -> list[Table]
 ```
 
@@ -97,9 +97,9 @@ def find_tables_from_cells(
 |-----------|------|-------------|
 | `cells` | `list[BBox]` | A list of cell bounding boxes to group into tables |
 | `extract_text` | `bool` | Whether to extract text content from cells |
-| `page` | `Page \| None` | The PDF page (required if extract_text is True) |
-| `tf_settings` | `TfSettings \| None` | Table finder settings |
-| `**kwargs` | | Additional keyword arguments for settings |
+| `page` | `Optional[Page]` | The PDF page (required if extract_text is True) |
+| `tf_settings` | `Optional[TfSettings]` | Table finder settings |
+| `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments for settings |
 
 **Returns:** `list[Table]` - A list of Table objects constructed from the cells.
 
@@ -149,12 +149,12 @@ class Document:
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `path` | `Path \| str \| None` | File path to the PDF document |
-| `bytes` | `bytes \| None` | PDF content as bytes |
-| `password` | `str \| None` | Password for encrypted PDFs |
+| `path` | `Union[Path, str, None]` | File path to the PDF document |
+| `bytes` | `Optional[bytes]` | PDF content as bytes |
+| `password` | `Optional[str]` | Password for encrypted PDFs |
 
 !!! note
-    Either `path` or `bytes` must be provided, but not both.
+    Either `path` or `bytes` must be provided, but not both. If both are provided, only `path` is used.
 
 **Methods:**
 
@@ -304,7 +304,7 @@ Represents a text character extracted from a PDF page.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `unicode_char` | `str \| None` | Unicode character |
+| `unicode_char` | `Optional[str]` | Unicode character |
 | `bbox` | `tuple[float, float, float, float]` | Bounding box |
 | `rotation_degrees` | `float` | Clockwise rotation in degrees |
 | `upright` | `bool` | Whether the character is upright |
@@ -336,5 +336,4 @@ Represents a line edge extracted from a PDF page.
 | `Point` | `tuple[float, float]` | A 2D point (x, y) |
 | `BBox` | `tuple[float, float, float, float]` | Bounding box (x1, y1, x2, y2) |
 | `Color` | `tuple[int, int, int, int]` | RGBA color (0-255 each) |
-
 

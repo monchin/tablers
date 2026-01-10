@@ -1,5 +1,5 @@
 site_name: Tablers
-site_description: A blazingly fast PDF table extraction library powered by Rust
+site_description: A blazingly fast PDF table extraction library with python API powered by Rust
 site_author: monchin
 site_url: https://monchin.github.io/tablers/
 repo_name: monchin/tablers
@@ -20,15 +20,15 @@ theme:
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: deep purple
-      accent: deep purple
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-sunny
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: deep purple
-      accent: deep purple
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-night
         name: Switch to system preference
@@ -70,6 +70,10 @@ markdown_extensions:
 
 plugins:
   - search
+  - include-markdown
+
+extra_css:
+  - stylesheets/extra.css
 
 extra:
   social:
@@ -81,8 +85,8 @@ extra:
 nav:
   - Home: index.md
   - Getting Started:
-      - Installation: installation.md
-      - Quick Start: quickstart.md
+      - Installation: getting_started/installation.md
+      - Quick Start: getting_started/quickstart.md
   - User Guide:
       - Basic Usage: usage/index.md
       - Advanced Usage: usage/advanced.md
@@ -90,5 +94,3 @@ nav:
       - API Reference: reference/api.md
       - Settings: reference/settings.md
   - Changelog: changelog.md
-
-

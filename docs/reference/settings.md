@@ -21,8 +21,8 @@ settings = TfSettings(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `vertical_strategy` | `"lines" \| "lines_strict" \| "text"` | `"lines_strict"` | Strategy for detecting vertical edges |
-| `horizontal_strategy` | `"lines" \| "lines_strict" \| "text"` | `"lines_strict"` | Strategy for detecting horizontal edges |
+| `vertical_strategy` | `Literal["lines", "lines_strict" "text"]` | `"lines_strict"` | Strategy for detecting vertical edges |
+| `horizontal_strategy` | `Literal["lines", "lines_strict" "text"]` | `"lines_strict"` | Strategy for detecting horizontal edges |
 
 **Strategy Options:**
 
@@ -55,8 +55,8 @@ settings = TfSettings(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `include_single_cell` | `bool` | `False` | Whether to include tables with only a single cell |
-| `min_rows` | `int \| None` | `None` | Minimum number of rows required. `None` means no filtering |
-| `min_columns` | `int \| None` | `None` | Minimum number of columns required. `None` means no filtering |
+| `min_rows` | `Optional[int]` | `None` | Minimum number of rows required. `None` means no filtering |
+| `min_columns` | `Optional[int]` | `None` | Minimum number of columns required. `None` means no filtering |
 
 ### Text Extraction (within TfSettings)
 
@@ -67,7 +67,7 @@ settings = TfSettings(
 | `text_keep_blank_chars` | `bool` | `False` | Whether to keep blank characters |
 | `text_use_text_flow` | `bool` | `False` | Whether to use PDF text flow order |
 | `text_read_in_clockwise` | `bool` | `True` | Whether text reads in clockwise direction |
-| `text_split_at_punctuation` | `"all" \| str \| None` | `None` | Punctuation splitting configuration |
+| `text_split_at_punctuation` | `Union[Literal["all"], str, None` | `None` | Punctuation splitting configuration |
 | `text_expand_ligatures` | `bool` | `True` | Whether to expand ligatures |
 | `text_need_strip` | `bool` | `True` | Whether to strip whitespace from cell text |
 
@@ -131,7 +131,7 @@ we_settings = WordsExtractSettings(
 | `keep_blank_chars` | `bool` | `False` | Whether to preserve blank/whitespace characters |
 | `use_text_flow` | `bool` | `False` | Whether to use the PDF's text flow order |
 | `text_read_in_clockwise` | `bool` | `True` | Whether text reads in clockwise direction |
-| `split_at_punctuation` | `"all" \| str \| None` | `None` | Punctuation splitting configuration |
+| `split_at_punctuation` | `Union[Literal["all"], str, None]` | `None` | Punctuation splitting configuration |
 | `expand_ligatures` | `bool` | `True` | Whether to expand ligatures into individual characters |
 | `need_strip` | `bool` | `True` | Whether to strip leading/trailing whitespace from cell text |
 
@@ -223,62 +223,4 @@ with Document("example.pdf") as doc:
         we_settings=we_settings,
     )
 ```
-
----
-
-## Common Configuration Patterns
-
-### High-Precision Detection
-
-For tables with precise borders:
-
-```python
-settings = TfSettings(
-    vertical_strategy="lines_strict",
-    horizontal_strategy="lines_strict",
-    snap_x_tolerance=1.0,
-    snap_y_tolerance=1.0,
-)
-```
-
-### Loose Detection
-
-For tables with imprecise or hand-drawn borders:
-
-```python
-settings = TfSettings(
-    vertical_strategy="lines",
-    horizontal_strategy="lines",
-    snap_x_tolerance=10.0,
-    snap_y_tolerance=10.0,
-    join_x_tolerance=10.0,
-    join_y_tolerance=10.0,
-)
-```
-
-### Borderless Tables
-
-For tables without visible borders:
-
-```python
-settings = TfSettings(
-    vertical_strategy="text",
-    horizontal_strategy="text",
-    min_words_vertical=2,
-    min_words_horizontal=1,
-)
-```
-
-### Large Tables Only
-
-Filter out small tables:
-
-```python
-settings = TfSettings(
-    min_rows=3,
-    min_columns=2,
-    include_single_cell=False,
-)
-```
-
 

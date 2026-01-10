@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add CSV export for tables (`to_csv`) (#5)
 - Add Markdown export for tables (`to_markdown`)
 - Add HTML export for tables (`to_html`)
-- Add `min_rows` and `min_cols` settings for table filtering (default: None, no filter)
+- Add `min_rows` and `min_columns` settings for table filtering (default: None, no filter)
 - Add `include_single_cell` setting to configure whether to include tables with only one cell (default: false)
 - Add `need_strip` option to table extraction functions for whitespace and line feed handling (default: true)
 - Add `rows` and `columns` properties for Python bindings

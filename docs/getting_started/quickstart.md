@@ -112,8 +112,9 @@ with Document("multi_page.pdf") as doc:
 
 ## Next Steps
 
-- Learn about [Advanced Usage](usage/advanced.md) for fine-tuning table detection
-- Explore the [API Reference](reference/api.md) for complete documentation
-- Check [Settings Reference](reference/settings.md) for all configuration options
+- Learn about [Advanced Usage](../usage/advanced.md) for fine-tuning table detection
+- Explore the [API Reference](../reference/api.md) for complete documentation
+- Check [Settings Reference](../reference/settings.md) for all configuration options
+
 
 

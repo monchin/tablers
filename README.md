@@ -6,7 +6,7 @@
 <h1 align="center">⚡ Tablers</h1>
 
 <p align="center">
-  <strong>A blazingly fast PDF table extraction library powered by Rust</strong>
+  <strong>A blazingly fast PDF table extraction library with python API powered by Rust</strong>
 </p>
 
 <p align="center">
@@ -31,8 +31,6 @@
   <a href="#note">Note</a> •
   <a href="#installation">Installation</a> •
   <a href="#quick-start">Quick Start</a> •
-  <a href="#api-reference">API Reference</a> •
-  <a href="#advanced-usage">Advanced Usage</a> •
   <a href="#license">License</a>
 </p>
 
@@ -49,8 +47,12 @@
 - 💾 **Memory Efficient** - Lazy page loading for handling large PDF files
 - 🖥️ **Cross-Platform** - Works on Windows, Linux, and macOS
 
-## Motivation
-This project draws significant inspiration from the table extraction modules of [pdfplumber](https://github.com/jsvine/pdfplumber) and [PyMuPDF](https://github.com/pymupdf/PyMuPDF). During practical use, we observed that both pdfplumber and PyMuPDF exhibit performance limitations when extracting tables from large PDF files, which hindered efficient data processing. To address this issue, the current project was initiated.
+## Why Tablers?
+This project draws significant inspiration from the table extraction modules of [pdfplumber](https://github.com/jsvine/pdfplumber) and [PyMuPDF](https://github.com/pymupdf/PyMuPDF). Compared to `pdfplumber` and `PyMuPDF`, `tablers` has the following advantages:
+
+- **High Performance**: Utilizes Rust for high-performance PDF processing
+- **More Configurable**: Supports customizable table filter settings (`min_rows`, `min_columns`, `include_single_cell`, e.g., see [this issue](https://github.com/pymupdf/PyMuPDF/issues/3987))
+- **Clean Python Dependencies**: No external python dependencies required
 
 ## Benchmark
 
@@ -104,310 +106,9 @@ with Document("example.pdf") as doc:
     for table in tables:
         print(f"Table bbox: {table.bbox}")
 ```
+For more advanced usage, please refer to the [documents](https://monchin.github.io/tablers/).
 
-### Opening PDF from Bytes
 
-```python
-from tablers import Document, find_tables
-
-with open("example.pdf", "rb") as f:
-    pdf_bytes = f.read()
-
-doc = Document(bytes=pdf_bytes)
-# ... process document
-doc.close()
-```
-
-### Working with Encrypted PDFs
-
-```python
-from tablers import Document
-
-doc = Document("encrypted.pdf", password="secret123")
-# ... process document
-doc.close()
-```
-
-## API Reference
-
-### Document
-
-The main class for working with PDF documents.
-
-```python
-class Document:
-    def __init__(
-        self,
-        path: Path | str | None = None,
-        bytes: bytes | None = None,
-        password: str | None = None
-    ): ...
-    
-    @property
-    def page_count(self) -> int: ...
-    
-    def get_page(self, page_num: int) -> Page: ...
-    def pages(self) -> PageIterator: ...
-    def close(self) -> None: ...
-    def is_closed(self) -> bool: ...
-```
-
-### find_tables
-
-Extract all tables from a page.
-
-```python
-def find_tables(
-    page: Page,
-    extract_text: bool,
-    tf_settings: TfSettings | None = None,
-    **kwargs
-) -> list[Table]: ...
-```
-
-### find_all_cells_bboxes
-
-Find all table cell bounding boxes in a page.
-
-```python
-def find_all_cells_bboxes(
-    page: Page,
-    tf_settings: TfSettings | None = None,
-    **kwargs
-) -> list[tuple[float, float, float, float]]: ...
-```
-
-### find_tables_from_cells
-
-Construct tables from pre-detected cell bounding boxes.
-
-```python
-def find_tables_from_cells(
-    cells: list[tuple[float, float, float, float]],
-    extract_text: bool,
-    pdf_page: Page | None = None,
-    we_settings: WordsExtractSettings | None = None,
-    **kwargs
-) -> list[Table]: ...
-```
-
-### Table
-
-Represents an extracted table.
-
-```python
-class Table:
-    @property
-    def cells(self) -> list[TableCell]: ...
-    
-    @property
-    def bbox(self) -> tuple[float, float, float, float]: ...
-    
-    @property
-    def page_index(self) -> int: ...
-    
-    @property
-    def text_extracted(self) -> bool: ...
-    
-    @property
-    def rows(self) -> list[CellGroup]: ...
-    
-    @property
-    def columns(self) -> list[CellGroup]: ...
-    
-    def to_csv(self) -> str: ...
-    
-    def to_markdown(self) -> str: ...
-    
-    def to_html(self) -> str: ...
-```
-
-### TableCell
-
-Represents a single cell in a table.
-
-```python
-class TableCell:
-    @property
-    def text(self) -> str: ...
-    
-    @property
-    def bbox(self) -> tuple[float, float, float, float]: ...
-```
-
-### CellGroup
-Represents a group of cells in a table.
-
-```python
-class CellGroup:
-    cells: list[TableCell | None]
-    bbox: tuple[float, float, float, float]
-```
-
-## Advanced Usage
-
-### Custom Table Detection Settings
-
-Fine-tune the table detection algorithm with `TfSettings`:
-
-```python
-from tablers import Document, find_tables, TfSettings
-
-settings = TfSettings(
-    vertical_strategy="lines",       # "lines", "lines_strict", "text"
-    horizontal_strategy="lines",     # "lines", "lines_strict", "text"
-    snap_x_tolerance=5.0,            # X-axis snapping tolerance
-    snap_y_tolerance=5.0,            # Y-axis snapping tolerance
-    edge_min_length=10.0,            # Minimum edge length
-)
-
-with Document("complex_table.pdf") as doc:
-    page = doc.get_page(0)
-    tables = find_tables(page, extract_text=True, tf_settings=settings)
-```
-
-### Custom Text Extraction Settings
-
-Configure text extraction with `WordsExtractSettings`:
-
-```python
-from tablers import Document, find_tables_from_cells, find_all_cells_bboxes, WordsExtractSettings
-
-we_settings = WordsExtractSettings(
-    x_tolerance=3.0,     # Horizontal tolerance for word grouping
-    y_tolerance=3.0,     # Vertical tolerance for word grouping
-)
-
-with Document("example.pdf") as doc:
-    page = doc.get_page(0)
-    cells = find_all_cells_bboxes(page)
-    tables = find_tables_from_cells(
-        cells,
-        extract_text=True,
-        pdf_page=page,
-        we_settings=we_settings
-    )
-```
-
-### Two-Step Table Extraction
-
-For more control, separate cell detection from table construction:
-
-```python
-from tablers import Document, find_all_cells_bboxes, find_tables_from_cells
-
-with Document("example.pdf") as doc:
-    page = doc.get_page(0)
-    
-    # Step 1: Detect all cell bounding boxes
-    cell_bboxes = find_all_cells_bboxes(page)
-    print(f"Found {len(cell_bboxes)} cells")
-    
-    # Step 2: Optionally filter or modify cell_bboxes here
-    
-    # Step 3: Construct tables from cells
-    tables = find_tables_from_cells(
-        cell_bboxes,
-        extract_text=True,
-        pdf_page=page
-    )
-```
-
-### Processing Multiple Pages
-
-```python
-from tablers import Document, find_tables
-
-with Document("multi_page.pdf") as doc:
-    print(f"Processing {doc.page_count} pages")
-    
-    all_tables = []
-    for page in doc.pages():
-        tables = find_tables(page, extract_text=True)
-        all_tables.extend(tables)
-    
-    print(f"Found {len(all_tables)} tables in total")
-```
-
-### Exporting Tables
-
-Export tables to various formats:
-
-```python
-from tablers import Document, find_tables
-
-with Document("example.pdf") as doc:
-    page = doc.get_page(0)
-    tables = find_tables(page, extract_text=True)
-    
-    for i, table in enumerate(tables):
-        print(f"Table {i}: {table.rows} rows x {table.columns} columns")
-        
-        # Export to CSV
-        csv_content = table.to_csv()
-        with open(f"table_{i}.csv", "w") as f:
-            f.write(csv_content)
-        
-        # Export to Markdown
-        md_content = table.to_markdown()
-        print(md_content)
-        
-        # Export to HTML
-        html_content = table.to_html()
-        with open(f"table_{i}.html", "w") as f:
-            f.write(html_content)
-```
-
-### Filtering Tables
-
-Filter tables by size and whether single cell, see tests/data/table-filter-test.pdf
-
-```python
-from tablers import Document, find_tables
-
-with Document("example.pdf") as doc:
-    page = doc.get_page(0)
-    
-    # Only get tables with at least 2 rows and 3 columns
-    tables = find_tables(
-        page,
-        extract_text=True,
-        min_rows=2,
-        min_columns=3,
-        include_single_cell=False  # Exclude single-cell tables (default)
-    )
-    
-    for table in tables:
-        print(f"Table: {table.rows}x{table.columns}")
-```
-
-## Development
-
-### Building from Source
-#### Prerequisites
-```bash
-install rustup
-install uv
-
-uv tool install maturin
-uv tool install pdm
-uv tool install pre-commit
-uv python install 3.10(or higher)
-```
-```bash
-# Clone the repository
-git clone https://github.com/monchin/tablers.git
-cd tablers
-
-# Install dependencies
-pdm sync
-
-# Build the Rust extension
-maturin develop --uv
-
-# Run tests
-pdm test
-```
 
 ## Requirements
 
@@ -416,7 +117,7 @@ pdm test
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/monchin/tablers/blob/master/LICENSE) file for details.
 
 ## Acknowledgments
 
