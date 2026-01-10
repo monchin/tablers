@@ -11,7 +11,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-description = "A blazingly fast PDF table extraction library powered by Rust"
+description = "A blazingly fast PDF table extraction library with python API powered by Rust"
 authors = [
     { name = "monchin", email = "pazzinter@126.com" }
 ]
@@ -28,6 +28,8 @@ build-backend = "maturin"
 [project.urls]
 Homepage = "https://github.com/monchin/tablers"
 Repository = "https://github.com/monchin/tablers"
+Documentation = "https://monchin.github.io/tablers/"
+Changelog = "https://monchin.github.io/tablers/changelog/"
 
 [dependency-groups]
 stub = [
@@ -43,11 +45,14 @@ python-source = "python"
 compatibility = "manylinux_2_34"
 
 [tool.pdm.scripts]
-fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}
+# need cargo, ruff, ty and rumdl
+fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format .", "rumdl fmt"]}
 lint = {composite = ["cargo check", "cargo clippy", "ruff check .", "ty check ."]}
 test = {composite = ["cargo test", "pytest tests/python"]}
 pre_build = "python scripts/pre-build.py"
 post_build = "python scripts/post-build.py"
+# `uv tool install mkdocs --with mkdocs-material --with mkdocs-include-markdown-plugin` before using `docs`
+docs = "mkdocs serve"
 
 [tool.ruff]
 line-length = 100
@@ -78,3 +83,12 @@ include = ["python/tablers"]
 
 [tool.ty.environment]
 python = "./.venv"
+
+[tool.rumdl]
+disable = ["MD013", "MD033", "MD041"]
+include = ["docs/**/*.md", "README.md"]
+exclude = [".github/**/*.md"]
+
+[tool.rumdl.per-file-ignores]
+# ignore indent issues for this file for better display in mkdocs
+"docs/getting_started/installation.md" = ["MD007"]

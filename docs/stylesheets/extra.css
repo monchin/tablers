@@ -1,0 +1,56 @@
+:root {
+  --inter-blue: #0068A8;
+  --inter-blue-dark: #010E80;
+  --inter-black: #000000;
+}
+
+/* Light mode */
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: #010E80;
+  --md-primary-fg-color--light: #0068A8;
+  --md-primary-fg-color--dark: #00054d;
+  --md-accent-fg-color: #0068A8;
+}
+
+/* Dark mode */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #0068A8;
+  --md-primary-fg-color--light: #1a7ab8;
+  --md-primary-fg-color--dark: #010E80;
+  --md-accent-fg-color: #4da6d9;
+  
+  /* Dark mode background with Inter Milan feel */
+  --md-default-bg-color: #0d1117;
+  --md-default-bg-color--light: #161b22;
+}
+
+/* Header styling */
+.md-header {
+  background-color: #010E80;
+}
+
+/* Navigation tabs */
+.md-tabs {
+  background-color: #010E80;
+}
+
+/* Code blocks accent */
+.highlight .hll {
+  background-color: rgba(0, 104, 168, 0.2);
+}
+
+/* Links */
+.md-typeset a {
+  color: #0068A8;
+}
+
+.md-typeset a:hover {
+  color: #010E80;
+}
+
+/* Selected navigation item */
+.md-nav__item--active > .md-nav__link {
+  color: #010E80;
+}
+
+

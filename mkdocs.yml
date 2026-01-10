@@ -1,0 +1,96 @@
+site_name: Tablers
+site_description: A blazingly fast PDF table extraction library with python API powered by Rust
+site_author: monchin
+site_url: https://monchin.github.io/tablers/
+repo_name: monchin/tablers
+repo_url: https://github.com/monchin/tablers
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2025 monchin
+
+theme:
+  name: material
+  favicon: assets/favicon.png
+  icon:
+    logo: material/table-search
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to system preference
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - def_list
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: "#"
+
+plugins:
+  - search
+  - include-markdown
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/monchin/tablers
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/tablers/
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting_started/installation.md
+      - Quick Start: getting_started/quickstart.md
+  - User Guide:
+      - Basic Usage: usage/index.md
+      - Advanced Usage: usage/advanced.md
+  - Reference:
+      - API Reference: reference/api.md
+      - Settings: reference/settings.md
+  - Changelog: changelog.md
