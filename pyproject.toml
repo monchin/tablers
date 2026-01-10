@@ -86,6 +86,7 @@ python = "./.venv"
 
 [tool.rumdl]
 disable = ["MD013", "MD033", "MD041"]
+include = ["docs/*.md", "README.md"]
 
 [tool.rumdl.per-file-ignores]
 # ignore indent issues for this file for better display in mkdocs
