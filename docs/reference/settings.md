@@ -80,7 +80,7 @@ settings = TfSettings(
     # Detection strategy
     vertical_strategy="lines",
     horizontal_strategy="lines",
-    
+
     # Tolerance settings
     snap_x_tolerance=5.0,
     snap_y_tolerance=5.0,
@@ -88,18 +88,18 @@ settings = TfSettings(
     join_y_tolerance=3.0,
     intersection_x_tolerance=3.0,
     intersection_y_tolerance=3.0,
-    
+
     # Edge detection
     edge_min_length=10.0,
     edge_min_length_prefilter=5.0,
     min_words_vertical=3,
     min_words_horizontal=1,
-    
+
     # Table filtering
     include_single_cell=False,
     min_rows=2,
     min_columns=2,
-    
+
     # Text extraction
     text_x_tolerance=3.0,
     text_y_tolerance=3.0,
@@ -223,4 +223,3 @@ with Document("example.pdf") as doc:
         we_settings=we_settings,
     )
 ```
-

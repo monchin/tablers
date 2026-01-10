@@ -48,6 +48,7 @@
 - 🖥️ **Cross-Platform** - Works on Windows, Linux, and macOS
 
 ## Why Tablers?
+
 This project draws significant inspiration from the table extraction modules of [pdfplumber](https://github.com/jsvine/pdfplumber) and [PyMuPDF](https://github.com/pymupdf/PyMuPDF). Compared to `pdfplumber` and `PyMuPDF`, `tablers` has the following advantages:
 
 - **High Performance**: Utilizes Rust for high-performance PDF processing
@@ -65,6 +66,7 @@ Performance comparison of tablers, pymupdf and pdfplumber for PDF table extracti
 For more details, please refer to the [tablers-benchmark](https://github.com/monchin/tablers-benchmark) repository.
 
 ## Note
+
 This solution is primarily designed for text-based PDFs and does not support scanned PDFs.
 
 ## Installation
@@ -102,13 +104,12 @@ from tablers import Document, find_tables
 with Document("example.pdf") as doc:
     page = doc.get_page(0)  # Get first page
     tables = find_tables(page, extract_text=True)
-    
+
     for table in tables:
         print(f"Table bbox: {table.bbox}")
 ```
+
 For more advanced usage, please refer to the [documents](https://monchin.github.io/tablers/).
-
-
 
 ## Requirements
 

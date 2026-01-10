@@ -32,11 +32,11 @@ from tablers import Document
 with Document("example.pdf") as doc:
     # Get page count
     print(f"Total pages: {doc.page_count()}")
-    
+
     # Get specific page (0-indexed)
     page = doc.get_page(0)
     print(f"Page size: {page.width} x {page.height}")
-    
+
     # Iterate through all pages
     for page in doc.pages():
         print(f"Processing page...")
@@ -52,7 +52,7 @@ from tablers import Document, find_tables
 with Document("example.pdf") as doc:
     page = doc.get_page(0)
     tables = find_tables(page, extract_text=True)
-    
+
     for table in tables:
         # Access table properties
         print(f"Bounding box: {table.bbox}")
@@ -84,10 +84,10 @@ from tablers import Document, find_tables
 
 with Document("example.pdf") as doc:
     page = doc.get_page(0)
-    
+
     # Extract tables with text
     tables = find_tables(page, extract_text=True)
-    
+
     # Extract tables without text (faster)
     tables = find_tables(page, extract_text=False)
 ```
@@ -101,7 +101,7 @@ from tablers import Document, find_tables
 
 with Document("example.pdf") as doc:
     page = doc.get_page(0)
-    
+
     # Only get tables with at least 2 rows and 3 columns
     tables = find_tables(
         page,
@@ -168,6 +168,7 @@ print(md_content)
 ```
 
 Output example:
+
 ```markdown
 | Header1 | Header2 | Header3 |
 | --- | --- | --- |

@@ -336,4 +336,3 @@ Represents a line edge extracted from a PDF page.
 | `Point` | `tuple[float, float]` | A 2D point (x, y) |
 | `BBox` | `tuple[float, float, float, float]` | Bounding box (x1, y1, x2, y2) |
 | `Color` | `tuple[int, int, int, int]` | RGBA color (0-255 each) |
-

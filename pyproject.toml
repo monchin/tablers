@@ -44,7 +44,8 @@ python-source = "python"
 compatibility = "manylinux_2_34"
 
 [tool.pdm.scripts]
-fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format ."]}
+# need cargo, ruff, ty and rumdl
+fmt = {composite = ["cargo fmt", "ruff check . --select I --fix", "ruff format .", "rumdl fmt"]}
 lint = {composite = ["cargo check", "cargo clippy", "ruff check .", "ty check ."]}
 test = {composite = ["cargo test", "pytest tests/python"]}
 pre_build = "python scripts/pre-build.py"
@@ -81,3 +82,6 @@ include = ["python/tablers"]
 
 [tool.ty.environment]
 python = "./.venv"
+
+[tool.rumdl]
+disable = ["MD013", "MD033", "MD041"]

@@ -6,9 +6,9 @@ Before installing Tablers, ensure your system meets the following requirements:
 
 - **Python**: >= 3.10
 - **Operating System**:
-    - Windows (x64)
-    - Linux (x64), glibc >= 2.34
-    - macOS (ARM64 / Apple Silicon)
+  - Windows (x64)
+  - Linux (x64), glibc >= 2.34
+  - macOS (ARM64 / Apple Silicon)
 
 ## Install with pip
 

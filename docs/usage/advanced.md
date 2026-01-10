@@ -96,18 +96,18 @@ from tablers import Document, find_all_cells_bboxes, find_tables_from_cells
 
 with Document("example.pdf") as doc:
     page = doc.get_page(0)
-    
+
     # Step 1: Detect all cell bounding boxes
     cell_bboxes = find_all_cells_bboxes(page)
     print(f"Found {len(cell_bboxes)} cells")
-    
+
     # Step 2: Optionally filter or modify cell_bboxes here
     # For example, filter out small cells
     filtered_cells = [
         bbox for bbox in cell_bboxes 
         if (bbox[2] - bbox[0]) > 10 and (bbox[3] - bbox[1]) > 10
     ]
-    
+
     # Step 3: Construct tables from cells
     tables = find_tables_from_cells(
         filtered_cells,
@@ -126,10 +126,10 @@ from tablers import Document, get_edges
 with Document("example.pdf") as doc:
     page = doc.get_page(0)
     edges = get_edges(page)
-    
+
     print(f"Horizontal edges: {len(edges['h'])}")
     print(f"Vertical edges: {len(edges['v'])}")
-    
+
     for edge in edges['h'][:5]:  # First 5 horizontal edges
         print(f"  ({edge.x1}, {edge.y1}) -> ({edge.x2}, {edge.y2})")
 ```
@@ -143,19 +143,19 @@ from tablers import Document
 
 with Document("example.pdf") as doc:
     page = doc.get_page(0)
-    
+
     # Extract objects (chars, lines, rects)
     page.extract_objects()
-    
+
     if page.objects:
         print(f"Characters: {len(page.objects.chars)}")
         print(f"Lines: {len(page.objects.lines)}")
         print(f"Rectangles: {len(page.objects.rects)}")
-        
+
         # Access individual characters
         for char in page.objects.chars[:10]:
             print(f"  '{char.unicode_char}' at {char.bbox}")
-    
+
     # Clear cached objects to free memory
     page.clear()
 ```

@@ -19,7 +19,7 @@ jobs:
     name: Format & Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -29,7 +29,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.10"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -62,6 +62,9 @@ jobs:
 
       - name: Run ty check
         run: pdm run ty check .
+
+      - name: Check Markdown format
+        uses: rvben/rumdl@v0
 
   test:
     name: Test (${{ matrix.os }} / Python ${{ matrix.python-version }})
