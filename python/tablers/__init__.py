@@ -42,6 +42,7 @@ from .tablers import (
     find_all_cells_bboxes,
     find_tables,
     find_tables_from_cells,
+    get_edges,
 )
 
 SYSTEM: Final = platform.system()
@@ -117,6 +118,7 @@ __all__ = [
     "find_tables_from_cells",
     "find_tables",
     "get_default_pdfium_path",
+    "get_edges",
     "get_runtime",
     "__version__",
 ]

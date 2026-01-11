@@ -926,16 +926,23 @@ def find_tables(
     """
     ...
 
-def get_edges(page: Page, settings: TfSettingItems | None = None) -> dict[str, list[Edge]]:
+def get_edges(
+    page: Page, tf_settings: TfSettings | None = None, **kwargs: Unpack[TfSettingItems]
+) -> dict[Literal["v", "h"], list[Edge]]:
     """
     Extract edges (lines and rectangle borders) from a PDF page.
+
+    This function is primarily intended for debugging intermediate
+    processing steps on the Python side.
 
     Parameters
     ----------
     page : Page
         The PDF page to extract edges from.
-    settings : TfSettingItems, optional
-        Dictionary of settings for edge extraction.
+    tf_settings : TfSettings, optional
+        TableFinder settings object. If not provided, default settings are used.
+    **kwargs : TfSettingItems
+        Additional keyword arguments passed to TfSettings.
 
     Returns
     -------

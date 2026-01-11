@@ -580,15 +580,26 @@ impl PyPage {
 /// # Arguments
 ///
 /// * `page` - The PDF page to extract edges from.
-/// * `settings` - Optional dictionary of settings for edge extraction.
+/// * `tf_settings` - Optional TfSettings object for edge extraction.
+/// * `kwargs` - Optional keyword arguments for settings.
 ///
 /// # Returns
 ///
 /// A dictionary with keys "h" (horizontal edges) and "v" (vertical edges).
 #[pyfunction]
-pub fn get_edges(page: &PyPage, settings: Option<&Bound<'_, PyDict>>) -> PyResult<Py<PyDict>> {
+#[pyo3(name = "get_edges", signature = (page, tf_settings=None, **kwargs))]
+fn py_get_edges(
+    page: &PyPage,
+    tf_settings: Option<TfSettings>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Py<PyDict>> {
     page.check_valid()?;
-    let settings = Rc::new(TfSettings::py_new(settings)?);
+    let settings;
+    if let Some(s) = tf_settings {
+        settings = Rc::new(s);
+    } else {
+        settings = Rc::new(TfSettings::py_new(kwargs)?);
+    };
     let edges = TableFinder::new(settings).get_edges(&page.inner);
 
     Python::attach(|py| {
@@ -770,7 +781,7 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(py_find_all_cells_bboxes, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables_from_cells, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
-    m.add_function(pyo3::wrap_pyfunction!(get_edges, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(py_get_edges, m)?)?;
     Ok(())
 }
 
