@@ -428,6 +428,48 @@ impl Edge {
 }
 #[pymethods]
 impl Edge {
+    /// Creates a new Edge from Python.
+    ///
+    /// # Arguments
+    ///
+    /// * `orientation` - The orientation of the edge ("h" for horizontal, "v" for vertical).
+    /// * `x1` - The left x-coordinate of the edge.
+    /// * `y1` - The top y-coordinate of the edge.
+    /// * `x2` - The right x-coordinate of the edge.
+    /// * `y2` - The bottom y-coordinate of the edge.
+    /// * `width` - The stroke width of the edge (default: 1.0).
+    /// * `color` - The stroke color as an RGBA tuple (default: (0, 0, 0, 255)).
+    #[new]
+    #[pyo3(signature = (orientation, x1, y1, x2, y2, width=1.0, color=(0, 0, 0, 255)))]
+    fn new(
+        orientation: &str,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        width: f32,
+        color: (u8, u8, u8, u8),
+    ) -> PyResult<Self> {
+        let orientation = match orientation {
+            "h" => Orientation::Horizontal,
+            "v" => Orientation::Vertical,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Invalid orientation, must be 'h' or 'v'",
+                ));
+            }
+        };
+        Ok(Edge {
+            orientation,
+            x1: OrderedFloat(x1),
+            y1: OrderedFloat(y1),
+            x2: OrderedFloat(x2),
+            y2: OrderedFloat(y2),
+            width: OrderedFloat(width),
+            color: PdfColor::new(color.0, color.1, color.2, color.3),
+        })
+    }
+
     /// Returns the left x-coordinate of the edge.
     #[getter]
     fn x1(&self) -> f32 {

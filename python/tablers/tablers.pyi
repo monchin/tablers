@@ -390,7 +390,7 @@ class Edge:
 
     Attributes
     ----------
-    orietation : {"h", "v"}
+    orientation : {"h", "v"}
         The orientation of the edge ("h" for horizontal, "v" for vertical).
     x1 : float
         The left x-coordinate of the edge.
@@ -406,13 +406,45 @@ class Edge:
         The stroke color as an RGBA tuple.
     """
 
-    orietation: Literal["h", "v"]
+    orientation: Literal["h", "v"]
     x1: float
     y1: float
     x2: float
     y2: float
     width: float
     color: Color
+
+    def __init__(
+        self,
+        orientation: Literal["h", "v"],
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        width: float = 1.0,
+        color: Color = (0, 0, 0, 255),
+    ) -> None:
+        """
+        Creates a new Edge.
+
+        Parameters
+        ----------
+        orientation : {"h", "v"}
+            The orientation of the edge ("h" for horizontal, "v" for vertical).
+        x1 : float
+            The left x-coordinate of the edge.
+        y1 : float
+            The top y-coordinate of the edge.
+        x2 : float
+            The right x-coordinate of the edge.
+        y2 : float
+            The bottom y-coordinate of the edge.
+        width : float, optional
+            The stroke width of the edge (default: 1.0).
+        color : Color, optional
+            The stroke color as an RGBA tuple (default: (0, 0, 0, 255)).
+        """
+        ...
 
 class TableCell:
     """

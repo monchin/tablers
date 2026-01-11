@@ -33,6 +33,7 @@ from typing import Final
 
 from .tablers import Document as RsDoc
 from .tablers import (
+    Edge,
     Page,
     PageIterator,
     PdfiumRuntime,
@@ -109,6 +110,7 @@ PDFIUM_RT = get_runtime()
 
 __all__ = [
     "Document",
+    "Edge",
     "Page",
     "PdfiumRuntime",
     "TfSettings",
