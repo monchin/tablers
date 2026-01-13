@@ -21,14 +21,15 @@ settings = TfSettings(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `vertical_strategy` | `Literal["lines", "lines_strict" "text"]` | `"lines_strict"` | Strategy for detecting vertical edges |
-| `horizontal_strategy` | `Literal["lines", "lines_strict" "text"]` | `"lines_strict"` | Strategy for detecting horizontal edges |
+| `vertical_strategy` | `Literal["lines", "lines_strict", "text", "explicit"]` | `"lines_strict"` | Strategy for detecting vertical edges |
+| `horizontal_strategy` | `Literal["lines", "lines_strict", "text", "explicit"]` | `"lines_strict"` | Strategy for detecting horizontal edges |
 
 **Strategy Options:**
 
 - `"lines_strict"` - Only uses explicit line objects. Best for tables with clear borders.
 - `"lines"` - Uses lines and rectangle borders. Good for most common tables.
 - `"text"` - Uses text alignment to infer edges. Best for borderless tables.
+- `"explicit"` - Uses only explicitly provided edges via `explicit_h_edges` and `explicit_v_edges`. Best for programmatic table creation.
 
 ### Tolerance Settings
 
@@ -49,6 +50,41 @@ settings = TfSettings(
 | `edge_min_length_prefilter` | `float` | `1.0` | Minimum length for edges before merging operations |
 | `min_words_vertical` | `int` | `3` | Minimum words required for vertical text-based edge detection |
 | `min_words_horizontal` | `int` | `1` | Minimum words required for horizontal text-based edge detection |
+
+### Explicit Edges
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `explicit_h_edges` | `list[Edge] \| None` | `None` | Explicit horizontal edges to include in table detection |
+| `explicit_v_edges` | `list[Edge] \| None` | `None` | Explicit vertical edges to include in table detection |
+
+When using `"explicit"` strategy, you must provide edges via these parameters. This allows programmatic table creation without requiring a PDF page:
+
+```python
+from tablers import Edge, TfSettings, find_all_cells_bboxes
+
+# Create edges for a 2x2 grid
+h_edges = [
+    Edge("h", 0.0, 0.0, 100.0, 0.0),
+    Edge("h", 0.0, 50.0, 100.0, 50.0),
+    Edge("h", 0.0, 100.0, 100.0, 100.0),
+]
+v_edges = [
+    Edge("v", 0.0, 0.0, 0.0, 100.0),
+    Edge("v", 50.0, 0.0, 50.0, 100.0),
+    Edge("v", 100.0, 0.0, 100.0, 100.0),
+]
+
+settings = TfSettings(
+    horizontal_strategy="explicit",
+    vertical_strategy="explicit",
+    explicit_h_edges=h_edges,
+    explicit_v_edges=v_edges,
+)
+
+# No page required when both strategies are explicit
+cells = find_all_cells_bboxes(None, tf_settings=settings)
+```
 
 ### Table Filtering
 

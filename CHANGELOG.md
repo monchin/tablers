@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Add python `Edge` constructor for programmatic edge creation with `orientation`, `x1`, `y1`, `x2`, `y2`, `width`, and `color` parameters
+- Add `explicit` strategy for table detection, allowing the use of explicitly provided edges
+- Add `explicit_h_edges` and `explicit_v_edges` settings to `TfSettings` for providing explicit edges
+- Allow `page` parameter to be `None` in `find_all_cells_bboxes` and `get_edges` when both strategies are `explicit`
+- Add `plumber_edge_to_tablers_edge` function for converting `pdfplumber` edges to `tablers` edges
+
+### Changed
+
+- Change `Edge` invalid orientation error from Rust panic to Python `ValueError`
+- Change `get_edges` API
+
 ## [0.2.0] - 2025-01-05
 
 ### Added
