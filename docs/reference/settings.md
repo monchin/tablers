@@ -55,8 +55,8 @@ settings = TfSettings(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `explicit_h_edges` | `list[Edge] \| None` | `None` | Explicit horizontal edges to include in table detection |
-| `explicit_v_edges` | `list[Edge] \| None` | `None` | Explicit vertical edges to include in table detection |
+| `explicit_h_edges` | `Optional[list[Edge]]` | `None` | Explicit horizontal edges to include in table detection |
+| `explicit_v_edges` | `Optional[list[Edge]]` | `None` | Explicit vertical edges to include in table detection |
 
 When using `"explicit"` strategy, you must provide edges via these parameters. This allows programmatic table creation without requiring a PDF page:
 

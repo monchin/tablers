@@ -241,7 +241,7 @@ Represents a single page in a PDF document.
 |-----------|------|-------------|
 | `width` | `float` | The width of the page in points |
 | `height` | `float` | The height of the page in points |
-| `objects` | `Objects \| None` | Extracted objects, or None if not extracted |
+| `objects` | `Optional[Objects]` | Extracted objects, or None if not extracted |
 
 **Methods:**
 
@@ -302,7 +302,7 @@ Represents a group of table cells arranged in a row or column.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `cells` | `list[TableCell \| None]` | Cells in this group, with None for empty positions |
+| `cells` | `list[Optional[TableCell]]` | Cells in this group, with None for empty positions |
 | `bbox` | `tuple[float, float, float, float]` | Bounding box of the entire group |
 
 ---
