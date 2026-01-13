@@ -15,4 +15,5 @@ ordered-float = "5.1.0"
 # pdfium-render issue #236 to deal with pdf with page_count >= 65535
 pdfium-render = { git = "https://github.com/ajrcarey/pdfium-render", rev = "0dbad90b" }
 pyo3 = { version = "0.27", features = ["abi3-py310"] }
+rayon = "1.10"
 thiserror = "2.0"

@@ -2,12 +2,16 @@ use crate::edges::Edge;
 use crate::objects::*;
 use crate::pages::Page;
 use crate::settings::*;
-use crate::tables::*;
+use crate::tables::{
+    PyCellGroup, Table, TableCell, TableFinder, create_thread_pool, find_all_cells_bboxes,
+    find_tables, find_tables_batch, find_tables_from_cells,
+};
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::{PdfDocument, PdfPageIndex, Pdfium, PdfiumError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -820,6 +824,98 @@ fn py_find_tables(
     Ok(find_tables(pdf_page, settings, extract_text))
 }
 
+/// Finds all tables in all pages of a PDF document using multi-threading.
+///
+/// This function extracts tables from all pages in parallel using a thread pool,
+/// bypassing Python's GIL limitation for CPU-intensive work.
+///
+/// # Arguments
+///
+/// * `doc` - The PDF document to analyze.
+/// * `extract_text` - Whether to extract text content from table cells (default: true).
+/// * `tf_settings` - Optional TableFinder settings object.
+/// * `num_threads` - Optional number of threads to use (default: number of CPU cores).
+/// * `batch_size` - Optional number of pages to process per batch. Using batches can
+///                  reduce memory usage for large documents (default: None, process all at once).
+/// * `kwargs` - Optional keyword arguments for settings.
+///
+/// # Returns
+///
+/// A dictionary mapping page indices (0-based) to lists of Table objects found on each page.
+/// Pages with no tables are not included in the result.
+///
+/// # Errors
+///
+/// Returns an error if the document is closed.
+#[pyfunction]
+#[pyo3(name = "find_all_tables", signature = (doc, extract_text=true, tf_settings=None, num_threads=None, batch_size=None, **kwargs))]
+fn py_find_all_tables(
+    py: Python<'_>,
+    doc: &Document,
+    extract_text: bool,
+    tf_settings: Option<TfSettings>,
+    num_threads: Option<usize>,
+    batch_size: Option<usize>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<HashMap<usize, Vec<Table>>> {
+    // Check if document is valid
+    let inner = doc.inner.borrow();
+    let pdf_doc = inner
+        .doc
+        .as_ref()
+        .ok_or_else(|| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed"))?;
+
+    let settings = match tf_settings {
+        Some(s) => s,
+        None => TfSettings::py_new(kwargs)?,
+    };
+
+    let page_count = pdf_doc.pages().len() as usize;
+    if page_count == 0 {
+        return Ok(HashMap::new());
+    }
+
+    // Create thread pool
+    let thread_pool = create_thread_pool(num_threads)
+        .map_err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>)?;
+
+    // Determine batch size
+    let effective_batch_size = match batch_size {
+        Some(size) if size > 0 => size,
+        _ => page_count, // Process all at once if no batch_size specified
+    };
+
+    let mut all_results: HashMap<usize, Vec<Table>> = HashMap::new();
+
+    // Process pages in batches
+    for batch_start in (0..page_count).step_by(effective_batch_size) {
+        let batch_end = std::cmp::min(batch_start + effective_batch_size, page_count);
+
+        // Extract Objects for this batch (in main thread, pdfium is not thread-safe)
+        let mut batch_objects: Vec<(usize, Objects)> = Vec::with_capacity(batch_end - batch_start);
+        for page_idx in batch_start..batch_end {
+            let page = Page::new(
+                pdf_doc.pages().get(page_idx as PdfPageIndex).unwrap(),
+                page_idx,
+            );
+            let objects = page.objects.borrow().clone().unwrap();
+            batch_objects.push((page_idx, objects));
+        }
+
+        // Process this batch in parallel, releasing GIL
+        let batch_results: HashMap<usize, Vec<Table>> =
+            py.detach(|| find_tables_batch(&batch_objects, &settings, extract_text, &thread_pool));
+
+        // Merge results
+        all_results.extend(batch_results);
+    }
+
+    // Release the borrow
+    drop(inner);
+
+    Ok(all_results)
+}
+
 /// Initializes the tablers Python module.
 ///
 /// This function is called by Python when importing the module and registers
@@ -840,6 +936,7 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(py_find_all_cells_bboxes, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables_from_cells, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(py_find_all_tables, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_get_edges, m)?)?;
     Ok(())
 }

@@ -45,6 +45,9 @@ from .tablers import (
     find_tables_from_cells,
     get_edges,
 )
+from .tablers import (
+    find_all_tables as _find_all_tables,
+)
 
 SYSTEM: Final = platform.system()
 
@@ -117,6 +120,7 @@ __all__ = [
     "TfSettings",
     "WordsExtractSettings",
     "find_all_cells_bboxes",
+    "find_all_tables",
     "find_tables_from_cells",
     "find_tables",
     "get_default_pdfium_path",
@@ -124,6 +128,65 @@ __all__ = [
     "get_runtime",
     "__version__",
 ]
+
+
+def find_all_tables(
+    doc: Document,
+    extract_text: bool = True,
+    tf_settings: TfSettings | None = None,
+    num_threads: int | None = None,
+    batch_size: int | None = None,
+    **kwargs,
+) -> dict[int, list]:
+    """
+    Find all tables in all pages of a PDF document using multi-threading.
+
+    This function extracts tables from all pages in parallel using a thread pool,
+    bypassing Python's GIL limitation for CPU-intensive work.
+
+    Parameters
+    ----------
+    doc : Document
+        The PDF document to analyze.
+    extract_text : bool, default True
+        Whether to extract text content from table cells.
+    tf_settings : TfSettings, optional
+        TableFinder settings object. If not provided, default settings are used.
+    num_threads : int or None, optional
+        Number of threads to use for parallel processing. If None or not specified,
+        uses the number of CPU cores available.
+    batch_size : int or None, optional
+        Number of pages to process per batch. Using batches can reduce memory usage
+        for large documents. If None or not specified, all pages are processed at once.
+    **kwargs
+        Additional keyword arguments passed to TfSettings.
+
+    Returns
+    -------
+    dict[int, list[Table]]
+        A dictionary mapping page indices (0-based) to lists of Table objects
+        found on each page. Pages with no tables are not included in the result.
+
+    Examples
+    --------
+    >>> from tablers import Document, find_all_tables
+    >>> with Document("example.pdf") as doc:
+    ...     all_tables = find_all_tables(doc, extract_text=True)
+    ...     for page_idx, tables in all_tables.items():
+    ...         print(f"Page {page_idx}: {len(tables)} tables")
+
+    Using batch processing for large documents:
+
+    >>> all_tables = find_all_tables(doc, batch_size=50)
+    """
+    return _find_all_tables(
+        doc.doc,
+        extract_text=extract_text,
+        tf_settings=tf_settings,
+        num_threads=num_threads,
+        batch_size=batch_size,
+        **kwargs,
+    )
 
 
 class Document:

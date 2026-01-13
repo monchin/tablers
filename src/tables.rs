@@ -1169,6 +1169,206 @@ pub fn find_tables(
     find_tables_from_cells(&cells, extract_text, pdf_page, Some(&tf_settings))
 }
 
+/// Finds all table cell bounding boxes from pre-extracted Objects.
+///
+/// This function is used for multi-threaded table extraction where
+/// Objects have been pre-extracted from the PDF page.
+///
+/// # Arguments
+///
+/// * `objects` - The pre-extracted PDF objects (lines, rects, chars).
+/// * `tf_settings` - The table finder settings.
+///
+/// # Returns
+///
+/// A vector of bounding boxes for detected cells.
+pub fn find_all_cells_bboxes_from_objects(
+    objects: &Objects,
+    tf_settings: &TfSettings,
+) -> Vec<BboxKey> {
+    let settings = Rc::new(tf_settings.clone());
+    let edges = make_edges(objects, settings.clone());
+    let mut edges_prefiltered = HashMap::new();
+
+    let mut v_edges = edges
+        .get(&Orientation::Vertical)
+        .cloned()
+        .unwrap_or_default();
+    filter_edges_by_min_len(&mut v_edges, *settings.edge_min_length_prefilter);
+    let mut h_edges = edges
+        .get(&Orientation::Horizontal)
+        .cloned()
+        .unwrap_or_default();
+    filter_edges_by_min_len(&mut h_edges, *settings.edge_min_length_prefilter);
+
+    edges_prefiltered.insert(Orientation::Vertical, v_edges);
+    edges_prefiltered.insert(Orientation::Horizontal, h_edges);
+
+    let mut edges_merged = merge_edges(
+        edges_prefiltered,
+        *settings.snap_x_tolerance,
+        *settings.snap_y_tolerance,
+        *settings.join_x_tolerance,
+        *settings.join_y_tolerance,
+    );
+
+    if let Some(h_edges) = edges_merged.get_mut(&Orientation::Horizontal) {
+        filter_edges_by_min_len(h_edges, *settings.edge_min_length);
+    }
+    if let Some(v_edges) = edges_merged.get_mut(&Orientation::Vertical) {
+        filter_edges_by_min_len(v_edges, *settings.edge_min_length);
+    }
+
+    let intersections = edges_to_intersections(
+        &mut edges_merged,
+        *settings.intersection_x_tolerance,
+        *settings.intersection_y_tolerance,
+    );
+    intersections_to_cells(intersections)
+}
+
+/// Creates Table objects from cell bounding boxes using pre-extracted Objects.
+///
+/// This function is used for multi-threaded table extraction.
+///
+/// # Arguments
+///
+/// * `page_idx` - The page index for the tables.
+/// * `cells` - The cell bounding boxes.
+/// * `extract_text` - Whether to extract text from cells.
+/// * `objects` - The pre-extracted Objects (required if extract_text is true).
+/// * `tf_settings` - Optional table finder settings.
+///
+/// # Returns
+///
+/// A vector of Table objects.
+pub fn find_tables_from_cells_with_objects(
+    page_idx: usize,
+    cells: &[BboxKey],
+    extract_text: bool,
+    objects: Option<&Objects>,
+    tf_settings: Option<&TfSettings>,
+) -> Vec<Table> {
+    let include_single_cell = tf_settings.is_some_and(|s| s.include_single_cell);
+    let min_rows = tf_settings.and_then(|s| s.min_rows);
+    let min_columns = tf_settings.and_then(|s| s.min_columns);
+    let need_strip = tf_settings.is_none_or(|s| s.text_settings.need_strip);
+
+    let tables_bbox = cells_to_tables(cells);
+    let tables_bbox = filter_tables(tables_bbox, include_single_cell, min_rows, min_columns);
+
+    let chars: Option<&[Char]> = if extract_text {
+        match objects {
+            Some(obj) => Some(&obj.chars[..]),
+            None => panic!("Objects must be provided when extract_text is true"),
+        }
+    } else {
+        None
+    };
+
+    let we_settings = tf_settings.map(|s| &s.text_settings);
+    tables_bbox
+        .iter()
+        .map(|table_cells_bbox| {
+            Table::new(
+                page_idx,
+                table_cells_bbox,
+                extract_text,
+                chars,
+                we_settings,
+                need_strip,
+            )
+        })
+        .collect()
+}
+
+/// Finds all tables from pre-extracted Objects.
+///
+/// This function is the multi-threaded compatible version of find_tables.
+/// It works directly with Objects instead of Page references.
+///
+/// # Arguments
+///
+/// * `page_idx` - The page index for the tables.
+/// * `objects` - The pre-extracted PDF objects.
+/// * `tf_settings` - The table finder settings.
+/// * `extract_text` - Whether to extract text content from cells.
+///
+/// # Returns
+///
+/// A vector of Table objects found in the page.
+pub fn find_tables_from_objects(
+    page_idx: usize,
+    objects: &Objects,
+    tf_settings: &TfSettings,
+    extract_text: bool,
+) -> Vec<Table> {
+    let cells = find_all_cells_bboxes_from_objects(objects, tf_settings);
+    find_tables_from_cells_with_objects(
+        page_idx,
+        &cells,
+        extract_text,
+        Some(objects),
+        Some(tf_settings),
+    )
+}
+
+/// Finds all tables in multiple pages using multi-threading.
+///
+/// This is the core Rust function for multi-threaded table extraction.
+/// It processes a batch of pre-extracted Objects in parallel.
+///
+/// # Arguments
+///
+/// * `page_objects` - A slice of tuples containing (page_index, Objects).
+/// * `tf_settings` - The table finder settings.
+/// * `extract_text` - Whether to extract text content from cells.
+/// * `thread_pool` - The rayon thread pool to use for parallel processing.
+///
+/// # Returns
+///
+/// A HashMap mapping page indices to vectors of Table objects.
+/// Pages with no tables are not included in the result.
+pub fn find_tables_batch(
+    page_objects: &[(usize, Objects)],
+    tf_settings: &TfSettings,
+    extract_text: bool,
+    thread_pool: &rayon::ThreadPool,
+) -> HashMap<usize, Vec<Table>> {
+    use rayon::prelude::*;
+
+    thread_pool.install(|| {
+        page_objects
+            .par_iter()
+            .map(|(page_idx, objects)| {
+                let tables =
+                    find_tables_from_objects(*page_idx, objects, tf_settings, extract_text);
+                (*page_idx, tables)
+            })
+            .filter(|(_, tables)| !tables.is_empty())
+            .collect()
+    })
+}
+
+/// Creates a rayon thread pool with the specified number of threads.
+///
+/// # Arguments
+///
+/// * `num_threads` - Number of threads. None means use all available CPU cores.
+///
+/// # Returns
+///
+/// A Result containing the thread pool or an error message.
+pub fn create_thread_pool(num_threads: Option<usize>) -> Result<rayon::ThreadPool, String> {
+    let builder = match num_threads {
+        Some(n) if n > 0 => rayon::ThreadPoolBuilder::new().num_threads(n),
+        _ => rayon::ThreadPoolBuilder::new(),
+    };
+    builder
+        .build()
+        .map_err(|e| format!("Failed to create thread pool: {:?}", e))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1067,3 +1067,72 @@ def get_edges(
     ... )
     """
     ...
+
+def find_all_tables(
+    doc: Document,
+    extract_text: bool = True,
+    tf_settings: TfSettings | None = None,
+    num_threads: int | None = None,
+    batch_size: int | None = None,
+    **kwargs: Unpack[TfSettingItems],
+) -> dict[int, list[Table]]:
+    """
+    Find all tables in all pages of a PDF document using multi-threading.
+
+    This function extracts tables from all pages in parallel using a thread pool,
+    bypassing Python's GIL limitation for CPU-intensive work.
+
+    Parameters
+    ----------
+    doc : Document
+        The PDF document to analyze.
+    extract_text : bool, default True
+        Whether to extract text content from table cells.
+    tf_settings : TfSettings, optional
+        TableFinder settings object. If not provided, default settings are used.
+    num_threads : int or None, optional
+        Number of threads to use for parallel processing. If None or not specified,
+        uses the number of CPU cores available.
+    batch_size : int or None, optional
+        Number of pages to process per batch. Using batches can reduce memory usage
+        for large documents. If None or not specified, all pages are processed at once.
+    **kwargs : TfSettingItems
+        Additional keyword arguments passed to TfSettings.
+
+    Returns
+    -------
+    dict[int, list[Table]]
+        A dictionary mapping page indices (0-based) to lists of Table objects
+        found on each page. Pages with no tables are not included in the result.
+
+    Raises
+    ------
+    RuntimeError
+        If the document is closed or if thread pool creation fails.
+
+    Examples
+    --------
+    >>> from tablers import Document, find_all_tables, get_runtime
+    >>> runtime = get_runtime()
+    >>> with Document(runtime, path="example.pdf") as doc:
+    ...     all_tables = find_all_tables(doc, extract_text=True)
+    ...     for page_idx, tables in all_tables.items():
+    ...         print(f"Page {page_idx}: {len(tables)} tables")
+    ...         for table in tables:
+    ...             print(table.to_csv())
+
+    Using custom thread count:
+
+    >>> all_tables = find_all_tables(doc, num_threads=4)
+
+    Using batch processing for large documents:
+
+    >>> all_tables = find_all_tables(doc, batch_size=50)  # Process 50 pages at a time
+
+    Using custom settings:
+
+    >>> from tablers import TfSettings
+    >>> settings = TfSettings(vertical_strategy="text", horizontal_strategy="text")
+    >>> all_tables = find_all_tables(doc, tf_settings=settings)
+    """
+    ...
