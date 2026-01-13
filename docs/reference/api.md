@@ -6,12 +6,12 @@ This page provides detailed documentation for all public classes and functions i
 
 ### find_tables
 
-Find all tables in a PDF page.
+Find all tables in a PDF page or from explicit edges.
 
 ```python
 def find_tables(
-    page: Page,
-    extract_text: bool,
+    page: Page | None = None,
+    extract_text: bool = True,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems]
 ) -> list[Table]
@@ -19,14 +19,19 @@ def find_tables(
 
 **Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `page` | `Page` | The PDF page to analyze |
-| `extract_text` | `bool` | Whether to extract text content from table cells |
-| `tf_settings` | `Optional[TfSettings]` | TableFinder settings object. If not provided, default settings are used |
-| `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | `Optional[Page]` | `None` | The PDF page to analyze. Can be `None` only if both strategies are `"explicit"` and `extract_text` is `False` |
+| `extract_text` | `bool` | `True` | Whether to extract text content from table cells |
+| `tf_settings` | `Optional[TfSettings]` | `None` | TableFinder settings object. If not provided, default settings are used |
+| `**kwargs` |`Unpack[TfSettingItems]` | - | Additional keyword arguments passed to TfSettings |
 
 **Returns:** `list[Table]` - A list of Table objects found in the page.
+
+**Raises:**
+
+- `ValueError` - If `page` is `None` and `extract_text` is `True`.
+- `ValueError` - If `page` is `None` and either strategy is not `"explicit"`.
 
 **Example:**
 
@@ -38,6 +43,24 @@ with Document("example.pdf") as doc:
     tables = find_tables(page, extract_text=True)
     for table in tables:
         print(f"Table with {len(table.cells)} cells at {table.bbox}")
+```
+
+**Example with explicit edges (no page required):**
+
+```python
+from tablers import Edge, TfSettings, find_tables
+
+h_edges = [Edge("h", 0.0, 0.0, 100.0, 0.0), Edge("h", 0.0, 100.0, 100.0, 100.0)]
+v_edges = [Edge("v", 0.0, 0.0, 0.0, 100.0), Edge("v", 100.0, 0.0, 100.0, 100.0)]
+
+settings = TfSettings(
+    horizontal_strategy="explicit",
+    vertical_strategy="explicit",
+    explicit_h_edges=h_edges,
+    explicit_v_edges=v_edges,
+)
+
+tables = find_tables(page=None, extract_text=False, tf_settings=settings)
 ```
 
 ---

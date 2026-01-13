@@ -955,22 +955,23 @@ def find_tables_from_cells(
     ...
 
 def find_tables(
-    page: Page,
-    extract_text: bool,
+    page: Page | None = None,
+    extract_text: bool = True,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
     """
-    Find all tables in a PDF page.
+    Find all tables in a PDF page or from explicit edges.
 
     This is the main entry point for table detection. It extracts edges,
     finds intersections, builds cells, and groups them into tables.
 
     Parameters
     ----------
-    page : Page
-        The PDF page to analyze.
-    extract_text : bool
+    page : Page | None, optional
+        The PDF page to analyze. Can be None only if both strategies are
+        "explicit" and extract_text is False.
+    extract_text : bool, default True
         Whether to extract text content from table cells.
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
@@ -982,6 +983,12 @@ def find_tables(
     list of Table
         A list of Table objects found in the page.
 
+    Raises
+    ------
+    ValueError
+        If page is None and extract_text is True.
+        If page is None and either strategy is not "explicit".
+
     Examples
     --------
     >>> from tablers import Document, find_tables
@@ -990,6 +997,19 @@ def find_tables(
     >>> tables = find_tables(page, extract_text=True)
     >>> for table in tables:
     ...     print(f"Table with {len(table.cells)} cells at {table.bbox}")
+
+    Using explicit edges without a page:
+
+    >>> from tablers import Edge, TfSettings, find_tables
+    >>> h_edges = [Edge("h", 0.0, 0.0, 100.0, 0.0), Edge("h", 0.0, 100.0, 100.0, 100.0)]
+    >>> v_edges = [Edge("v", 0.0, 0.0, 0.0, 100.0), Edge("v", 100.0, 0.0, 100.0, 100.0)]
+    >>> settings = TfSettings(
+    ...     horizontal_strategy="explicit",
+    ...     vertical_strategy="explicit",
+    ...     explicit_h_edges=h_edges,
+    ...     explicit_v_edges=v_edges,
+    ... )
+    >>> tables = find_tables(page=None, extract_text=False, tf_settings=settings)
     """
     ...
 

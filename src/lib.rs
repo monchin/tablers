@@ -770,7 +770,8 @@ fn py_find_tables_from_cells(
 ///
 /// # Arguments
 ///
-/// * `page` - The PDF page to analyze.
+/// * `page` - The PDF page to analyze. Can be None only if both strategies are explicit
+///           and extract_text is false.
 /// * `extract_text` - Whether to extract text content from table cells.
 /// * `tf_settings` - Optional TableFinder settings object.
 /// * `kwargs` - Optional keyword arguments for settings.
@@ -778,22 +779,45 @@ fn py_find_tables_from_cells(
 /// # Returns
 ///
 /// A list of Table objects found in the page.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - `page` is None and `extract_text` is true
+/// - `page` is None and either strategy is not explicit
 #[pyfunction]
-#[pyo3(name = "find_tables", signature = (page, extract_text, tf_settings=None, **kwargs))]
+#[pyo3(name = "find_tables", signature = (page=None, extract_text=true, tf_settings=None, **kwargs))]
 fn py_find_tables(
-    page: &PyPage,
+    page: Option<&PyPage>,
     extract_text: bool,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<Table>> {
-    let settings;
-    if let Some(tf_settings) = tf_settings {
-        settings = Rc::new(tf_settings);
-    } else {
-        settings = Rc::new(TfSettings::py_new(kwargs)?);
+    let settings = match tf_settings {
+        Some(s) => Rc::new(s),
+        None => Rc::new(TfSettings::py_new(kwargs)?),
     };
-    let tables = find_tables(&page.inner, settings.clone(), extract_text);
-    Ok(tables)
+
+    // Validate: if extract_text is true, page must be provided
+    if extract_text && page.is_none() {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "page must be provided when extract_text is true",
+        ));
+    }
+
+    // Validate: if page is None, both strategies must be explicit
+    if page.is_none() {
+        let h_strat = settings.horizontal_strategy;
+        let v_strat = settings.vertical_strategy;
+        if h_strat != StrategyType::Explicit || v_strat != StrategyType::Explicit {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "page can only be None when both horizontal_strategy and vertical_strategy are 'explicit'",
+            ));
+        }
+    }
+
+    let pdf_page = page.map(|p| &p.inner);
+    Ok(find_tables(pdf_page, settings, extract_text))
 }
 
 /// Initializes the tablers Python module.

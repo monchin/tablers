@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add python `Edge` constructor for programmatic edge creation with `orientation`, `x1`, `y1`, `x2`, `y2`, `width`, and `color` parameters
 - Add `explicit` strategy for table detection, allowing the use of explicitly provided edges
 - Add `explicit_h_edges` and `explicit_v_edges` settings to `TfSettings` for providing explicit edges
-- Allow `page` parameter to be `None` in `find_all_cells_bboxes` and `get_edges` when both strategies are `explicit`
+- Allow `page` parameter to be `None` in `find_tables`, `find_all_cells_bboxes` and `get_edges` when both strategies are `explicit` (and `extract_text` is `False` for `find_tables`)
 - Add `plumber_edge_to_tablers_edge` function for converting `pdfplumber` edges to `tablers` edges
 
 ### Changed
