@@ -986,28 +986,60 @@ impl TableFinder {
         }
     }
 
-    /// Extracts and processes edges from a PDF page.
+    /// Extracts and processes edges from a PDF page or explicit edges.
     ///
     /// # Arguments
     ///
-    /// * `page` - The PDF page to extract edges from.
+    /// * `page` - The PDF page to extract edges from. Can be None only if both
+    ///   horizontal_strategy and vertical_strategy are set to Explicit.
     ///
     /// # Returns
     ///
     /// A HashMap of edges grouped by orientation.
-    pub(crate) fn get_edges(&self, page: &Page) -> HashMap<Orientation, Vec<Edge>> {
+    ///
+    /// # Panics
+    ///
+    /// Panics if page is None and either strategy is not Explicit.
+    pub(crate) fn get_edges(&self, page: Option<&Page>) -> HashMap<Orientation, Vec<Edge>> {
         let settings = self.settings.as_ref();
 
-        let objects_opt = page.objects.borrow();
-        if objects_opt.is_none() {
-            page.extract_objects();
-        }
-        let objects = objects_opt.as_ref().expect("Objects should be extracted");
-        let mut edges_all = make_edges(objects, self.settings.clone());
-        let mut v_edges = edges_all.remove(&Orientation::Vertical).unwrap_or_default();
+        let edges_all = if let Some(page) = page {
+            let objects_opt = page.objects.borrow();
+            if objects_opt.is_none() {
+                page.extract_objects();
+            }
+            let objects = objects_opt.as_ref().expect("Objects should be extracted");
+            make_edges(objects, self.settings.clone())
+        } else {
+            // Page is None, verify both strategies are Explicit
+            if settings.horizontal_strategy != StrategyType::Explicit
+                || settings.vertical_strategy != StrategyType::Explicit
+            {
+                panic!(
+                    "Page can only be None when both horizontal_strategy and vertical_strategy are 'explicit'"
+                );
+            }
+            // Create edges only from explicit edges
+            let mut edges = HashMap::new();
+            edges.insert(
+                Orientation::Horizontal,
+                settings.explicit_h_edges.clone().unwrap_or_default(),
+            );
+            edges.insert(
+                Orientation::Vertical,
+                settings.explicit_v_edges.clone().unwrap_or_default(),
+            );
+            edges
+        };
+
+        let mut v_edges = edges_all
+            .get(&Orientation::Vertical)
+            .cloned()
+            .unwrap_or_default();
         filter_edges_by_min_len(&mut v_edges, *settings.edge_min_length_prefilter);
         let mut h_edges = edges_all
-            .remove(&Orientation::Horizontal)
+            .get(&Orientation::Horizontal)
+            .cloned()
             .unwrap_or_default();
         filter_edges_by_min_len(&mut h_edges, *settings.edge_min_length_prefilter);
 
@@ -1032,17 +1064,22 @@ impl TableFinder {
     }
 }
 
-/// Finds all table cell bounding boxes in a PDF page.
+/// Finds all table cell bounding boxes in a PDF page or from explicit edges.
 ///
 /// # Arguments
 ///
-/// * `pdf_page` - The PDF page to analyze.
+/// * `pdf_page` - The PDF page to analyze. Can be None only if both
+///   horizontal_strategy and vertical_strategy are set to Explicit.
 /// * `tf_settings` - The table finder settings.
 ///
 /// # Returns
 ///
 /// A vector of bounding boxes for detected cells.
-pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
+///
+/// # Panics
+///
+/// Panics if pdf_page is None and either strategy is not Explicit.
+pub fn find_all_cells_bboxes(pdf_page: Option<&Page>, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
     let table_finder = TableFinder::new(tf_settings.clone());
     let edges = table_finder.get_edges(pdf_page);
     let intersections = edges_to_intersections(
@@ -1124,7 +1161,7 @@ pub fn find_tables_from_cells(
 ///
 /// A vector of Table objects found in the page.
 pub fn find_tables(pdf_page: &Page, tf_settings: Rc<TfSettings>, extract_text: bool) -> Vec<Table> {
-    let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone());
+    let cells = find_all_cells_bboxes(Some(pdf_page), tf_settings.clone());
     find_tables_from_cells(&cells, extract_text, Some(pdf_page), Some(&tf_settings))
 }
 

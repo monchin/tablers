@@ -2,9 +2,14 @@
 Tests for edge functions.
 """
 
+from typing import TYPE_CHECKING
+
 import pytest
 from tablers import Document, Edge, get_edges
 from tablers.edges import plumber_edge_to_tablers_edge
+
+if TYPE_CHECKING:
+    from tablers import Document
 
 
 class TestPlumberEdgeToTablersEdge:
@@ -338,3 +343,331 @@ class TestGetEdges:
 
         assert v_edges[1].x1 == pytest.approx(297.6, abs=0.01)
         assert v_edges[2].x1 == pytest.approx(505.08002, abs=0.01)
+
+
+class TestExplicitEdgesTableFinding:
+    """Tests for table finding using explicit edges."""
+
+    def test_find_tables_with_explicit_edges_simple_grid(self, edge_test_doc: "Document") -> None:
+        """Test finding tables using explicit edges to create a simple 2x2 grid."""
+        from tablers import TfSettings, find_tables
+
+        page = edge_test_doc.get_page(0)
+
+        # Create a 2x2 grid using explicit edges
+        # Horizontal edges at y=700, y=750, y=800
+        h_edges = [
+            Edge("h", 50.0, 700.0, 150.0, 700.0),
+            Edge("h", 50.0, 750.0, 150.0, 750.0),
+            Edge("h", 50.0, 800.0, 150.0, 800.0),
+        ]
+        # Vertical edges at x=50, x=100, x=150
+        v_edges = [
+            Edge("v", 50.0, 700.0, 50.0, 800.0),
+            Edge("v", 100.0, 700.0, 100.0, 800.0),
+            Edge("v", 150.0, 700.0, 150.0, 800.0),
+        ]
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=h_edges,
+            explicit_v_edges=v_edges,
+        )
+
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 1
+        table = tables[0]
+        # 2x2 grid should have 4 cells
+        assert len(table.cells) == 4
+
+    def test_find_tables_with_explicit_edges_single_cell(self, edge_test_doc: "Document") -> None:
+        """Test finding a single cell table using explicit edges."""
+        from tablers import TfSettings, find_tables
+
+        page = edge_test_doc.get_page(0)
+
+        # Create a single cell
+        h_edges = [
+            Edge("h", 0.0, 0.0, 100.0, 0.0),
+            Edge("h", 0.0, 100.0, 100.0, 100.0),
+        ]
+        v_edges = [
+            Edge("v", 0.0, 0.0, 0.0, 100.0),
+            Edge("v", 100.0, 0.0, 100.0, 100.0),
+        ]
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=h_edges,
+            explicit_v_edges=v_edges,
+            include_single_cell=True,
+        )
+
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 1
+
+    def test_find_tables_explicit_with_no_edges_returns_empty(
+        self, edge_test_doc: "Document"
+    ) -> None:
+        """Test that explicit strategy with no edges returns no tables."""
+        from tablers import TfSettings, find_tables
+
+        page = edge_test_doc.get_page(0)
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=None,
+            explicit_v_edges=None,
+        )
+
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 0
+
+    def test_find_tables_explicit_edges_with_text_extraction(
+        self, edge_test_doc: "Document"
+    ) -> None:
+        """Test that text extraction works with explicit edges."""
+        from tablers import TfSettings, find_tables
+
+        page = edge_test_doc.get_page(0)
+
+        # Create a grid that should cover some text in the PDF
+        h_edges = [
+            Edge("h", 50.0, 700.0, 200.0, 700.0),
+            Edge("h", 50.0, 750.0, 200.0, 750.0),
+        ]
+        v_edges = [
+            Edge("v", 50.0, 700.0, 50.0, 750.0),
+            Edge("v", 200.0, 700.0, 200.0, 750.0),
+        ]
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=h_edges,
+            explicit_v_edges=v_edges,
+            include_single_cell=True,
+        )
+
+        tables = find_tables(page, extract_text=True, tf_settings=settings)
+
+        assert len(tables) == 1
+        # Verify text extraction worked (cells should have text attribute)
+        for cell in tables[0].cells:
+            assert hasattr(cell, "text")
+            assert isinstance(cell.text, str)
+
+    def test_explicit_edges_mixed_with_lines_strategy(self, edge_test_doc: "Document") -> None:
+        """Test using explicit edges for one direction and lines for another."""
+        from tablers import TfSettings, find_tables
+
+        page = edge_test_doc.get_page(0)
+
+        # Only provide explicit horizontal edges
+        h_edges = [
+            Edge("h", 0.0, 500.0, 500.0, 500.0),
+            Edge("h", 0.0, 600.0, 500.0, 600.0),
+        ]
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="lines_strict",  # Use lines from PDF for vertical
+            explicit_h_edges=h_edges,
+            explicit_v_edges=None,
+        )
+
+        # This should still work, combining explicit h-edges with detected v-edges
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+        assert isinstance(tables, list)
+
+    def test_get_edges_with_explicit_edges(self, edge_test_doc: "Document") -> None:
+        """Test get_edges function returns explicit edges correctly."""
+        from tablers import get_edges
+
+        page = edge_test_doc.get_page(0)
+
+        h_edge = Edge("h", 10.0, 20.0, 100.0, 20.0)
+        v_edge = Edge("v", 50.0, 0.0, 50.0, 100.0)
+
+        edges = get_edges(
+            page,
+            None,
+            **{
+                "horizontal_strategy": "explicit",
+                "vertical_strategy": "explicit",
+                "explicit_h_edges": [h_edge],
+                "explicit_v_edges": [v_edge],
+            },
+        )
+
+        assert "h" in edges
+        assert "v" in edges
+        # Should contain at least our explicit edges
+        assert len(edges["h"]) >= 1
+        assert len(edges["v"]) >= 1
+
+    def test_find_all_cells_bboxes_with_explicit_edges(self, edge_test_doc: "Document") -> None:
+        """Test find_all_cells_bboxes with explicit edges."""
+        from tablers import TfSettings, find_all_cells_bboxes
+
+        page = edge_test_doc.get_page(0)
+
+        # Create a 2x2 grid
+        h_edges = [
+            Edge("h", 0.0, 0.0, 100.0, 0.0),
+            Edge("h", 0.0, 50.0, 100.0, 50.0),
+            Edge("h", 0.0, 100.0, 100.0, 100.0),
+        ]
+        v_edges = [
+            Edge("v", 0.0, 0.0, 0.0, 100.0),
+            Edge("v", 50.0, 0.0, 50.0, 100.0),
+            Edge("v", 100.0, 0.0, 100.0, 100.0),
+        ]
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=h_edges,
+            explicit_v_edges=v_edges,
+        )
+
+        cells = find_all_cells_bboxes(page, tf_settings=settings)
+
+        # 2x2 grid should produce 4 cells
+        assert len(cells) == 4
+        # Each cell should be a tuple of 4 floats (bbox)
+        for cell in cells:
+            assert isinstance(cell, tuple)
+            assert len(cell) == 4
+
+
+class TestExplicitEdgesWithoutPage:
+    """Tests for using explicit edges without a PDF page."""
+
+    def test_find_all_cells_bboxes_without_page(self) -> None:
+        """Test find_all_cells_bboxes with explicit edges and no page."""
+        from tablers import TfSettings, find_all_cells_bboxes
+
+        # Create a 2x2 grid using explicit edges
+        h_edges = [
+            Edge("h", 0.0, 0.0, 100.0, 0.0),
+            Edge("h", 0.0, 50.0, 100.0, 50.0),
+            Edge("h", 0.0, 100.0, 100.0, 100.0),
+        ]
+        v_edges = [
+            Edge("v", 0.0, 0.0, 0.0, 100.0),
+            Edge("v", 50.0, 0.0, 50.0, 100.0),
+            Edge("v", 100.0, 0.0, 100.0, 100.0),
+        ]
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=h_edges,
+            explicit_v_edges=v_edges,
+        )
+
+        # Call without page (page=None)
+        cells = find_all_cells_bboxes(None, tf_settings=settings)
+
+        # 2x2 grid should produce 4 cells
+        assert len(cells) == 4
+        for cell in cells:
+            assert isinstance(cell, tuple)
+            assert len(cell) == 4
+
+    def test_get_edges_without_page(self) -> None:
+        """Test get_edges with explicit edges and no page."""
+        h_edge = Edge("h", 10.0, 20.0, 100.0, 20.0)
+        v_edge = Edge("v", 50.0, 0.0, 50.0, 100.0)
+
+        edges = get_edges(
+            None,
+            None,
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=[h_edge],
+            explicit_v_edges=[v_edge],
+        )
+
+        assert "h" in edges
+        assert "v" in edges
+        assert len(edges["h"]) == 1
+        assert len(edges["v"]) == 1
+
+    def test_find_all_cells_bboxes_without_page_non_explicit_raises(self) -> None:
+        """
+        Test that find_all_cells_bboxes raises error when page is None and strategy is not explicit.
+        """
+        from tablers import TfSettings, find_all_cells_bboxes
+
+        settings = TfSettings(
+            horizontal_strategy="lines",  # Not explicit
+            vertical_strategy="explicit",
+        )
+
+        with pytest.raises(RuntimeError, match="page can only be None"):
+            find_all_cells_bboxes(None, tf_settings=settings)
+
+    def test_get_edges_without_page_non_explicit_raises(self) -> None:
+        """Test that get_edges raises error when page is None and strategy is not explicit."""
+        with pytest.raises(RuntimeError, match="page can only be None"):
+            get_edges(
+                None,
+                None,
+                horizontal_strategy="explicit",
+                vertical_strategy="lines_strict",  # Not explicit
+            )
+
+    def test_find_all_cells_bboxes_without_page_single_cell(self) -> None:
+        """Test creating a single cell without a page."""
+        from tablers import TfSettings, find_all_cells_bboxes
+
+        # Create a single cell
+        h_edges = [
+            Edge("h", 0.0, 0.0, 100.0, 0.0),
+            Edge("h", 0.0, 100.0, 100.0, 100.0),
+        ]
+        v_edges = [
+            Edge("v", 0.0, 0.0, 0.0, 100.0),
+            Edge("v", 100.0, 0.0, 100.0, 100.0),
+        ]
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=h_edges,
+            explicit_v_edges=v_edges,
+        )
+
+        cells = find_all_cells_bboxes(None, tf_settings=settings)
+
+        assert len(cells) == 1
+        # Verify the cell bbox
+        cell = cells[0]
+        assert cell[0] == pytest.approx(0.0)  # x1
+        assert cell[1] == pytest.approx(0.0)  # y1
+        assert cell[2] == pytest.approx(100.0)  # x2
+        assert cell[3] == pytest.approx(100.0)  # y2
+
+    def test_find_all_cells_bboxes_without_page_empty_edges(self) -> None:
+        """Test that empty explicit edges produce no cells."""
+        from tablers import TfSettings, find_all_cells_bboxes
+
+        settings = TfSettings(
+            horizontal_strategy="explicit",
+            vertical_strategy="explicit",
+            explicit_h_edges=[],
+            explicit_v_edges=[],
+        )
+
+        cells = find_all_cells_bboxes(None, tf_settings=settings)
+
+        assert len(cells) == 0

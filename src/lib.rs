@@ -575,32 +575,51 @@ impl PyPage {
     }
 }
 
-/// Extracts edges (lines and rectangle borders) from a PDF page.
+/// Extracts edges (lines and rectangle borders) from a PDF page or from explicit edges.
 ///
 /// # Arguments
 ///
-/// * `page` - The PDF page to extract edges from.
+/// * `page` - The PDF page to extract edges from. Can be None only if both
+///   horizontal_strategy and vertical_strategy are set to "explicit".
 /// * `tf_settings` - Optional TfSettings object for edge extraction.
 /// * `kwargs` - Optional keyword arguments for settings.
 ///
 /// # Returns
 ///
 /// A dictionary with keys "h" (horizontal edges) and "v" (vertical edges).
+///
+/// # Raises
+///
+/// RuntimeError: If page is None and either strategy is not "explicit".
 #[pyfunction]
-#[pyo3(name = "get_edges", signature = (page, tf_settings=None, **kwargs))]
+#[pyo3(name = "get_edges", signature = (page=None, tf_settings=None, **kwargs))]
 fn py_get_edges(
-    page: &PyPage,
+    page: Option<&PyPage>,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Py<PyDict>> {
-    page.check_valid()?;
-    let settings;
-    if let Some(s) = tf_settings {
-        settings = Rc::new(s);
+    if let Some(p) = page {
+        p.check_valid()?;
+    }
+
+    let settings = if let Some(s) = tf_settings {
+        Rc::new(s)
     } else {
-        settings = Rc::new(TfSettings::py_new(kwargs)?);
+        Rc::new(TfSettings::py_new(kwargs)?)
     };
-    let edges = TableFinder::new(settings).get_edges(&page.inner);
+
+    // Validate that page can only be None when both strategies are explicit
+    if page.is_none()
+        && (settings.horizontal_strategy != StrategyType::Explicit
+            || settings.vertical_strategy != StrategyType::Explicit)
+    {
+        return Err(pyo3::exceptions::PyRuntimeError::new_err(
+            "page can only be None when both horizontal_strategy and vertical_strategy are 'explicit'",
+        ));
+    }
+
+    let page_ref = page.map(|p| &p.inner);
+    let edges = TableFinder::new(settings).get_edges(page_ref);
 
     Python::attach(|py| {
         let res = PyDict::new(py);
@@ -653,31 +672,47 @@ fn py_bbox_to_rs_bbox(bbox: &PyBbox) -> BboxKey {
         OrderedFloat(bbox.3),
     )
 }
-/// Finds all table cell bounding boxes in a PDF page.
+/// Finds all table cell bounding boxes in a PDF page or from explicit edges.
 ///
 /// # Arguments
 ///
-/// * `page` - The PDF page to analyze.
+/// * `page` - The PDF page to analyze. Can be None only if both
+///   horizontal_strategy and vertical_strategy are set to "explicit".
 /// * `tf_settings` - Optional TableFinder settings object.
 /// * `kwargs` - Optional keyword arguments for settings.
 ///
 /// # Returns
 ///
 /// A list of bounding boxes (x1, y1, x2, y2) for each detected cell.
+///
+/// # Raises
+///
+/// RuntimeError: If page is None and either strategy is not "explicit".
 #[pyfunction]
-#[pyo3(name="find_all_cells_bboxes", signature = (page, tf_settings=None, **kwargs))]
+#[pyo3(name="find_all_cells_bboxes", signature = (page=None, tf_settings=None, **kwargs))]
 fn py_find_all_cells_bboxes(
-    page: &PyPage,
+    page: Option<&PyPage>,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<PyBbox>> {
-    let settings;
-    if let Some(tf_settings) = tf_settings {
-        settings = Rc::new(tf_settings);
+    let settings = if let Some(tf_settings) = tf_settings {
+        Rc::new(tf_settings)
     } else {
-        settings = Rc::new(TfSettings::py_new(kwargs)?);
+        Rc::new(TfSettings::py_new(kwargs)?)
     };
-    let cells = find_all_cells_bboxes(&page.inner, settings.clone());
+
+    // Validate that page can only be None when both strategies are explicit
+    if page.is_none()
+        && (settings.horizontal_strategy != StrategyType::Explicit
+            || settings.vertical_strategy != StrategyType::Explicit)
+    {
+        return Err(pyo3::exceptions::PyRuntimeError::new_err(
+            "page can only be None when both horizontal_strategy and vertical_strategy are 'explicit'",
+        ));
+    }
+
+    let page_ref = page.map(|p| &p.inner);
+    let cells = find_all_cells_bboxes(page_ref, settings.clone());
     Ok(cells.iter().map(rs_bbox_to_py_bbox).collect())
 }
 
