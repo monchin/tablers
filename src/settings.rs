@@ -1,3 +1,4 @@
+use crate::edges::Edge;
 use ordered_float::OrderedFloat;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -129,6 +130,8 @@ pub enum StrategyType {
     LinesStrict = 2,
     /// Infer edges from text alignment.
     Text = 4,
+    /// Use only explicitly provided edges (from explicit_h_edges/explicit_v_edges).
+    Explicit = 8,
 }
 
 impl BitAnd<u8> for StrategyType {
@@ -186,6 +189,10 @@ pub struct TfSettings {
     pub min_columns: Option<usize>,
     /// Settings for text/word extraction.
     pub text_settings: WordsExtractSettings,
+    /// Explicit horizontal edges to include in table detection.
+    pub explicit_h_edges: Option<Vec<Edge>>,
+    /// Explicit vertical edges to include in table detection.
+    pub explicit_v_edges: Option<Vec<Edge>>,
 }
 impl Default for TfSettings {
     /// Creates a TfSettings instance with default values.
@@ -207,6 +214,8 @@ impl Default for TfSettings {
             min_rows: None,
             min_columns: None,
             text_settings: WordsExtractSettings::default(),
+            explicit_h_edges: None,
+            explicit_v_edges: None,
         }
     }
 }
@@ -231,6 +240,7 @@ impl TfSettings {
             "lines" => StrategyType::Lines,
             "lines_strict" => StrategyType::LinesStrict,
             "text" => StrategyType::Text,
+            "explicit" => StrategyType::Explicit,
             _ => panic!("Invalid strategy: {}", strategy_str),
         }
     }
@@ -249,6 +259,7 @@ impl TfSettings {
             StrategyType::Lines => "lines",
             StrategyType::LinesStrict => "lines_strict",
             StrategyType::Text => "text",
+            StrategyType::Explicit => "explicit",
         }
     }
 }
@@ -366,6 +377,12 @@ impl TfSettings {
                     }
                     "text_expand_ligatures" => {
                         settings.text_settings.expand_ligatures = value.extract::<bool>().unwrap()
+                    }
+                    "explicit_h_edges" => {
+                        settings.explicit_h_edges = value.extract::<Option<Vec<Edge>>>().unwrap()
+                    }
+                    "explicit_v_edges" => {
+                        settings.explicit_v_edges = value.extract::<Option<Vec<Edge>>>().unwrap()
                     }
                     _ => (), // Ignore unknown settings
                 }
@@ -496,6 +513,16 @@ impl TfSettings {
     #[getter]
     fn text_expand_ligatures(&self) -> bool {
         self.text_settings.expand_ligatures
+    }
+
+    #[getter]
+    fn explicit_h_edges(&self) -> Option<Vec<Edge>> {
+        self.explicit_h_edges.clone()
+    }
+
+    #[getter]
+    fn explicit_v_edges(&self) -> Option<Vec<Edge>> {
+        self.explicit_v_edges.clone()
     }
 
     // Setters
@@ -632,6 +659,16 @@ impl TfSettings {
         self.text_settings.expand_ligatures = value;
     }
 
+    #[setter]
+    fn set_explicit_h_edges(&mut self, value: Option<Vec<Edge>>) {
+        self.explicit_h_edges = value;
+    }
+
+    #[setter]
+    fn set_explicit_v_edges(&mut self, value: Option<Vec<Edge>>) {
+        self.explicit_v_edges = value;
+    }
+
     // Dataclass-like methods
     fn __repr__(&self) -> String {
         format!(
@@ -645,7 +682,8 @@ impl TfSettings {
              text_need_strip={}, text_x_tolerance={}, text_y_tolerance={}, \
              text_keep_blank_chars={}, text_use_text_flow={}, \
              text_read_in_clockwise={}, text_split_at_punctuation={:?}, \
-             text_expand_ligatures={})",
+             text_expand_ligatures={}, \
+             explicit_h_edges={}, explicit_v_edges={})",
             Self::strategy_enum_to_str(self.vertical_strategy),
             Self::strategy_enum_to_str(self.horizontal_strategy),
             self.snap_x_tolerance,
@@ -669,6 +707,12 @@ impl TfSettings {
             self.text_settings.text_read_in_clockwise,
             self.text_split_at_punctuation(),
             self.text_settings.expand_ligatures,
+            self.explicit_h_edges
+                .as_ref()
+                .map_or("None".to_string(), |v| format!("[{} edges]", v.len())),
+            self.explicit_v_edges
+                .as_ref()
+                .map_or("None".to_string(), |v| format!("[{} edges]", v.len())),
         )
     }
 
@@ -697,6 +741,10 @@ impl TfSettings {
                 && self.text_settings.text_read_in_clockwise
                     == other.text_settings.text_read_in_clockwise
                 && self.text_settings.expand_ligatures == other.text_settings.expand_ligatures
+                && self.explicit_h_edges.as_ref().map(|v| v.len())
+                    == other.explicit_h_edges.as_ref().map(|v| v.len())
+                && self.explicit_v_edges.as_ref().map(|v| v.len())
+                    == other.explicit_v_edges.as_ref().map(|v| v.len())
         } else {
             false
         }
@@ -996,6 +1044,10 @@ mod tests {
             StrategyType::LinesStrict
         );
         assert_eq!(TfSettings::strategy_str_to_enum("text"), StrategyType::Text);
+        assert_eq!(
+            TfSettings::strategy_str_to_enum("explicit"),
+            StrategyType::Explicit
+        );
     }
 
     #[test]
@@ -1015,6 +1067,10 @@ mod tests {
             "lines_strict"
         );
         assert_eq!(TfSettings::strategy_enum_to_str(StrategyType::Text), "text");
+        assert_eq!(
+            TfSettings::strategy_enum_to_str(StrategyType::Explicit),
+            "explicit"
+        );
     }
 
     #[test]

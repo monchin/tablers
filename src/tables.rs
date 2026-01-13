@@ -986,28 +986,60 @@ impl TableFinder {
         }
     }
 
-    /// Extracts and processes edges from a PDF page.
+    /// Extracts and processes edges from a PDF page or explicit edges.
     ///
     /// # Arguments
     ///
-    /// * `page` - The PDF page to extract edges from.
+    /// * `page` - The PDF page to extract edges from. Can be None only if both
+    ///   horizontal_strategy and vertical_strategy are set to Explicit.
     ///
     /// # Returns
     ///
     /// A HashMap of edges grouped by orientation.
-    pub(crate) fn get_edges(&self, page: &Page) -> HashMap<Orientation, Vec<Edge>> {
+    ///
+    /// # Panics
+    ///
+    /// Panics if page is None and either strategy is not Explicit.
+    pub(crate) fn get_edges(&self, page: Option<&Page>) -> HashMap<Orientation, Vec<Edge>> {
         let settings = self.settings.as_ref();
 
-        let objects_opt = page.objects.borrow();
-        if objects_opt.is_none() {
-            page.extract_objects();
-        }
-        let objects = objects_opt.as_ref().expect("Objects should be extracted");
-        let mut edges_all = make_edges(objects, self.settings.clone());
-        let mut v_edges = edges_all.remove(&Orientation::Vertical).unwrap_or_default();
+        let edges_all = if let Some(page) = page {
+            let objects_opt = page.objects.borrow();
+            if objects_opt.is_none() {
+                page.extract_objects();
+            }
+            let objects = objects_opt.as_ref().expect("Objects should be extracted");
+            make_edges(objects, self.settings.clone())
+        } else {
+            // Page is None, verify both strategies are Explicit
+            if settings.horizontal_strategy != StrategyType::Explicit
+                || settings.vertical_strategy != StrategyType::Explicit
+            {
+                panic!(
+                    "Page can only be None when both horizontal_strategy and vertical_strategy are 'explicit'"
+                );
+            }
+            // Create edges only from explicit edges
+            let mut edges = HashMap::new();
+            edges.insert(
+                Orientation::Horizontal,
+                settings.explicit_h_edges.clone().unwrap_or_default(),
+            );
+            edges.insert(
+                Orientation::Vertical,
+                settings.explicit_v_edges.clone().unwrap_or_default(),
+            );
+            edges
+        };
+
+        let mut v_edges = edges_all
+            .get(&Orientation::Vertical)
+            .cloned()
+            .unwrap_or_default();
         filter_edges_by_min_len(&mut v_edges, *settings.edge_min_length_prefilter);
         let mut h_edges = edges_all
-            .remove(&Orientation::Horizontal)
+            .get(&Orientation::Horizontal)
+            .cloned()
             .unwrap_or_default();
         filter_edges_by_min_len(&mut h_edges, *settings.edge_min_length_prefilter);
 
@@ -1032,17 +1064,22 @@ impl TableFinder {
     }
 }
 
-/// Finds all table cell bounding boxes in a PDF page.
+/// Finds all table cell bounding boxes in a PDF page or from explicit edges.
 ///
 /// # Arguments
 ///
-/// * `pdf_page` - The PDF page to analyze.
+/// * `pdf_page` - The PDF page to analyze. Can be None only if both
+///   horizontal_strategy and vertical_strategy are set to Explicit.
 /// * `tf_settings` - The table finder settings.
 ///
 /// # Returns
 ///
 /// A vector of bounding boxes for detected cells.
-pub fn find_all_cells_bboxes(pdf_page: &Page, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
+///
+/// # Panics
+///
+/// Panics if pdf_page is None and either strategy is not Explicit.
+pub fn find_all_cells_bboxes(pdf_page: Option<&Page>, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
     let table_finder = TableFinder::new(tf_settings.clone());
     let edges = table_finder.get_edges(pdf_page);
     let intersections = edges_to_intersections(
@@ -1123,9 +1160,13 @@ pub fn find_tables_from_cells(
 /// # Returns
 ///
 /// A vector of Table objects found in the page.
-pub fn find_tables(pdf_page: &Page, tf_settings: Rc<TfSettings>, extract_text: bool) -> Vec<Table> {
+pub fn find_tables(
+    pdf_page: Option<&Page>,
+    tf_settings: Rc<TfSettings>,
+    extract_text: bool,
+) -> Vec<Table> {
     let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone());
-    find_tables_from_cells(&cells, extract_text, Some(pdf_page), Some(&tf_settings))
+    find_tables_from_cells(&cells, extract_text, pdf_page, Some(&tf_settings))
 }
 
 #[cfg(test)]
@@ -1948,5 +1989,350 @@ mod tests {
             html,
             "<table>\n<tr><td>Header1</td><td>Header2</td></tr>\n</table>"
         );
+    }
+
+    #[test]
+    fn test_find_tables_with_explicit_edges_no_page() {
+        use crate::edges::Edge;
+        use crate::objects::Orientation;
+        use crate::settings::{StrategyType, TfSettings};
+        use pdfium_render::prelude::PdfColor;
+
+        // Create a 2x2 grid using explicit edges
+        let h_edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(50.0),
+                x2: of(100.0),
+                y2: of(50.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(100.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(50.0),
+                y1: of(0.0),
+                x2: of(50.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            ..Default::default()
+        };
+
+        // Call find_tables with page=None
+        let tables = find_tables(None, Rc::new(settings), false);
+
+        // 2x2 grid should produce 1 table with 4 cells
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].cells.len(), 4);
+    }
+
+    #[test]
+    fn test_find_tables_with_explicit_edges_single_cell() {
+        use crate::edges::Edge;
+        use crate::objects::Orientation;
+        use crate::settings::{StrategyType, TfSettings};
+        use pdfium_render::prelude::PdfColor;
+
+        // Create a single cell
+        let h_edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(100.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            include_single_cell: true,
+            ..Default::default()
+        };
+
+        let tables = find_tables(None, Rc::new(settings), false);
+
+        assert_eq!(tables.len(), 1);
+        assert_eq!(tables[0].cells.len(), 1);
+    }
+
+    #[test]
+    fn test_find_tables_with_empty_explicit_edges() {
+        use crate::settings::{StrategyType, TfSettings};
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(vec![]),
+            explicit_v_edges: Some(vec![]),
+            ..Default::default()
+        };
+
+        let tables = find_tables(None, Rc::new(settings), false);
+
+        assert_eq!(tables.len(), 0);
+    }
+
+    #[test]
+    fn test_find_all_cells_bboxes_with_explicit_edges_no_page() {
+        use crate::edges::Edge;
+        use crate::objects::Orientation;
+        use crate::settings::{StrategyType, TfSettings};
+        use pdfium_render::prelude::PdfColor;
+
+        // Create a 2x2 grid
+        let h_edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(50.0),
+                x2: of(100.0),
+                y2: of(50.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(100.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(50.0),
+                y1: of(0.0),
+                x2: of(50.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            ..Default::default()
+        };
+
+        let cells = find_all_cells_bboxes(None, Rc::new(settings));
+
+        // 2x2 grid should produce 4 cells
+        assert_eq!(cells.len(), 4);
+    }
+
+    #[test]
+    fn test_find_tables_3x3_grid_no_page() {
+        use crate::edges::Edge;
+        use crate::objects::Orientation;
+        use crate::settings::{StrategyType, TfSettings};
+        use pdfium_render::prelude::PdfColor;
+
+        // Create a 3x3 grid
+        let h_edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(150.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(50.0),
+                x2: of(150.0),
+                y2: of(50.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(100.0),
+                x2: of(150.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(150.0),
+                x2: of(150.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(50.0),
+                y1: of(0.0),
+                x2: of(50.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(150.0),
+                y1: of(0.0),
+                x2: of(150.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            ..Default::default()
+        };
+
+        let tables = find_tables(None, Rc::new(settings), false);
+
+        assert_eq!(tables.len(), 1);
+        // 3x3 grid should have 9 cells
+        assert_eq!(tables[0].cells.len(), 9);
     }
 }

@@ -390,7 +390,7 @@ class Edge:
 
     Attributes
     ----------
-    orietation : {"h", "v"}
+    orientation : {"h", "v"}
         The orientation of the edge ("h" for horizontal, "v" for vertical).
     x1 : float
         The left x-coordinate of the edge.
@@ -406,13 +406,45 @@ class Edge:
         The stroke color as an RGBA tuple.
     """
 
-    orietation: Literal["h", "v"]
+    orientation: Literal["h", "v"]
     x1: float
     y1: float
     x2: float
     y2: float
     width: float
     color: Color
+
+    def __init__(
+        self,
+        orientation: Literal["h", "v"],
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        width: float = 1.0,
+        color: Color = (0, 0, 0, 255),
+    ) -> None:
+        """
+        Creates a new Edge.
+
+        Parameters
+        ----------
+        orientation : {"h", "v"}
+            The orientation of the edge ("h" for horizontal, "v" for vertical).
+        x1 : float
+            The left x-coordinate of the edge.
+        y1 : float
+            The top y-coordinate of the edge.
+        x2 : float
+            The right x-coordinate of the edge.
+        y2 : float
+            The bottom y-coordinate of the edge.
+        width : float, optional
+            The stroke width of the edge (default: 1.0).
+        color : Color, optional
+            The stroke color as an RGBA tuple (default: (0, 0, 0, 255)).
+        """
+        ...
 
 class TableCell:
     """
@@ -647,9 +679,9 @@ class TfSettingItems(TypedDict, total=False):
 
     Attributes
     ----------
-    vertical_strategy : {"lines", "lines_strict", "text"}
+    vertical_strategy : {"lines", "lines_strict", "text", "explicit"}
         Strategy for detecting vertical edges. Default: "lines_strict"
-    horizontal_strategy : {"lines", "lines_strict", "text"}
+    horizontal_strategy : {"lines", "lines_strict", "text", "explicit"}
         Strategy for detecting horizontal edges. Default: "lines_strict"
     snap_x_tolerance : float
         Tolerance for snapping vertical edges together. Default: 3.0
@@ -695,10 +727,18 @@ class TfSettingItems(TypedDict, total=False):
         Whether to expand ligatures in text. Default: True
     text_need_strip : bool
         Whether to strip leading/trailing whitespace from cell text. Default: True
+    explicit_h_edges : list[Edge] or None
+        Explicit horizontal edges to include in table detection. Default: None
+    explicit_v_edges : list[Edge] or None
+        Explicit vertical edges to include in table detection. Default: None
     """
 
-    vertical_strategy: Literal["lines", "lines_strict", "text"]  # Default: "lines_strict"
-    horizontal_strategy: Literal["lines", "lines_strict", "text"]  # Default: "lines_strict"
+    vertical_strategy: Literal[
+        "lines", "lines_strict", "text", "explicit"
+    ]  # Default: "lines_strict"
+    horizontal_strategy: Literal[
+        "lines", "lines_strict", "text", "explicit"
+    ]  # Default: "lines_strict"
     snap_x_tolerance: NonNegativeFloat  # Default: 3.0
     snap_y_tolerance: NonNegativeFloat  # Default: 3.0
     join_x_tolerance: NonNegativeFloat  # Default: 3.0
@@ -720,6 +760,8 @@ class TfSettingItems(TypedDict, total=False):
     text_read_in_clockwise: bool  # Default: True
     text_split_at_punctuation: Literal["all"] | str | None  # Default: None
     text_expand_ligatures: bool  # Default: True
+    explicit_h_edges: list[Edge] | None  # Default: None
+    explicit_v_edges: list[Edge] | None  # Default: None
 
 class TfSettings:
     """
@@ -730,9 +772,9 @@ class TfSettings:
 
     Attributes
     ----------
-    vertical_strategy : {"lines", "lines_strict", "text"}
+    vertical_strategy : {"lines", "lines_strict", "text", "explicit"}
         Strategy for detecting vertical edges.
-    horizontal_strategy : {"lines", "lines_strict", "text"}
+    horizontal_strategy : {"lines", "lines_strict", "text", "explicit"}
         Strategy for detecting horizontal edges.
     snap_x_tolerance : float
         Tolerance for snapping vertical edges together.
@@ -778,6 +820,10 @@ class TfSettings:
         Punctuation splitting for text.
     text_expand_ligatures : bool
         Whether to expand ligatures in text.
+    explicit_h_edges : list[Edge] or None
+        Explicit horizontal edges to include in table detection.
+    explicit_v_edges : list[Edge] or None
+        Explicit vertical edges to include in table detection.
 
     Parameters
     ----------
@@ -785,8 +831,8 @@ class TfSettings:
         Optional keyword arguments to override default settings.
     """
 
-    vertical_strategy: Literal["lines", "lines_strict", "text"]
-    horizontal_strategy: Literal["lines", "lines_strict", "text"]
+    vertical_strategy: Literal["lines", "lines_strict", "text", "explicit"]
+    horizontal_strategy: Literal["lines", "lines_strict", "text", "explicit"]
     snap_x_tolerance: float
     snap_y_tolerance: float
     join_x_tolerance: float
@@ -809,21 +855,24 @@ class TfSettings:
     text_read_in_clockwise: bool
     text_split_at_punctuation: str | None
     text_expand_ligatures: bool
+    explicit_h_edges: list[Edge] | None
+    explicit_v_edges: list[Edge] | None
 
     def __init__(self, **kwargs: Unpack[TfSettingItems]) -> None: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object) -> bool: ...
 
 def find_all_cells_bboxes(
-    page: Page, tf_settings: TfSettings | None = None, **kwargs
+    page: Page | None = None, tf_settings: TfSettings | None = None, **kwargs
 ) -> list[BBox]:
     """
-    Find all table cell bounding boxes in a PDF page.
+    Find all table cell bounding boxes in a PDF page or from explicit edges.
 
     Parameters
     ----------
-    page : Page
-        The PDF page to analyze.
+    page : Page or None, optional
+        The PDF page to analyze. Can be None only if both horizontal_strategy
+        and vertical_strategy are set to "explicit".
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
     **kwargs
@@ -834,6 +883,11 @@ def find_all_cells_bboxes(
     list of BBox
         A list of bounding boxes (x1, y1, x2, y2) for each detected cell.
 
+    Raises
+    ------
+    RuntimeError
+        If page is None and either strategy is not "explicit".
+
     Examples
     --------
     >>> from tablers import Document, find_all_cells_bboxes
@@ -841,6 +895,19 @@ def find_all_cells_bboxes(
     >>> page = doc.get_page(0)
     >>> cells = find_all_cells_bboxes(page)
     >>> print(f"Found {len(cells)} cells")
+
+    Using explicit edges without a page:
+
+    >>> from tablers import Edge, TfSettings, find_all_cells_bboxes
+    >>> h_edges = [Edge("h", 0.0, 0.0, 100.0, 0.0), Edge("h", 0.0, 50.0, 100.0, 50.0)]
+    >>> v_edges = [Edge("v", 0.0, 0.0, 0.0, 50.0), Edge("v", 100.0, 0.0, 100.0, 50.0)]
+    >>> settings = TfSettings(
+    ...     horizontal_strategy="explicit",
+    ...     vertical_strategy="explicit",
+    ...     explicit_h_edges=h_edges,
+    ...     explicit_v_edges=v_edges,
+    ... )
+    >>> cells = find_all_cells_bboxes(None, tf_settings=settings)
     """
     ...
 
@@ -888,22 +955,23 @@ def find_tables_from_cells(
     ...
 
 def find_tables(
-    page: Page,
-    extract_text: bool,
+    page: Page | None = None,
+    extract_text: bool = True,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
     """
-    Find all tables in a PDF page.
+    Find all tables in a PDF page or from explicit edges.
 
     This is the main entry point for table detection. It extracts edges,
     finds intersections, builds cells, and groups them into tables.
 
     Parameters
     ----------
-    page : Page
-        The PDF page to analyze.
-    extract_text : bool
+    page : Page | None, optional
+        The PDF page to analyze. Can be None only if both strategies are
+        "explicit" and extract_text is False.
+    extract_text : bool, default True
         Whether to extract text content from table cells.
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
@@ -915,6 +983,12 @@ def find_tables(
     list of Table
         A list of Table objects found in the page.
 
+    Raises
+    ------
+    ValueError
+        If page is None and extract_text is True.
+        If page is None and either strategy is not "explicit".
+
     Examples
     --------
     >>> from tablers import Document, find_tables
@@ -923,22 +997,38 @@ def find_tables(
     >>> tables = find_tables(page, extract_text=True)
     >>> for table in tables:
     ...     print(f"Table with {len(table.cells)} cells at {table.bbox}")
+
+    Using explicit edges without a page:
+
+    >>> from tablers import Edge, TfSettings, find_tables
+    >>> h_edges = [Edge("h", 0.0, 0.0, 100.0, 0.0), Edge("h", 0.0, 100.0, 100.0, 100.0)]
+    >>> v_edges = [Edge("v", 0.0, 0.0, 0.0, 100.0), Edge("v", 100.0, 0.0, 100.0, 100.0)]
+    >>> settings = TfSettings(
+    ...     horizontal_strategy="explicit",
+    ...     vertical_strategy="explicit",
+    ...     explicit_h_edges=h_edges,
+    ...     explicit_v_edges=v_edges,
+    ... )
+    >>> tables = find_tables(page=None, extract_text=False, tf_settings=settings)
     """
     ...
 
 def get_edges(
-    page: Page, tf_settings: TfSettings | None = None, **kwargs: Unpack[TfSettingItems]
+    page: Page | None = None,
+    tf_settings: TfSettings | None = None,
+    **kwargs: Unpack[TfSettingItems],
 ) -> dict[Literal["v", "h"], list[Edge]]:
     """
-    Extract edges (lines and rectangle borders) from a PDF page.
+    Extract edges (lines and rectangle borders) from a PDF page or from explicit edges.
 
     This function is primarily intended for debugging intermediate
     processing steps on the Python side.
 
     Parameters
     ----------
-    page : Page
-        The PDF page to extract edges from.
+    page : Page or None, optional
+        The PDF page to extract edges from. Can be None only if both
+        horizontal_strategy and vertical_strategy are set to "explicit".
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
     **kwargs : TfSettingItems
@@ -950,6 +1040,11 @@ def get_edges(
         A dictionary with keys "h" (horizontal edges) and "v" (vertical edges),
         each containing a list of Edge objects.
 
+    Raises
+    ------
+    RuntimeError
+        If page is None and either strategy is not "explicit".
+
     Examples
     --------
     >>> from tablers import Document, get_edges
@@ -957,5 +1052,18 @@ def get_edges(
     >>> page = doc.get_page(0)
     >>> edges = get_edges(page)
     >>> print(f"Found {len(edges['h'])} horizontal and {len(edges['v'])} vertical edges")
+
+    Using explicit edges without a page:
+
+    >>> from tablers import Edge, get_edges
+    >>> h_edge = Edge("h", 0.0, 50.0, 100.0, 50.0)
+    >>> v_edge = Edge("v", 50.0, 0.0, 50.0, 100.0)
+    >>> edges = get_edges(
+    ...     None,
+    ...     horizontal_strategy="explicit",
+    ...     vertical_strategy="explicit",
+    ...     explicit_h_edges=[h_edge],
+    ...     explicit_v_edges=[v_edge],
+    ... )
     """
     ...

@@ -6,12 +6,12 @@ This page provides detailed documentation for all public classes and functions i
 
 ### find_tables
 
-Find all tables in a PDF page.
+Find all tables in a PDF page or from explicit edges.
 
 ```python
 def find_tables(
-    page: Page,
-    extract_text: bool,
+    page: Page | None = None,
+    extract_text: bool = True,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems]
 ) -> list[Table]
@@ -19,14 +19,19 @@ def find_tables(
 
 **Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `page` | `Page` | The PDF page to analyze |
-| `extract_text` | `bool` | Whether to extract text content from table cells |
-| `tf_settings` | `Optional[TfSettings]` | TableFinder settings object. If not provided, default settings are used |
-| `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | `Optional[Page]` | `None` | The PDF page to analyze. Can be `None` only if both strategies are `"explicit"` and `extract_text` is `False` |
+| `extract_text` | `bool` | `True` | Whether to extract text content from table cells |
+| `tf_settings` | `Optional[TfSettings]` | `None` | TableFinder settings object. If not provided, default settings are used |
+| `**kwargs` |`Unpack[TfSettingItems]` | - | Additional keyword arguments passed to TfSettings |
 
 **Returns:** `list[Table]` - A list of Table objects found in the page.
+
+**Raises:**
+
+- `ValueError` - If `page` is `None` and `extract_text` is `True`.
+- `ValueError` - If `page` is `None` and either strategy is not `"explicit"`.
 
 **Example:**
 
@@ -40,15 +45,33 @@ with Document("example.pdf") as doc:
         print(f"Table with {len(table.cells)} cells at {table.bbox}")
 ```
 
+**Example with explicit edges (no page required):**
+
+```python
+from tablers import Edge, TfSettings, find_tables
+
+h_edges = [Edge("h", 0.0, 0.0, 100.0, 0.0), Edge("h", 0.0, 100.0, 100.0, 100.0)]
+v_edges = [Edge("v", 0.0, 0.0, 0.0, 100.0), Edge("v", 100.0, 0.0, 100.0, 100.0)]
+
+settings = TfSettings(
+    horizontal_strategy="explicit",
+    vertical_strategy="explicit",
+    explicit_h_edges=h_edges,
+    explicit_v_edges=v_edges,
+)
+
+tables = find_tables(page=None, extract_text=False, tf_settings=settings)
+```
+
 ---
 
 ### find_all_cells_bboxes
 
-Find all table cell bounding boxes in a PDF page.
+Find all table cell bounding boxes in a PDF page or from explicit edges.
 
 ```python
 def find_all_cells_bboxes(
-    page: Page,
+    page: Page | None = None,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems]
 ) -> list[tuple[float, float, float, float]]
@@ -58,11 +81,13 @@ def find_all_cells_bboxes(
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `page` | `Page` | The PDF page to analyze |
+| `page` | `Optional[Page]` | The PDF page to analyze. Can be `None` only if both strategies are `"explicit"` |
 | `tf_settings` | `Optional[TfSettings]` | TableFinder settings object |
 | `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
 
 **Returns:** `list[BBox]` - A list of bounding boxes (x1, y1, x2, y2) for each detected cell.
+
+**Raises:** `RuntimeError` - If `page` is `None` and either strategy is not `"explicit"`.
 
 **Example:**
 
@@ -73,6 +98,24 @@ with Document("example.pdf") as doc:
     page = doc.get_page(0)
     cells = find_all_cells_bboxes(page)
     print(f"Found {len(cells)} cells")
+```
+
+**Example with explicit edges (no page required):**
+
+```python
+from tablers import Edge, TfSettings, find_all_cells_bboxes
+
+h_edges = [Edge("h", 0.0, 0.0, 100.0, 0.0), Edge("h", 0.0, 100.0, 100.0, 100.0)]
+v_edges = [Edge("v", 0.0, 0.0, 0.0, 100.0), Edge("v", 100.0, 0.0, 100.0, 100.0)]
+
+settings = TfSettings(
+    horizontal_strategy="explicit",
+    vertical_strategy="explicit",
+    explicit_h_edges=h_edges,
+    explicit_v_edges=v_edges,
+)
+
+cells = find_all_cells_bboxes(None, tf_settings=settings)
 ```
 
 ---
@@ -109,12 +152,13 @@ def find_tables_from_cells(
 
 ### get_edges
 
-Extract edges (lines and rectangle borders) from a PDF page.
+Extract edges (lines and rectangle borders) from a PDF page or from explicit edges.
 
 ```python
 def get_edges(
-    page: Page,
-    settings: dict | None = None
+    page: Page | None = None,
+    tf_settings: TfSettings | None = None,
+    **kwargs: Unpack[TfSettingItems]
 ) -> dict[str, list[Edge]]
 ```
 
@@ -122,10 +166,44 @@ def get_edges(
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `page` | `Page` | The PDF page to extract edges from |
-| `settings` | `dict \| None` | Dictionary of settings for edge extraction |
+| `page` | `Optional[Page]` | The PDF page to extract edges from. Can be `None` only if both strategies are `"explicit"` |
+| `tf_settings` | `Optional[TfSettings]` | TableFinder settings object |
+| `**kwargs` | `Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
 
 **Returns:** `dict` - A dictionary with keys "h" (horizontal edges) and "v" (vertical edges).
+
+**Raises:** `RuntimeError` - If `page` is `None` and either strategy is not `"explicit"`.
+
+---
+
+### plumber_edge_to_tablers_edge
+
+Convert a pdfplumber edge dictionary to a Tablers `Edge` object.
+
+```python
+from tablers.edges import plumber_edge_to_tablers_edge
+
+def plumber_edge_to_tablers_edge(
+    plumber_edge: dict[str, Any],
+    page_rotation: float,
+    page_height: float,
+    page_width: float,
+) -> Edge
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `plumber_edge` | `dict[str, Any]` | A pdfplumber edge dictionary containing `orientation`, `x0`, `y0`, `x1`, `y1`, `linewidth`, and `stroking_color` |
+| `page_rotation` | `float` | The rotation of the page in degrees |
+| `page_height` | `float` | The height of the page |
+| `page_width` | `float` | The width of the page |
+
+**Returns:** `Edge` - A Tablers Edge object.
+
+!!! tip
+    This function can serve as a reference for writing conversion functions for other PDF libraries. See [Using Edges from Other Libraries](../usage/advanced.md#using-edges-from-other-libraries) for more details.
 
 ---
 
@@ -186,7 +264,7 @@ Represents a single page in a PDF document.
 |-----------|------|-------------|
 | `width` | `float` | The width of the page in points |
 | `height` | `float` | The height of the page in points |
-| `objects` | `Objects \| None` | Extracted objects, or None if not extracted |
+| `objects` | `Optional[Objects]` | Extracted objects, or None if not extracted |
 
 **Methods:**
 
@@ -247,7 +325,7 @@ Represents a group of table cells arranged in a row or column.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `cells` | `list[TableCell \| None]` | Cells in this group, with None for empty positions |
+| `cells` | `list[Optional[TableCell]]` | Cells in this group, with None for empty positions |
 | `bbox` | `tuple[float, float, float, float]` | Bounding box of the entire group |
 
 ---
@@ -313,7 +391,47 @@ Represents a text character extracted from a PDF page.
 
 ### Edge
 
-Represents a line edge extracted from a PDF page.
+Represents a line edge extracted from a PDF page or created programmatically.
+
+```python
+class Edge:
+    def __init__(
+        self,
+        orientation: Literal["h", "v"],
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        width: float = 1.0,
+        color: Color = (0, 0, 0, 255),
+    ) -> None
+```
+
+**Constructor Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `orientation` | `Literal["h", "v"]` | - | "h" for horizontal, "v" for vertical |
+| `x1` | `float` | - | Left x-coordinate |
+| `y1` | `float` | - | Top y-coordinate |
+| `x2` | `float` | - | Right x-coordinate |
+| `y2` | `float` | - | Bottom y-coordinate |
+| `width` | `float` | `1.0` | Stroke width |
+| `color` | `Color` | `(0, 0, 0, 255)` | Stroke color (RGBA) |
+
+**Raises:** `ValueError` - If `orientation` is not "h" or "v".
+
+**Example:**
+
+```python
+from tablers import Edge
+
+# Create a horizontal edge
+h_edge = Edge("h", 0.0, 50.0, 100.0, 50.0)
+
+# Create a vertical edge with custom width and color
+v_edge = Edge("v", 50.0, 0.0, 50.0, 100.0, width=2.0, color=(255, 0, 0, 255))
+```
 
 **Attributes:**
 

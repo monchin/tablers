@@ -428,6 +428,48 @@ impl Edge {
 }
 #[pymethods]
 impl Edge {
+    /// Creates a new Edge from Python.
+    ///
+    /// # Arguments
+    ///
+    /// * `orientation` - The orientation of the edge ("h" for horizontal, "v" for vertical).
+    /// * `x1` - The left x-coordinate of the edge.
+    /// * `y1` - The top y-coordinate of the edge.
+    /// * `x2` - The right x-coordinate of the edge.
+    /// * `y2` - The bottom y-coordinate of the edge.
+    /// * `width` - The stroke width of the edge (default: 1.0).
+    /// * `color` - The stroke color as an RGBA tuple (default: (0, 0, 0, 255)).
+    #[new]
+    #[pyo3(signature = (orientation, x1, y1, x2, y2, width=1.0, color=(0, 0, 0, 255)))]
+    fn new(
+        orientation: &str,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        width: f32,
+        color: (u8, u8, u8, u8),
+    ) -> PyResult<Self> {
+        let orientation = match orientation {
+            "h" => Orientation::Horizontal,
+            "v" => Orientation::Vertical,
+            _ => {
+                return Err(pyo3::exceptions::PyValueError::new_err(
+                    "Invalid orientation, must be 'h' or 'v'",
+                ));
+            }
+        };
+        Ok(Edge {
+            orientation,
+            x1: OrderedFloat(x1),
+            y1: OrderedFloat(y1),
+            x2: OrderedFloat(x2),
+            y2: OrderedFloat(y2),
+            width: OrderedFloat(width),
+            color: PdfColor::new(color.0, color.1, color.2, color.3),
+        })
+    }
+
     /// Returns the left x-coordinate of the edge.
     #[getter]
     fn x1(&self) -> f32 {
@@ -642,6 +684,23 @@ pub(crate) fn make_edges(
                 }
             }
         }
+    }
+
+    let (explicit_h_edges, explicit_v_edges) = (
+        tf_settings.explicit_h_edges.clone(),
+        tf_settings.explicit_v_edges.clone(),
+    );
+    if let Some(explicit_h_edges) = explicit_h_edges {
+        edges
+            .get_mut(&Orientation::Horizontal)
+            .unwrap()
+            .extend(explicit_h_edges);
+    }
+    if let Some(explicit_v_edges) = explicit_v_edges {
+        edges
+            .get_mut(&Orientation::Vertical)
+            .unwrap()
+            .extend(explicit_v_edges);
     }
 
     edges
@@ -915,5 +974,155 @@ mod tests {
             OrderedFloat(3.0),
         );
         assert_eq!(count(&merged), 88);
+    }
+
+    #[test]
+    fn test_make_edges_with_explicit_h_edges() {
+        let objects = Objects {
+            lines: vec![],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        // Create explicit horizontal edges
+        let h_edge1 = make_h_edge(0.0, 100.0, 200.0, 100.0);
+        let h_edge2 = make_h_edge(0.0, 200.0, 200.0, 200.0);
+
+        let settings = Rc::new(TfSettings {
+            horizontal_strategy: StrategyType::Explicit,
+            vertical_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(vec![h_edge1, h_edge2]),
+            explicit_v_edges: None,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        assert_eq!(h_edges.len(), 2);
+        assert_eq!(v_edges.len(), 0);
+    }
+
+    #[test]
+    fn test_make_edges_with_explicit_v_edges() {
+        let objects = Objects {
+            lines: vec![],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        // Create explicit vertical edges
+        let v_edge1 = make_test_edge(50.0, 0.0, 50.0, 300.0);
+        let v_edge2 = make_test_edge(150.0, 0.0, 150.0, 300.0);
+
+        let settings = Rc::new(TfSettings {
+            horizontal_strategy: StrategyType::Explicit,
+            vertical_strategy: StrategyType::Explicit,
+            explicit_h_edges: None,
+            explicit_v_edges: Some(vec![v_edge1, v_edge2]),
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        assert_eq!(h_edges.len(), 0);
+        assert_eq!(v_edges.len(), 2);
+    }
+
+    #[test]
+    fn test_make_edges_with_both_explicit_edges() {
+        let objects = Objects {
+            lines: vec![],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        // Create a simple 2x2 grid using explicit edges
+        // Horizontal edges at y=0, y=100, y=200
+        let h_edges = vec![
+            make_h_edge(0.0, 0.0, 200.0, 0.0),
+            make_h_edge(0.0, 100.0, 200.0, 100.0),
+            make_h_edge(0.0, 200.0, 200.0, 200.0),
+        ];
+        // Vertical edges at x=0, x=100, x=200
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(200.0),
+                y1: of(0.0),
+                x2: of(200.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = Rc::new(TfSettings {
+            horizontal_strategy: StrategyType::Explicit,
+            vertical_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+
+        let h_edges_result = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges_result = edges.get(&Orientation::Vertical).unwrap();
+
+        assert_eq!(h_edges_result.len(), 3);
+        assert_eq!(v_edges_result.len(), 3);
+    }
+
+    #[test]
+    fn test_make_edges_explicit_combined_with_lines() {
+        let objects = Objects {
+            lines: vec![],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        // Explicit edges only for horizontal, none for vertical
+        let h_edge = make_h_edge(0.0, 50.0, 100.0, 50.0);
+
+        let settings = Rc::new(TfSettings {
+            horizontal_strategy: StrategyType::Explicit,
+            vertical_strategy: StrategyType::Lines, // Lines strategy but no line objects
+            explicit_h_edges: Some(vec![h_edge]),
+            explicit_v_edges: None,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        // Only explicit horizontal edge should exist
+        assert_eq!(h_edges.len(), 1);
+        assert_eq!(v_edges.len(), 0);
     }
 }

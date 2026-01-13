@@ -30,7 +30,7 @@ class TestFindAllCellsBboxes:
             assert isinstance(cell, tuple)
             assert len(cell) == 4
             for coord in cell:
-                assert isinstance(coord, (int, float))
+                assert isinstance(coord, int | float)
 
     def test_with_tf_settings(self, edge_test_doc: Document) -> None:
         """find_all_cells_bboxes should accept TfSettings parameter."""
