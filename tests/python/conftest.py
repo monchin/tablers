@@ -37,6 +37,12 @@ def tables_filter_test_path() -> Path:
 
 
 @pytest.fixture
+def text_lines_tables_pdf_path() -> Path:
+    """Return path to the text-lines-tables.pdf file."""
+    return TEST_DATA_DIR / "text-lines-tables.pdf"
+
+
+@pytest.fixture
 def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for edge-test.pdf, closing it after the test."""
     doc = Document(path=edge_test_pdf_path)
@@ -71,6 +77,17 @@ def tables_filter_test_doc(
 ) -> Generator[Document, None, None]:
     """Open and return a Document for tables-filter-test.pdf, closing it after the test."""
     doc = Document(path=tables_filter_test_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def text_lines_tables_doc(
+    text_lines_tables_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for text-lines-tables.pdf, closing it after the test."""
+    doc = Document(path=text_lines_tables_pdf_path)
     yield doc
     if not doc.is_closed():
         doc.close()

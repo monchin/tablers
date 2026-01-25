@@ -12,7 +12,8 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Type alias for edge property getter functions.
-type EdgePropGetter = fn(&Edge) -> OrderedFloat<f32>;
+pub(crate) type EdgePropGetter = fn(&Edge) -> OrderedFloat<f32>;
+pub(crate) type EdgePropSetter = fn(&mut Edge, OrderedFloat<f32>);
 
 /// Attribute type for edge snapping operations.
 #[derive(Debug, Clone, Copy)]

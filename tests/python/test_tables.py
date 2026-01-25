@@ -531,3 +531,18 @@ class TestTableExtractionFilter:
         tables = find_tables(page, True, None, include_single_cell=True, min_rows=2, min_columns=2)
         assert len(tables) == 1
         assert len(tables[0].columns) == 2 and len(tables[0].rows) == 2
+
+
+class TestTableExtractionWithOneStratTextAndTheOtherNotText:
+    def test_table_extraction_with_one_strat_text_and_the_other_not_text(
+        self, text_lines_tables_doc: Document
+    ) -> None:
+        """Test table extraction with one strategy text and the other not text."""
+        page = text_lines_tables_doc.get_page(0)
+        tables = find_tables(page, True, horizontal_strategy="text")
+        assert len(tables) == 1
+        assert tables[0].to_csv() == "AAAA,BBBB\n,\nCCCC,DDDD"
+
+        tables = find_tables(page, True, vertical_strategy="text")
+        assert len(tables) == 1
+        assert tables[0].to_csv() == "1111,2222\n3333,4444"

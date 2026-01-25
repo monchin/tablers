@@ -681,6 +681,417 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
+/// If one strat is Text and the other is not Text, we need to extend Text edges to its neighbor,
+/// because Text edges are usually too short to intersect with edges vertical to itself.
+/// Please see #8(https://github.com/monchin/tablers/issues/8) for more details.
+///
+/// # Arguments
+///
+/// * `edges_to_extend` - The edges to extend.
+/// * `edges_the_other_orientation` - The edges of the other orientation.
+/// * `extend_orientation` - The orientation of the edges to extend.
+/// * `intersection_tolerance` - The intersection tolerance.
+fn extend_edges_to_neighbors(
+    edges_to_extend: &mut [Edge],
+    edges_the_other_orientation: &[Edge],
+    extend_orientation: Orientation,
+    intersection_tolerance: OrderedFloat<f32>,
+) {
+    let (first_key_to_extend, second_key_to_extend): (EdgePropGetter, EdgePropGetter) =
+        match extend_orientation {
+            Orientation::Horizontal => (|e| e.x1, |e| e.x2),
+            Orientation::Vertical => (|e| e.y1, |e| e.y2),
+        };
+    let location_key: EdgePropGetter = match extend_orientation {
+        Orientation::Horizontal => |e| e.y1,
+        Orientation::Vertical => |e| e.x1,
+    };
+    let the_other_orientation_key: EdgePropGetter = match extend_orientation {
+        Orientation::Horizontal => |e| e.x1,
+        Orientation::Vertical => |e| e.y1,
+    };
+
+    let (first_key_range, second_key_range): (EdgePropGetter, EdgePropGetter) =
+        match extend_orientation {
+            Orientation::Horizontal => (|e| e.y1, |e| e.y2),
+            Orientation::Vertical => (|e| e.x1, |e| e.x2),
+        };
+
+    let (set_first_val, set_second_val): (EdgePropSetter, EdgePropSetter) = match extend_orientation
+    {
+        Orientation::Horizontal => (|e, v| e.x1 = v, |e, v| e.x2 = v),
+        Orientation::Vertical => (|e, v| e.y1 = v, |e, v| e.y2 = v),
+    };
+
+    for edge_to_extend in edges_to_extend.iter_mut() {
+        let loc = location_key(edge_to_extend);
+        let (first_val_to_extend, second_val_to_extend) = (
+            first_key_to_extend(edge_to_extend),
+            second_key_to_extend(edge_to_extend),
+        );
+        // Use indices instead of cloning edges to improve performance
+        let mut intersecting_edge_indices: Vec<usize> = edges_the_other_orientation
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| {
+                let (range1, range2) = (first_key_range(e), second_key_range(e));
+                loc - range2 <= intersection_tolerance && range1 - loc <= intersection_tolerance
+            })
+            .map(|(i, _)| i)
+            .collect();
+        let n_intersecting_edges = intersecting_edge_indices.len();
+        if n_intersecting_edges > 1 {
+            // Sort indices by the_other_orientation_key to ensure correct ordering
+            intersecting_edge_indices.sort_by(|&i, &j| {
+                let key_i = the_other_orientation_key(&edges_the_other_orientation[i]);
+                let key_j = the_other_orientation_key(&edges_the_other_orientation[j]);
+                key_i
+                    .partial_cmp(&key_j)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            // Extend first value (left for horizontal, top for vertical)
+            for i in 0..n_intersecting_edges {
+                let idx = intersecting_edge_indices[i];
+                let loc_the_other_orientation =
+                    the_other_orientation_key(&edges_the_other_orientation[idx]);
+                if (first_val_to_extend - loc_the_other_orientation) < -intersection_tolerance {
+                    if i != 0 {
+                        let prev_idx = intersecting_edge_indices[i - 1];
+                        set_first_val(
+                            edge_to_extend,
+                            the_other_orientation_key(&edges_the_other_orientation[prev_idx]),
+                        );
+                    }
+                    break;
+                }
+            }
+
+            // Extend second value (right for horizontal, bottom for vertical)
+            for i in (0..n_intersecting_edges).rev() {
+                let idx = intersecting_edge_indices[i];
+                let loc_the_other_orientation =
+                    the_other_orientation_key(&edges_the_other_orientation[idx]);
+                if (second_val_to_extend - loc_the_other_orientation) > -intersection_tolerance {
+                    if i != n_intersecting_edges - 1 {
+                        let next_idx = intersecting_edge_indices[i + 1];
+                        set_second_val(
+                            edge_to_extend,
+                            the_other_orientation_key(&edges_the_other_orientation[next_idx]),
+                        );
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod extend_edges_to_neighbors_tests {
+    use super::extend_edges_to_neighbors;
+    use crate::edges::Edge;
+    use crate::objects::Orientation;
+    use ordered_float::OrderedFloat;
+    use pdfium_render::prelude::PdfColor;
+
+    /// Creates a test edge
+    fn create_edge(x1: f32, y1: f32, x2: f32, y2: f32, orientation: Orientation) -> Edge {
+        Edge {
+            x1: OrderedFloat(x1),
+            y1: OrderedFloat(y1),
+            x2: OrderedFloat(x2),
+            y2: OrderedFloat(y2),
+            orientation,
+            width: OrderedFloat(1.0),
+            color: PdfColor::new(0, 0, 0, 255),
+        }
+    }
+
+    /// Test extending horizontal edges to neighbor edges
+    #[test]
+    fn test_extend_horizontal_edges_to_neighbors() {
+        // Create horizontal edge to extend (y=5, x from 2 to 3)
+        let mut edges_to_extend = vec![create_edge(2.0, 5.0, 3.0, 5.0, Orientation::Horizontal)];
+
+        // Create vertical edges as references (x=1, y from 0 to 10; x=4, y from 0 to 10; x=6, y from 0 to 10)
+        let edges_the_other_orientation = vec![
+            create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical),
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical),
+            create_edge(6.0, 0.0, 6.0, 10.0, Orientation::Vertical),
+        ];
+
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Check if edge is correctly extended to neighbor vertical edges
+        let extended_edge = &edges_to_extend[0];
+        assert_eq!(extended_edge.x1, OrderedFloat(1.0)); // Should extend to first vertical edge
+        assert_eq!(extended_edge.x2, OrderedFloat(4.0)); // Should extend to second vertical edge
+        assert_eq!(extended_edge.y1, OrderedFloat(5.0)); // y coordinate should remain unchanged
+        assert_eq!(extended_edge.y2, OrderedFloat(5.0)); // y coordinate should remain unchanged
+    }
+
+    /// Test extending vertical edges to neighbor edges
+    #[test]
+    fn test_extend_vertical_edges_to_neighbors() {
+        // Create vertical edge to extend (x=5, y from 2 to 3)
+        let mut edges_to_extend = vec![create_edge(5.0, 2.0, 5.0, 3.0, Orientation::Vertical)];
+
+        // Create horizontal edges as references (y=1, x from 0 to 10; y=4, x from 0 to 10; y=6, x from 0 to 10)
+        let edges_the_other_orientation = vec![
+            create_edge(0.0, 1.0, 10.0, 1.0, Orientation::Horizontal),
+            create_edge(0.0, 4.0, 10.0, 4.0, Orientation::Horizontal),
+            create_edge(0.0, 6.0, 10.0, 6.0, Orientation::Horizontal),
+        ];
+
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Vertical,
+            intersection_tolerance,
+        );
+
+        // Check if edge is correctly extended to neighbor horizontal edges
+        let extended_edge = &edges_to_extend[0];
+        assert_eq!(extended_edge.y1, OrderedFloat(1.0)); // Should extend to first horizontal edge
+        assert_eq!(extended_edge.y2, OrderedFloat(4.0)); // Should extend to second horizontal edge
+        assert_eq!(extended_edge.x1, OrderedFloat(5.0)); // x coordinate should remain unchanged
+        assert_eq!(extended_edge.x2, OrderedFloat(5.0)); // x coordinate should remain unchanged
+    }
+
+    /// Test case where edges don't need extension (not enough neighbor edges)
+    #[test]
+    fn test_no_extension_with_few_edges() {
+        // Create horizontal edge to extend
+        let mut edges_to_extend = vec![create_edge(2.0, 5.0, 3.0, 5.0, Orientation::Horizontal)];
+
+        // Only one vertical edge, not enough for extension
+        let edges_the_other_orientation =
+            vec![create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical)];
+
+        let original_edge = edges_to_extend[0].clone();
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Edge should remain unchanged
+        assert_eq!(edges_to_extend[0].x1, original_edge.x1);
+        assert_eq!(edges_to_extend[0].x2, original_edge.x2);
+    }
+
+    /// Test case where edge is shorter than neighbor spacing (should extend)
+    #[test]
+    fn test_edge_shorter_than_neighbor_spacing() {
+        // Create horizontal edge that doesn't reach all vertical edges (y=5, x from 2 to 5)
+        let mut edges_to_extend = vec![create_edge(2.0, 5.0, 5.0, 5.0, Orientation::Horizontal)];
+
+        // Create vertical edges (x=1, y from 0 to 10; x=4, y from 0 to 10; x=6, y from 0 to 10)
+        let edges_the_other_orientation = vec![
+            create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical),
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical),
+            create_edge(6.0, 0.0, 6.0, 10.0, Orientation::Vertical),
+        ];
+
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Edge should extend to reach the outer vertical edges
+        assert_eq!(edges_to_extend[0].x1, OrderedFloat(1.0));
+        assert_eq!(edges_to_extend[0].x2, OrderedFloat(6.0));
+    }
+
+    /// Test extending multiple edges simultaneously
+    #[test]
+    fn test_multiple_edges_extension() {
+        // Create multiple horizontal edges to extend
+        let mut edges_to_extend = vec![
+            create_edge(2.0, 3.0, 3.0, 3.0, Orientation::Horizontal), // y=3, x from 2 to 3
+            create_edge(2.0, 7.0, 3.0, 7.0, Orientation::Horizontal), // y=7, x from 2 to 3
+        ];
+
+        // Create vertical edges
+        let edges_the_other_orientation = vec![
+            create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical),
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical),
+            create_edge(6.0, 0.0, 6.0, 10.0, Orientation::Vertical),
+        ];
+
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Check both edges are correctly extended
+        assert_eq!(edges_to_extend[0].x1, OrderedFloat(1.0));
+        assert_eq!(edges_to_extend[0].x2, OrderedFloat(4.0));
+        assert_eq!(edges_to_extend[0].y1, OrderedFloat(3.0));
+
+        assert_eq!(edges_to_extend[1].x1, OrderedFloat(1.0));
+        assert_eq!(edges_to_extend[1].x2, OrderedFloat(4.0));
+        assert_eq!(edges_to_extend[1].y1, OrderedFloat(7.0));
+    }
+
+    /// Test case where edge is already fully covered by intersecting edges
+    #[test]
+    fn test_edge_already_fully_covered() {
+        // Create horizontal edge that already spans the full range (y=5, x from 1 to 6)
+        let mut edges_to_extend = vec![create_edge(1.0, 5.0, 6.0, 5.0, Orientation::Horizontal)];
+
+        // Create vertical edges that the horizontal edge already spans
+        let edges_the_other_orientation = vec![
+            create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical),
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical),
+            create_edge(6.0, 0.0, 6.0, 10.0, Orientation::Vertical),
+        ];
+
+        let original_edge = edges_to_extend[0].clone();
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Edge should remain unchanged since it already covers the range
+        assert_eq!(edges_to_extend[0].x1, original_edge.x1);
+        assert_eq!(edges_to_extend[0].x2, original_edge.x2);
+    }
+
+    /// Test case with overlapping edges in the other orientation
+    #[test]
+    fn test_overlapping_edges_in_other_orientation() {
+        // Create horizontal edge to extend (y=5, x from 2 to 3)
+        let mut edges_to_extend = vec![create_edge(2.0, 5.0, 3.0, 5.0, Orientation::Horizontal)];
+
+        // Create overlapping vertical edges (some have overlapping x positions)
+        let edges_the_other_orientation = vec![
+            create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical),
+            create_edge(1.5, 0.0, 1.5, 10.0, Orientation::Vertical), // Overlaps with x=1
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical),
+            create_edge(4.2, 0.0, 4.2, 10.0, Orientation::Vertical), // Overlaps with x=4
+            create_edge(6.0, 0.0, 6.0, 10.0, Orientation::Vertical),
+        ];
+
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Algorithm extends to the nearest neighbor edges:
+        // For x1=2.0, it finds x=4.0 is beyond (2.0 - 4.0 = -2.0 < -0.5), so uses the previous edge x=1.5
+        // For x2=3.0, it finds x=1.5 is before (3.0 - 1.5 = 1.5 > -0.5), so uses the next edge x=4.0
+        let extended_edge = &edges_to_extend[0];
+        assert_eq!(extended_edge.x1, OrderedFloat(1.5)); // Extends to nearest neighbor before x=4.0
+        assert_eq!(extended_edge.x2, OrderedFloat(4.0)); // Extends to nearest neighbor after x=1.5
+    }
+
+    /// Test case where edge is completely outside the range of intersecting edges
+    #[test]
+    fn test_edge_outside_intersecting_range() {
+        // Create horizontal edge that doesn't intersect with any vertical edges (y=15, x from 2 to 3)
+        let mut edges_to_extend = vec![create_edge(2.0, 15.0, 3.0, 15.0, Orientation::Horizontal)];
+
+        // Create vertical edges that don't intersect with the horizontal edge
+        let edges_the_other_orientation = vec![
+            create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical), // y range: 0-10
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical), // y range: 0-10
+            create_edge(6.0, 0.0, 6.0, 10.0, Orientation::Vertical), // y range: 0-10
+        ];
+
+        let original_edge = edges_to_extend[0].clone();
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Edge should remain unchanged since no edges intersect
+        assert_eq!(edges_to_extend[0].x1, original_edge.x1);
+        assert_eq!(edges_to_extend[0].x2, original_edge.x2);
+        assert_eq!(edges_to_extend[0].y1, original_edge.y1);
+        assert_eq!(edges_to_extend[0].y2, original_edge.y2);
+    }
+
+    /// Test case where edge extends beyond the first/last intersecting edge
+    #[test]
+    fn test_edge_extends_beyond_boundaries() {
+        // Create horizontal edge that extends beyond the vertical edges (y=5, x from 0 to 7)
+        let mut edges_to_extend = vec![create_edge(0.0, 5.0, 7.0, 5.0, Orientation::Horizontal)];
+
+        // Create vertical edges in the middle
+        let edges_the_other_orientation = vec![
+            create_edge(2.0, 0.0, 2.0, 10.0, Orientation::Vertical),
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical),
+            create_edge(5.0, 0.0, 5.0, 10.0, Orientation::Vertical),
+        ];
+
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Edge should remain unchanged since it already extends beyond all intersecting edges
+        let extended_edge = &edges_to_extend[0];
+        assert_eq!(extended_edge.x1, OrderedFloat(0.0));
+        assert_eq!(extended_edge.x2, OrderedFloat(7.0));
+    }
+
+    /// Test case with unsorted edges in the other orientation
+    #[test]
+    fn test_unsorted_edges_handling() {
+        // Create horizontal edge to extend (y=5, x from 2 to 3)
+        let mut edges_to_extend = vec![create_edge(2.0, 5.0, 3.0, 5.0, Orientation::Horizontal)];
+
+        // Create vertical edges in unsorted order
+        let edges_the_other_orientation = vec![
+            create_edge(6.0, 0.0, 6.0, 10.0, Orientation::Vertical), // x=6 (last)
+            create_edge(1.0, 0.0, 1.0, 10.0, Orientation::Vertical), // x=1 (first)
+            create_edge(4.0, 0.0, 4.0, 10.0, Orientation::Vertical), // x=4 (middle)
+        ];
+
+        let intersection_tolerance = OrderedFloat(0.5);
+        extend_edges_to_neighbors(
+            &mut edges_to_extend,
+            &edges_the_other_orientation,
+            Orientation::Horizontal,
+            intersection_tolerance,
+        );
+
+        // Should correctly extend to first and last edges despite unsorted input
+        let extended_edge = &edges_to_extend[0];
+        assert_eq!(extended_edge.x1, OrderedFloat(1.0)); // Should extend to first vertical edge (x=1)
+        assert_eq!(extended_edge.x2, OrderedFloat(4.0)); // Should extend to middle vertical edge (x=4)
+    }
+}
+
 /// Finds all intersections between horizontal and vertical edges.
 ///
 /// # Arguments
@@ -698,15 +1109,6 @@ fn edges_to_intersections(
     intersection_y_tolerance: OrderedFloat<f32>,
 ) -> HashMap<Point, HashMap<Orientation, Vec<Edge>>> {
     let mut intersections: HashMap<Point, HashMap<Orientation, Vec<Edge>>> = HashMap::new();
-
-    edges
-        .get_mut(&Orientation::Vertical)
-        .unwrap()
-        .sort_by_key(|e| (e.x1, e.y1));
-    edges
-        .get_mut(&Orientation::Horizontal)
-        .unwrap()
-        .sort_by_key(|e| (e.y1, e.x1));
 
     let v_edges = edges.get(&Orientation::Vertical).unwrap();
     let h_edges = edges.get(&Orientation::Horizontal).unwrap();
@@ -1060,6 +1462,15 @@ impl TableFinder {
         if let Some(v_edges) = edges_merged.get_mut(&Orientation::Vertical) {
             filter_edges_by_min_len(v_edges, *settings.edge_min_length);
         }
+
+        edges_merged
+            .get_mut(&Orientation::Vertical)
+            .unwrap()
+            .sort_by_key(|e| (e.x1, e.y1));
+        edges_merged
+            .get_mut(&Orientation::Horizontal)
+            .unwrap()
+            .sort_by_key(|e| (e.y1, e.x1));
         edges_merged
     }
 }
@@ -1081,7 +1492,29 @@ impl TableFinder {
 /// Panics if pdf_page is None and either strategy is not Explicit.
 pub fn find_all_cells_bboxes(pdf_page: Option<&Page>, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
     let table_finder = TableFinder::new(tf_settings.clone());
-    let edges = table_finder.get_edges(pdf_page);
+    let mut edges = table_finder.get_edges(pdf_page);
+    let (h_strat, v_strat) = (
+        tf_settings.horizontal_strategy,
+        tf_settings.vertical_strategy,
+    );
+    if h_strat == StrategyType::Text && v_strat != StrategyType::Text {
+        let v_edges = edges.get(&Orientation::Vertical).unwrap().clone();
+        extend_edges_to_neighbors(
+            edges.get_mut(&Orientation::Horizontal).unwrap(),
+            &v_edges,
+            Orientation::Horizontal,
+            tf_settings.intersection_x_tolerance.into(),
+        );
+    } else if v_strat == StrategyType::Text && h_strat != StrategyType::Text {
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap().clone();
+        extend_edges_to_neighbors(
+            edges.get_mut(&Orientation::Vertical).unwrap(),
+            &h_edges,
+            Orientation::Vertical,
+            tf_settings.intersection_y_tolerance.into(),
+        );
+    }
+
     let intersections = edges_to_intersections(
         &mut edges.clone(),
         *table_finder.settings.intersection_x_tolerance,
