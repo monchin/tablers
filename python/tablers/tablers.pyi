@@ -863,7 +863,10 @@ class TfSettings:
     def __eq__(self, other: object) -> bool: ...
 
 def find_all_cells_bboxes(
-    page: Page | None = None, tf_settings: TfSettings | None = None, **kwargs
+    page: Page | None = None,
+    clip: BBox | None = None,
+    tf_settings: TfSettings | None = None,
+    **kwargs,
 ) -> list[BBox]:
     """
     Find all table cell bounding boxes in a PDF page or from explicit edges.
@@ -873,6 +876,10 @@ def find_all_cells_bboxes(
     page : Page or None, optional
         The PDF page to analyze. Can be None only if both horizontal_strategy
         and vertical_strategy are set to "explicit".
+    clip : BBox or None, optional
+        Optional clip region (x1, y1, x2, y2). If provided, only edges within
+        this region are used for cell detection. Edges intersecting the clip
+        boundary are clipped to fit within it.
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
     **kwargs
@@ -908,6 +915,21 @@ def find_all_cells_bboxes(
     ...     explicit_v_edges=v_edges,
     ... )
     >>> cells = find_all_cells_bboxes(None, tf_settings=settings)
+
+    Using clip to extract cells from a specific region:
+
+    >>> cells = find_all_cells_bboxes(page, clip=(100.0, 100.0, 400.0, 300.0))
+
+    Warning
+    -------
+    When a page is marked as rotated by 90° or 270°, `page.width` and `page.height`
+    are defined based on the upright orientation (as you would normally view the page).
+    However, all object coordinates (lines, text, etc.) within the PDF are defined
+    based on the unrotated coordinate system (where `page.width` corresponds to the
+    actual `page.height` after rotation is removed).
+
+    Therefore, `clip` values must also be specified using the unrotated coordinate
+    system. Failing to account for this may result in incorrect cell detection.
     """
     ...
 
@@ -957,6 +979,7 @@ def find_tables_from_cells(
 def find_tables(
     page: Page | None = None,
     extract_text: bool = True,
+    clip: BBox | None = None,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
@@ -973,6 +996,10 @@ def find_tables(
         "explicit" and extract_text is False.
     extract_text : bool, default True
         Whether to extract text content from table cells.
+    clip : BBox or None, optional
+        Optional clip region (x1, y1, x2, y2). If provided, only edges within
+        this region are used for table detection. Edges intersecting the clip
+        boundary are clipped to fit within it.
     tf_settings : TfSettings, optional
         TableFinder settings object. If not provided, default settings are used.
     **kwargs : TfSettingItems
@@ -1010,6 +1037,21 @@ def find_tables(
     ...     explicit_v_edges=v_edges,
     ... )
     >>> tables = find_tables(page=None, extract_text=False, tf_settings=settings)
+
+    Using clip to extract tables from a specific region:
+
+    >>> tables = find_tables(page, clip=(100.0, 100.0, 400.0, 300.0))
+
+    Warning
+    -------
+    When a page is marked as rotated by 90° or 270°, `page.width` and `page.height`
+    are defined based on the upright orientation (as you would normally view the page).
+    However, all object coordinates (lines, text, etc.) within the PDF are defined
+    based on the unrotated coordinate system (where `page.width` corresponds to the
+    actual `page.height` after rotation is removed).
+
+    Therefore, `clip` values must also be specified using the unrotated coordinate
+    system. Failing to account for this may result in incorrect table extraction.
     """
     ...
 

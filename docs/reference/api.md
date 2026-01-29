@@ -12,6 +12,7 @@ Find all tables in a PDF page or from explicit edges.
 def find_tables(
     page: Page | None = None,
     extract_text: bool = True,
+    clip: BBox | None = None,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems]
 ) -> list[Table]
@@ -23,6 +24,7 @@ def find_tables(
 |-----------|------|---------|-------------|
 | `page` | `Optional[Page]` | `None` | The PDF page to analyze. Can be `None` only if both strategies are `"explicit"` and `extract_text` is `False` |
 | `extract_text` | `bool` | `True` | Whether to extract text content from table cells |
+| `clip` | `Optional[BBox]` | `None` | Optional clip region (x1, y1, x2, y2). If provided, only edges within this region are used for table detection |
 | `tf_settings` | `Optional[TfSettings]` | `None` | TableFinder settings object. If not provided, default settings are used |
 | `**kwargs` |`Unpack[TfSettingItems]` | - | Additional keyword arguments passed to TfSettings |
 
@@ -45,6 +47,18 @@ with Document("example.pdf") as doc:
         print(f"Table with {len(table.cells)} cells at {table.bbox}")
 ```
 
+**Example with clip region:**
+
+```python
+from tablers import Document, find_tables
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    # Only extract tables from a specific region
+    clip = (100.0, 100.0, 400.0, 300.0)  # (x1, y1, x2, y2)
+    tables = find_tables(page, extract_text=True, clip=clip)
+```
+
 **Example with explicit edges (no page required):**
 
 ```python
@@ -63,6 +77,11 @@ settings = TfSettings(
 tables = find_tables(page=None, extract_text=False, tf_settings=settings)
 ```
 
+!!! warning "Clip coordinates on rotated pages"
+    When a page is marked as rotated by 90° or 270°, `page.width` and `page.height` are defined based on the **upright orientation** (as you would normally view the page). However, all object coordinates (lines, text, etc.) within the PDF are defined based on the **unrotated coordinate system** (where `page.width` corresponds to the actual `page.height` after rotation is removed).
+
+    Therefore, `clip` values must also be specified using the **unrotated coordinate system**. Failing to account for this may result in incorrect table extraction.
+
 ---
 
 ### find_all_cells_bboxes
@@ -72,6 +91,7 @@ Find all table cell bounding boxes in a PDF page or from explicit edges.
 ```python
 def find_all_cells_bboxes(
     page: Page | None = None,
+    clip: BBox | None = None,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems]
 ) -> list[tuple[float, float, float, float]]
@@ -82,6 +102,7 @@ def find_all_cells_bboxes(
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `page` | `Optional[Page]` | The PDF page to analyze. Can be `None` only if both strategies are `"explicit"` |
+| `clip` | `Optional[BBox]` | Optional clip region (x1, y1, x2, y2). If provided, only edges within this region are used for cell detection |
 | `tf_settings` | `Optional[TfSettings]` | TableFinder settings object |
 | `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
 
@@ -98,6 +119,18 @@ with Document("example.pdf") as doc:
     page = doc.get_page(0)
     cells = find_all_cells_bboxes(page)
     print(f"Found {len(cells)} cells")
+```
+
+**Example with clip region:**
+
+```python
+from tablers import Document, find_all_cells_bboxes
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    # Only detect cells within a specific region
+    clip = (100.0, 100.0, 400.0, 300.0)
+    cells = find_all_cells_bboxes(page, clip=clip)
 ```
 
 **Example with explicit edges (no page required):**
@@ -117,6 +150,9 @@ settings = TfSettings(
 
 cells = find_all_cells_bboxes(None, tf_settings=settings)
 ```
+
+!!! warning "Clip coordinates on rotated pages"
+    See the warning in [find_tables](#find_tables) about using clip with rotated pages.
 
 ---
 

@@ -678,6 +678,8 @@ fn py_bbox_to_rs_bbox(bbox: &PyBbox) -> BboxKey {
 ///
 /// * `page` - The PDF page to analyze. Can be None only if both
 ///   horizontal_strategy and vertical_strategy are set to "explicit".
+/// * `clip` - Optional clip region (x1, y1, x2, y2). If provided, only edges
+///   within this region are used for cell detection.
 /// * `tf_settings` - Optional TableFinder settings object.
 /// * `kwargs` - Optional keyword arguments for settings.
 ///
@@ -689,9 +691,10 @@ fn py_bbox_to_rs_bbox(bbox: &PyBbox) -> BboxKey {
 ///
 /// RuntimeError: If page is None and either strategy is not "explicit".
 #[pyfunction]
-#[pyo3(name="find_all_cells_bboxes", signature = (page=None, tf_settings=None, **kwargs))]
+#[pyo3(name="find_all_cells_bboxes", signature = (page=None, clip=None, tf_settings=None, **kwargs))]
 fn py_find_all_cells_bboxes(
     page: Option<&PyPage>,
+    clip: Option<PyBbox>,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<PyBbox>> {
@@ -712,7 +715,8 @@ fn py_find_all_cells_bboxes(
     }
 
     let page_ref = page.map(|p| &p.inner);
-    let cells = find_all_cells_bboxes(page_ref, settings.clone());
+    let clip_bbox = clip.as_ref().map(py_bbox_to_rs_bbox);
+    let cells = find_all_cells_bboxes(page_ref, settings.clone(), clip_bbox.as_ref());
     Ok(cells.iter().map(rs_bbox_to_py_bbox).collect())
 }
 
@@ -773,6 +777,8 @@ fn py_find_tables_from_cells(
 /// * `page` - The PDF page to analyze. Can be None only if both strategies are explicit
 ///           and extract_text is false.
 /// * `extract_text` - Whether to extract text content from table cells.
+/// * `clip` - Optional clip region (x1, y1, x2, y2). If provided, only edges
+///   within this region are used for table detection.
 /// * `tf_settings` - Optional TableFinder settings object.
 /// * `kwargs` - Optional keyword arguments for settings.
 ///
@@ -786,10 +792,11 @@ fn py_find_tables_from_cells(
 /// - `page` is None and `extract_text` is true
 /// - `page` is None and either strategy is not explicit
 #[pyfunction]
-#[pyo3(name = "find_tables", signature = (page=None, extract_text=true, tf_settings=None, **kwargs))]
+#[pyo3(name = "find_tables", signature = (page=None, extract_text=true, clip=None, tf_settings=None, **kwargs))]
 fn py_find_tables(
     page: Option<&PyPage>,
     extract_text: bool,
+    clip: Option<PyBbox>,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<Table>> {
@@ -817,7 +824,13 @@ fn py_find_tables(
     }
 
     let pdf_page = page.map(|p| &p.inner);
-    Ok(find_tables(pdf_page, settings, extract_text))
+    let clip_bbox = clip.as_ref().map(py_bbox_to_rs_bbox);
+    Ok(find_tables(
+        pdf_page,
+        settings,
+        extract_text,
+        clip_bbox.as_ref(),
+    ))
 }
 
 /// Initializes the tablers Python module.

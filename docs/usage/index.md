@@ -112,6 +112,30 @@ with Document("example.pdf") as doc:
     )
 ```
 
+### Extracting Tables from a Specific Region
+
+Use the `clip` parameter to extract tables only from a specific area of the page:
+
+```python
+from tablers import Document, find_tables
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+
+    # Define a clip region (x1, y1, x2, y2)
+    # Only tables within this region will be extracted
+    clip = (100.0, 100.0, 400.0, 300.0)
+
+    tables = find_tables(page, extract_text=True, clip=clip)
+```
+
+!!! warning "Clip coordinates on rotated pages"
+    When a page is marked as rotated by 90° or 270°, `page.width` and `page.height` are defined based on the **upright orientation** (as you would normally view the page). However, all object coordinates (lines, text, etc.) within the PDF are defined based on the **unrotated coordinate system** (where `page.width` corresponds to the actual `page.height` after rotation is removed).
+
+    Therefore, `clip` values must also be specified using the **unrotated coordinate system**. Failing to account for this may result in incorrect table extraction.
+
+    For example, if a page is rotated 90° clockwise and has `page.width=595` and `page.height=842` (A4 portrait dimensions), the actual coordinate system for objects is 842×595. To clip the top-left corner of the visual page, you would need to account for this transformation.
+
 ## Working with Rows and Columns
 
 ### Accessing Rows
