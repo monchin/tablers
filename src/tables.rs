@@ -681,6 +681,65 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
+/// Clips edges to a bounding box region.
+///
+/// Edges that intersect with the clip region are clipped to fit within it.
+/// Edges completely outside the clip region are removed.
+///
+/// # Arguments
+///
+/// * `edges` - The edges to clip (modified in place).
+/// * `clip` - The clip region as (x1, y1, x2, y2).
+fn clip_edges_to_bbox(edges: &mut HashMap<Orientation, Vec<Edge>>, clip: &BboxKey) {
+    let (clip_x1, clip_y1, clip_x2, clip_y2) = *clip;
+
+    // Clip horizontal edges
+    if let Some(h_edges) = edges.get_mut(&Orientation::Horizontal) {
+        h_edges.retain_mut(|edge| {
+            // For horizontal edges: y1 == y2
+            // Check if the edge's y coordinate is within clip region
+            if edge.y1 < clip_y1 || edge.y1 > clip_y2 {
+                return false;
+            }
+            // Check if edge intersects with clip region horizontally
+            if edge.x2 <= clip_x1 || edge.x1 >= clip_x2 {
+                return false;
+            }
+            // Clip the edge to the clip region
+            if edge.x1 < clip_x1 {
+                edge.x1 = clip_x1;
+            }
+            if edge.x2 > clip_x2 {
+                edge.x2 = clip_x2;
+            }
+            true
+        });
+    }
+
+    // Clip vertical edges
+    if let Some(v_edges) = edges.get_mut(&Orientation::Vertical) {
+        v_edges.retain_mut(|edge| {
+            // For vertical edges: x1 == x2
+            // Check if the edge's x coordinate is within clip region
+            if edge.x1 < clip_x1 || edge.x1 > clip_x2 {
+                return false;
+            }
+            // Check if edge intersects with clip region vertically
+            if edge.y2 <= clip_y1 || edge.y1 >= clip_y2 {
+                return false;
+            }
+            // Clip the edge to the clip region
+            if edge.y1 < clip_y1 {
+                edge.y1 = clip_y1;
+            }
+            if edge.y2 > clip_y2 {
+                edge.y2 = clip_y2;
+            }
+            true
+        });
+    }
+}
+
 /// If one strat is Text and the other is not Text, we need to extend Text edges to its neighbor,
 /// because Text edges are usually too short to intersect with edges vertical to itself.
 /// Please see #8(https://github.com/monchin/tablers/issues/8) for more details.
@@ -1482,6 +1541,9 @@ impl TableFinder {
 /// * `pdf_page` - The PDF page to analyze. Can be None only if both
 ///   horizontal_strategy and vertical_strategy are set to Explicit.
 /// * `tf_settings` - The table finder settings.
+/// * `clip` - Optional clip region. If provided, only edges within this region
+///   are used for cell detection. Edges intersecting the clip boundary are
+///   clipped to fit within it.
 ///
 /// # Returns
 ///
@@ -1490,9 +1552,19 @@ impl TableFinder {
 /// # Panics
 ///
 /// Panics if pdf_page is None and either strategy is not Explicit.
-pub fn find_all_cells_bboxes(pdf_page: Option<&Page>, tf_settings: Rc<TfSettings>) -> Vec<BboxKey> {
+pub fn find_all_cells_bboxes(
+    pdf_page: Option<&Page>,
+    tf_settings: Rc<TfSettings>,
+    clip: Option<&BboxKey>,
+) -> Vec<BboxKey> {
     let table_finder = TableFinder::new(tf_settings.clone());
     let mut edges = table_finder.get_edges(pdf_page);
+
+    // Apply clip if provided
+    if let Some(clip_bbox) = clip {
+        clip_edges_to_bbox(&mut edges, clip_bbox);
+    }
+
     let (h_strat, v_strat) = (
         tf_settings.horizontal_strategy,
         tf_settings.vertical_strategy,
@@ -1589,6 +1661,8 @@ pub fn find_tables_from_cells(
 /// * `pdf_page` - The PDF page to analyze.
 /// * `tf_settings` - The table finder settings.
 /// * `extract_text` - Whether to extract text content from cells.
+/// * `clip` - Optional clip region. If provided, only edges within this region
+///   are used for table detection.
 ///
 /// # Returns
 ///
@@ -1597,8 +1671,9 @@ pub fn find_tables(
     pdf_page: Option<&Page>,
     tf_settings: Rc<TfSettings>,
     extract_text: bool,
+    clip: Option<&BboxKey>,
 ) -> Vec<Table> {
-    let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone());
+    let cells = find_all_cells_bboxes(pdf_page, tf_settings.clone(), clip);
     find_tables_from_cells(&cells, extract_text, pdf_page, Some(&tf_settings))
 }
 
@@ -2500,7 +2575,7 @@ mod tests {
         };
 
         // Call find_tables with page=None
-        let tables = find_tables(None, Rc::new(settings), false);
+        let tables = find_tables(None, Rc::new(settings), false, None);
 
         // 2x2 grid should produce 1 table with 4 cells
         assert_eq!(tables.len(), 1);
@@ -2565,7 +2640,7 @@ mod tests {
             ..Default::default()
         };
 
-        let tables = find_tables(None, Rc::new(settings), false);
+        let tables = find_tables(None, Rc::new(settings), false, None);
 
         assert_eq!(tables.len(), 1);
         assert_eq!(tables[0].cells.len(), 1);
@@ -2583,7 +2658,7 @@ mod tests {
             ..Default::default()
         };
 
-        let tables = find_tables(None, Rc::new(settings), false);
+        let tables = find_tables(None, Rc::new(settings), false, None);
 
         assert_eq!(tables.len(), 0);
     }
@@ -2663,7 +2738,7 @@ mod tests {
             ..Default::default()
         };
 
-        let cells = find_all_cells_bboxes(None, Rc::new(settings));
+        let cells = find_all_cells_bboxes(None, Rc::new(settings), None);
 
         // 2x2 grid should produce 4 cells
         assert_eq!(cells.len(), 4);
@@ -2762,10 +2837,541 @@ mod tests {
             ..Default::default()
         };
 
-        let tables = find_tables(None, Rc::new(settings), false);
+        let tables = find_tables(None, Rc::new(settings), false, None);
 
         assert_eq!(tables.len(), 1);
         // 3x3 grid should have 9 cells
         assert_eq!(tables[0].cells.len(), 9);
+    }
+
+    #[test]
+    fn test_clip_edges_to_bbox_horizontal_edges() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = HashMap::new();
+        edges.insert(
+            Orientation::Horizontal,
+            vec![
+                // Edge completely inside clip region
+                Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: of(20.0),
+                    y1: of(50.0),
+                    x2: of(80.0),
+                    y2: of(50.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge crossing clip region (should be clipped)
+                Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: of(0.0),
+                    y1: of(60.0),
+                    x2: of(150.0),
+                    y2: of(60.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge completely outside clip region (y outside)
+                Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: of(20.0),
+                    y1: of(150.0),
+                    x2: of(80.0),
+                    y2: of(150.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge completely outside clip region (x outside)
+                Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: of(110.0),
+                    y1: of(50.0),
+                    x2: of(150.0),
+                    y2: of(50.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+            ],
+        );
+        edges.insert(Orientation::Vertical, vec![]);
+
+        let clip: BboxKey = (of(10.0), of(10.0), of(100.0), of(100.0));
+        clip_edges_to_bbox(&mut edges, &clip);
+
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        assert_eq!(h_edges.len(), 2);
+
+        // First edge should be unchanged (was already inside)
+        assert_eq!(h_edges[0].x1, of(20.0));
+        assert_eq!(h_edges[0].x2, of(80.0));
+        assert_eq!(h_edges[0].y1, of(50.0));
+
+        // Second edge should be clipped to clip region
+        assert_eq!(h_edges[1].x1, of(10.0)); // Clipped from 0.0
+        assert_eq!(h_edges[1].x2, of(100.0)); // Clipped from 150.0
+        assert_eq!(h_edges[1].y1, of(60.0));
+    }
+
+    #[test]
+    fn test_clip_edges_to_bbox_vertical_edges() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = HashMap::new();
+        edges.insert(Orientation::Horizontal, vec![]);
+        edges.insert(
+            Orientation::Vertical,
+            vec![
+                // Edge completely inside clip region
+                Edge {
+                    orientation: Orientation::Vertical,
+                    x1: of(50.0),
+                    y1: of(20.0),
+                    x2: of(50.0),
+                    y2: of(80.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge crossing clip region (should be clipped)
+                Edge {
+                    orientation: Orientation::Vertical,
+                    x1: of(60.0),
+                    y1: of(0.0),
+                    x2: of(60.0),
+                    y2: of(150.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge completely outside clip region (x outside)
+                Edge {
+                    orientation: Orientation::Vertical,
+                    x1: of(150.0),
+                    y1: of(20.0),
+                    x2: of(150.0),
+                    y2: of(80.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge completely outside clip region (y outside)
+                Edge {
+                    orientation: Orientation::Vertical,
+                    x1: of(50.0),
+                    y1: of(110.0),
+                    x2: of(50.0),
+                    y2: of(150.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+            ],
+        );
+
+        let clip: BboxKey = (of(10.0), of(10.0), of(100.0), of(100.0));
+        clip_edges_to_bbox(&mut edges, &clip);
+
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        assert_eq!(v_edges.len(), 2);
+
+        // First edge should be unchanged (was already inside)
+        assert_eq!(v_edges[0].x1, of(50.0));
+        assert_eq!(v_edges[0].y1, of(20.0));
+        assert_eq!(v_edges[0].y2, of(80.0));
+
+        // Second edge should be clipped to clip region
+        assert_eq!(v_edges[1].x1, of(60.0));
+        assert_eq!(v_edges[1].y1, of(10.0)); // Clipped from 0.0
+        assert_eq!(v_edges[1].y2, of(100.0)); // Clipped from 150.0
+    }
+
+    #[test]
+    fn test_clip_edges_to_bbox_empty_result() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = HashMap::new();
+        edges.insert(
+            Orientation::Horizontal,
+            vec![Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(200.0),
+                y1: of(200.0),
+                x2: of(300.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            }],
+        );
+        edges.insert(
+            Orientation::Vertical,
+            vec![Edge {
+                orientation: Orientation::Vertical,
+                x1: of(200.0),
+                y1: of(200.0),
+                x2: of(200.0),
+                y2: of(300.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            }],
+        );
+
+        let clip: BboxKey = (of(0.0), of(0.0), of(100.0), of(100.0));
+        clip_edges_to_bbox(&mut edges, &clip);
+
+        // All edges should be removed
+        assert_eq!(edges.get(&Orientation::Horizontal).unwrap().len(), 0);
+        assert_eq!(edges.get(&Orientation::Vertical).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn test_find_tables_with_clip() {
+        use crate::edges::Edge;
+        use crate::settings::{StrategyType, TfSettings};
+        use pdfium_render::prelude::PdfColor;
+
+        // Create a 3x3 grid (150x150)
+        let h_edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(150.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(50.0),
+                x2: of(150.0),
+                y2: of(50.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(100.0),
+                x2: of(150.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(150.0),
+                x2: of(150.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(50.0),
+                y1: of(0.0),
+                x2: of(50.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(150.0),
+                y1: of(0.0),
+                x2: of(150.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            ..Default::default()
+        };
+
+        // Without clip: should have 9 cells (3x3 grid)
+        let tables_no_clip = find_tables(None, Rc::new(settings.clone()), false, None);
+        assert_eq!(tables_no_clip.len(), 1);
+        assert_eq!(tables_no_clip[0].cells.len(), 9);
+
+        // With clip to get only 2x2 grid (top-left corner)
+        let clip: BboxKey = (of(0.0), of(0.0), of(100.0), of(100.0));
+        let tables_with_clip = find_tables(None, Rc::new(settings), false, Some(&clip));
+        assert_eq!(tables_with_clip.len(), 1);
+        assert_eq!(tables_with_clip[0].cells.len(), 4); // 2x2 = 4 cells
+    }
+
+    #[test]
+    fn test_find_all_cells_bboxes_with_clip() {
+        use crate::edges::Edge;
+        use crate::settings::{StrategyType, TfSettings};
+        use pdfium_render::prelude::PdfColor;
+
+        // Create a 2x2 grid (100x100)
+        let h_edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(50.0),
+                x2: of(100.0),
+                y2: of(50.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(100.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(50.0),
+                y1: of(0.0),
+                x2: of(50.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(0.0),
+                x2: of(100.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            ..Default::default()
+        };
+
+        // Without clip: should have 4 cells
+        let cells_no_clip = find_all_cells_bboxes(None, Rc::new(settings.clone()), None);
+        assert_eq!(cells_no_clip.len(), 4);
+
+        // With clip to get only 1 cell (top-left corner)
+        let clip: BboxKey = (of(0.0), of(0.0), of(50.0), of(50.0));
+        let cells_with_clip = find_all_cells_bboxes(None, Rc::new(settings), Some(&clip));
+        assert_eq!(cells_with_clip.len(), 1);
+        // Verify the cell bbox
+        assert_eq!(cells_with_clip[0].0, of(0.0)); // x1
+        assert_eq!(cells_with_clip[0].1, of(0.0)); // y1
+        assert_eq!(cells_with_clip[0].2, of(50.0)); // x2
+        assert_eq!(cells_with_clip[0].3, of(50.0)); // y2
+    }
+
+    #[test]
+    fn test_find_tables_with_clip_no_tables() {
+        use crate::edges::Edge;
+        use crate::settings::{StrategyType, TfSettings};
+        use pdfium_render::prelude::PdfColor;
+
+        // Create a simple 2x2 grid at position (100, 100) to (200, 200)
+        let h_edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(100.0),
+                y1: of(100.0),
+                x2: of(200.0),
+                y2: of(100.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(100.0),
+                y1: of(150.0),
+                x2: of(200.0),
+                y2: of(150.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(100.0),
+                y1: of(200.0),
+                x2: of(200.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+        let v_edges = vec![
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(100.0),
+                y1: of(100.0),
+                x2: of(100.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(150.0),
+                y1: of(100.0),
+                x2: of(150.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(200.0),
+                y1: of(100.0),
+                x2: of(200.0),
+                y2: of(200.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+        ];
+
+        let settings = TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            explicit_h_edges: Some(h_edges),
+            explicit_v_edges: Some(v_edges),
+            ..Default::default()
+        };
+
+        // Clip region that doesn't intersect with the table
+        let clip: BboxKey = (of(0.0), of(0.0), of(50.0), of(50.0));
+        let tables = find_tables(None, Rc::new(settings), false, Some(&clip));
+        assert_eq!(tables.len(), 0);
+    }
+
+    #[test]
+    fn test_clip_edges_partial_intersection() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = HashMap::new();
+        edges.insert(
+            Orientation::Horizontal,
+            vec![
+                // Edge partially overlapping on left side
+                Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: of(0.0),
+                    y1: of(50.0),
+                    x2: of(60.0),
+                    y2: of(50.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge partially overlapping on right side
+                Edge {
+                    orientation: Orientation::Horizontal,
+                    x1: of(80.0),
+                    y1: of(50.0),
+                    x2: of(150.0),
+                    y2: of(50.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+            ],
+        );
+        edges.insert(
+            Orientation::Vertical,
+            vec![
+                // Edge partially overlapping on top side
+                Edge {
+                    orientation: Orientation::Vertical,
+                    x1: of(50.0),
+                    y1: of(0.0),
+                    x2: of(50.0),
+                    y2: of(60.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+                // Edge partially overlapping on bottom side
+                Edge {
+                    orientation: Orientation::Vertical,
+                    x1: of(50.0),
+                    y1: of(80.0),
+                    x2: of(50.0),
+                    y2: of(150.0),
+                    width: of(1.0),
+                    color: PdfColor::new(0, 0, 0, 255),
+                },
+            ],
+        );
+
+        let clip: BboxKey = (of(30.0), of(30.0), of(100.0), of(100.0));
+        clip_edges_to_bbox(&mut edges, &clip);
+
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        assert_eq!(h_edges.len(), 2);
+        // First edge: x1 clipped from 0 to 30
+        assert_eq!(h_edges[0].x1, of(30.0));
+        assert_eq!(h_edges[0].x2, of(60.0));
+        // Second edge: x2 clipped from 150 to 100
+        assert_eq!(h_edges[1].x1, of(80.0));
+        assert_eq!(h_edges[1].x2, of(100.0));
+
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        assert_eq!(v_edges.len(), 2);
+        // First edge: y1 clipped from 0 to 30
+        assert_eq!(v_edges[0].y1, of(30.0));
+        assert_eq!(v_edges[0].y2, of(60.0));
+        // Second edge: y2 clipped from 150 to 100
+        assert_eq!(v_edges[1].y1, of(80.0));
+        assert_eq!(v_edges[1].y2, of(100.0));
     }
 }

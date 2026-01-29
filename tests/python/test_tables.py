@@ -481,7 +481,7 @@ class TestTableExtractionFilter:
         assert len(tables[0].cells) == 1
 
         tf_settings = TfSettings(include_single_cell=True)
-        tables_tf = find_tables(page, True, tf_settings)
+        tables_tf = find_tables(page, True, tf_settings=tf_settings)
         assert len(tables_tf) == 4
         assert len(tables_tf[0].cells) == 1
 
@@ -493,7 +493,7 @@ class TestTableExtractionFilter:
         assert len(tables[0].cells) == 2
 
         tf_settings = TfSettings(include_single_cell=False)
-        tables_tf = find_tables(page, True, tf_settings)
+        tables_tf = find_tables(page, True, tf_settings=tf_settings)
         assert len(tables_tf) == 3
         assert len(tables_tf[0].cells) == 2
 
@@ -506,7 +506,7 @@ class TestTableExtractionFilter:
         assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
 
         tf_settings = TfSettings(include_single_cell=False, min_columns=2)
-        tables_tf = find_tables(page, True, tf_settings)
+        tables_tf = find_tables(page, True, tf_settings=tf_settings)
         assert len(tables_tf) == 2
         assert len(tables[0].columns) == 2 and len(tables[0].rows) == 1
         assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
@@ -520,7 +520,7 @@ class TestTableExtractionFilter:
         assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
 
         tf_settings = TfSettings(include_single_cell=False, min_rows=2)
-        tables_tf = find_tables(page, True, tf_settings)
+        tables_tf = find_tables(page, True, tf_settings=tf_settings)
         assert len(tables_tf) == 2
         assert len(tables[0].columns) == 1 and len(tables[0].rows) == 2
         assert len(tables[1].columns) == 2 and len(tables[1].rows) == 2
@@ -546,3 +546,164 @@ class TestTableExtractionWithOneStratTextAndTheOtherNotText:
         tables = find_tables(page, True, vertical_strategy="text")
         assert len(tables) == 1
         assert tables[0].to_csv() == "1111,2222\n3333,4444"
+
+
+class TestTableExtractionClip:
+    """Tests for find_tables and find_all_cells_bboxes with clip parameter.
+
+    Test PDF: tables-filter-test.pdf contains 4 tables (with include_single_cell=True):
+    - Table 0: bbox ~(90, 72, 329, 88), 1 cell (single cell table)
+    - Table 1: bbox ~(90, 115, 329, 131), 2 cells (1 row, 2 cols)
+    - Table 2: bbox ~(90, 158, 329, 190), 2 cells (2 rows, 1 col)
+    - Table 3: bbox ~(90, 216, 329, 249), 4 cells (2 rows, 2 cols)
+    All tables are in x range ~90-330, y ranges are as shown above.
+    """
+
+    def test_no_clip_returns_all_tables(self, tables_filter_test_doc: Document) -> None:
+        """Without clip, all 4 tables should be returned."""
+        page = tables_filter_test_doc.get_page(0)
+        tables = find_tables(page, extract_text=False, include_single_cell=True)
+        assert len(tables) == 4
+        total_cells = sum(len(t.cells) for t in tables)
+        assert total_cells == 9
+
+    def test_full_page_clip_returns_all_tables(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering the full page should return all 4 tables."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (0.0, 0.0, 420.0, 600.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 4
+        total_cells = sum(len(t.cells) for t in tables)
+        assert total_cells == 9
+
+    def test_clip_only_table_0(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering only Table 0 region (single cell table, y ~70-95)."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 70.0, 340.0, 95.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 1
+
+    def test_clip_only_table_1(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering only Table 1 region (y ~110-140)."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 110.0, 340.0, 140.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 2
+        # Table 1 has 1 row and 2 columns
+        assert len(tables[0].rows) == 1
+        assert len(tables[0].columns) == 2
+
+    def test_clip_only_table_2(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering only Table 2 region (y ~150-200)."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 150.0, 340.0, 200.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 2
+        # Table 2 has 2 rows and 1 column
+        assert len(tables[0].rows) == 2
+        assert len(tables[0].columns) == 1
+
+    def test_clip_only_table_3(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering only Table 3 region (y ~210-260)."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 210.0, 340.0, 260.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 4
+        # Table 3 has 2 rows and 2 columns
+        assert len(tables[0].rows) == 2
+        assert len(tables[0].columns) == 2
+
+    def test_clip_table_0_and_1(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering Table 0 and Table 1 regions."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 70.0, 340.0, 140.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 2
+        total_cells = sum(len(t.cells) for t in tables)
+        assert total_cells == 3
+
+    def test_clip_table_1_and_2(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering Table 1 and Table 2 regions."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 110.0, 340.0, 200.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 2
+        total_cells = sum(len(t.cells) for t in tables)
+        assert total_cells == 4
+
+    def test_clip_table_2_and_3(self, tables_filter_test_doc: Document) -> None:
+        """Clip covering Table 2 and Table 3 regions."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 150.0, 340.0, 260.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 2
+        total_cells = sum(len(t.cells) for t in tables)
+        assert total_cells == 6
+
+    def test_clip_no_tables_above(self, tables_filter_test_doc: Document) -> None:
+        """Clip in area above all tables should return no tables."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (80.0, 0.0, 340.0, 60.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 0
+
+    def test_clip_no_tables_left(self, tables_filter_test_doc: Document) -> None:
+        """Clip in area to the left of all tables should return no tables."""
+        page = tables_filter_test_doc.get_page(0)
+        clip = (0.0, 100.0, 80.0, 300.0)
+        tables = find_tables(page, extract_text=False, clip=clip, include_single_cell=True)
+        assert len(tables) == 0
+
+    def test_clip_with_text_extraction(self, tables_filter_test_doc: Document) -> None:
+        """Clip should work correctly with text extraction enabled."""
+        page = tables_filter_test_doc.get_page(0)
+        # Clip to only Table 3 which has 4 cells
+        clip = (80.0, 210.0, 340.0, 260.0)
+        tables = find_tables(page, extract_text=True, clip=clip, include_single_cell=True)
+        assert len(tables) == 1
+        assert tables[0].text_extracted is True
+        # Check that text was extracted for all cells
+        for cell in tables[0].cells:
+            assert hasattr(cell, "text")
+
+    def test_find_all_cells_bboxes_with_clip(self, tables_filter_test_doc: Document) -> None:
+        """find_all_cells_bboxes should respect clip parameter."""
+        page = tables_filter_test_doc.get_page(0)
+
+        # Without clip: 9 cells
+        cells_no_clip = find_all_cells_bboxes(page)
+        assert len(cells_no_clip) == 9
+
+        # With clip to only Table 1 region: 2 cells
+        clip = (80.0, 110.0, 340.0, 140.0)
+        cells_with_clip = find_all_cells_bboxes(page, clip=clip)
+        assert len(cells_with_clip) == 2
+
+        # Clip should reduce the number of cells
+        assert len(cells_with_clip) < len(cells_no_clip)
+
+    def test_clip_with_tf_settings(self, tables_filter_test_doc: Document) -> None:
+        """Clip should work together with TfSettings."""
+        page = tables_filter_test_doc.get_page(0)
+        # Clip to Table 2 and Table 3, but filter to only 2-column tables
+        clip = (80.0, 150.0, 340.0, 260.0)
+        settings = TfSettings(min_columns=2, include_single_cell=True)
+        tables = find_tables(page, extract_text=False, clip=clip, tf_settings=settings)
+        # Only Table 3 has 2 columns
+        assert len(tables) == 1
+        assert len(tables[0].columns) == 2
+
+    def test_clip_with_kwargs(self, tables_filter_test_doc: Document) -> None:
+        """Clip should work together with kwargs."""
+        page = tables_filter_test_doc.get_page(0)
+        # Clip to Table 2 and Table 3, but filter to only 2-row tables
+        clip = (80.0, 150.0, 340.0, 260.0)
+        tables = find_tables(
+            page, extract_text=False, clip=clip, min_rows=2, include_single_cell=True
+        )
+        # Both Table 2 and Table 3 have 2 rows
+        assert len(tables) == 2
