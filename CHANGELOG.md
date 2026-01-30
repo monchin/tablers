@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-31
+
+### Added
+
+- Add `clip` parameter to `find_tables` and `find_all_cells_bboxes` for table detection in specific regions (#10)
+
+### Fixed
+
+- Fix edge extension for mixed text/non-text strategies to extract tables correctly (#9)
+
 ## [0.3.0] - 2025-01-13
 
 ### Added
