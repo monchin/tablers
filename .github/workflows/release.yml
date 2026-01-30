@@ -11,10 +11,10 @@ jobs:
   # - PDM + hook
   # - wheel only (no sdist)
   # --------------------------------------------------
-  build-native:
+  build:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -35,11 +35,10 @@ jobs:
       # Rust
       - uses: dtolnay/rust-toolchain@stable
 
-      # CLI tools
-      - name: Install tools
+      # pdm
+      - name: Install pdm
         run: |
           uv tool install pdm
-          uv tool install maturin
 
       # Bind Python to PDM
       - name: Configure PDM interpreter
@@ -49,7 +48,7 @@ jobs:
       # Build wheel only
       - name: Build wheel with PDM
         run: |
-          pdm build --no-sdist -v
+          pdm build --no-sdist -v -Cbuild-args="--compatibility manylinux_2_34"
 
       # Upload artifacts
       - uses: actions/upload-artifact@v4
@@ -58,54 +57,10 @@ jobs:
           path: dist/*.whl
 
   # --------------------------------------------------
-  # Linux manylinux
-  # - maturin build
-  # - wheel + sdist (ONLY HERE)
-  # --------------------------------------------------
-  build-linux:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      # Rust
-      - uses: dtolnay/rust-toolchain@stable
-
-      # uv
-      - uses: astral-sh/setup-uv@v3
-
-      # Tools
-      - name: Install tools
-        run: |
-          uv tool install maturin
-
-      - name: Prepare native libs
-        run: |
-          python scripts/pre-build.py
-
-      # manylinux abi3 wheel
-      - name: Build manylinux wheel
-        run: |
-          maturin build \
-            --release \
-            --interpreter python3.10 \
-            --out dist
-
-      - name: Restore native libs
-        run: |
-          python scripts/post-build.py
-
-      # Upload artifacts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wheels-linux
-          path: dist/*
-
-  # --------------------------------------------------
   # Publish (once)
   # --------------------------------------------------
   publish:
-    needs: [build-native, build-linux]
+    needs: [build]
     runs-on: ubuntu-latest
 
     permissions:
