@@ -112,5 +112,7 @@ This project is licensed under the MIT License - see the [LICENSE](https://githu
 
 ## Acknowledgments
 
+- [pdfplumber](https://github.com/jsvine/pdfplumber) - PDF parsing library
+- [PyMuPDF](https://github.com/pymupdf/PyMuPDF) - PDF parsing library
 - [pdfium-render](https://github.com/ajrcarey/pdfium-render) - Rust bindings for PDFium
 - [PyO3](https://github.com/PyO3/pyo3) - Rust bindings for Python
