@@ -104,7 +104,7 @@ For more advanced usage, please refer to the [documents](https://monchin.github.
 ## Requirements
 
 - Python >= 3.10
-- Supported platforms: Windows (x64), Linux (x64) with glibc >= 2.34, macOS (ARM64)
+- Supported platforms: Windows (x64), Linux (x64) with glibc >= 2.28, macOS (ARM64)
 
 ## License
 

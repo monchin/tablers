@@ -7,7 +7,7 @@ Before installing Tablers, ensure your system meets the following requirements:
 - **Python**: >= 3.10
 - **Operating System**:
     - Windows (x64)
-    - Linux (x64), glibc >= 2.34
+    - Linux (x64), glibc >= 2.28 (manylinux_2_28)
     - macOS (ARM64 / Apple Silicon)
 
 ## Install with pip
@@ -75,7 +75,7 @@ print("tablers installed successfully!")
 
 ### glibc Version Issues on Linux
 
-If you encounter glibc version errors on Linux, ensure your system glibc version >= 2.34. You can check with:
+If you encounter glibc version errors on Linux, ensure your system glibc version >= 2.28 (manylinux_2_28). You can check with:
 
 ```bash
 ldd --version

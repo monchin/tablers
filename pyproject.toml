@@ -42,7 +42,7 @@ test = [
 
 [tool.maturin]
 python-source = "python"
-compatibility = "manylinux_2_34"
+compatibility = "manylinux_2_28"
 
 [tool.pdm.scripts]
 # need cargo, ruff, ty and rumdl

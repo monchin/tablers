@@ -11,10 +11,10 @@ jobs:
   # - PDM + hook
   # - wheel only (no sdist)
   # --------------------------------------------------
-  build:
+  build-windows-macos:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        os: [windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -48,7 +48,7 @@ jobs:
       # Build wheel only
       - name: Build wheel with PDM
         run: |
-          pdm build --no-sdist -v -Cbuild-args="--compatibility manylinux_2_34"
+          pdm build --no-sdist -v
 
       # Upload artifacts
       - uses: actions/upload-artifact@v6
@@ -57,10 +57,50 @@ jobs:
           path: dist/*.whl
 
   # --------------------------------------------------
+  # Linux (manylinux)
+  # - Build in Docker container to ensure glibc 2.28 compatibility
+  # - Docker build ensures proper symbol versions
+  # --------------------------------------------------
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # Setup Python for hooks
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # Run pre-build hook
+      - name: Run pre-build hook
+        run: python scripts/pre-build.py
+
+      # Build in manylinux_2_28 container using maturin-action
+      # This ensures compatibility with modern Linux distributions (glibc 2.28)
+      - name: Build manylinux_2_28 wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          manylinux: 2_28
+          args: --release --out dist
+          rust-toolchain: stable
+
+      # Run post-build hook
+      - name: Run post-build hook
+        run: python scripts/post-build.py
+
+      # Upload artifacts
+      - uses: actions/upload-artifact@v6
+        with:
+          name: wheels-ubuntu-latest
+          path: dist/*.whl
+
+  # --------------------------------------------------
   # Publish (once)
   # --------------------------------------------------
   publish:
-    needs: [build]
+    needs: [build-windows-macos, build-linux]
     runs-on: ubuntu-latest
 
     permissions:
