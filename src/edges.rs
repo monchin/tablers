@@ -616,6 +616,36 @@ pub(crate) fn make_edges(
                         color: line.color,
                     })
                 }
+            } else if line.line_type == LineType::Polyline
+            // Only close narrow paths could be regarded as edges 
+                && line.points.first().unwrap() == line.points.last().unwrap()
+            {
+                let pts = &line.points;
+                let x_min = pts.iter().map(|p| p.0).min().unwrap();
+                let x_max = pts.iter().map(|p| p.0).max().unwrap();
+                let y_min = pts.iter().map(|p| p.1).min().unwrap();
+                let y_max = pts.iter().map(|p| p.1).max().unwrap();
+                if ((v_strat & 0b11u8) != 0) && ((x_max - x_min) < *snap_x_tol) {
+                    edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                        orientation: Orientation::Vertical,
+                        x1: x_min,
+                        y1: y_min,
+                        x2: x_min,
+                        y2: y_max,
+                        width: x_max - x_min,
+                        color: line.color,
+                    });
+                } else if ((h_strat & 0b11u8) != 0) && ((y_max - y_min) < *snap_y_tol) {
+                    edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                        orientation: Orientation::Horizontal,
+                        x1: x_min,
+                        y1: y_min,
+                        x2: x_max,
+                        y2: y_min,
+                        width: y_max - y_min,
+                        color: line.color,
+                    });
+                }
             }
         }
 
@@ -1096,6 +1126,289 @@ mod tests {
 
         assert_eq!(h_edges_result.len(), 3);
         assert_eq!(v_edges_result.len(), 3);
+    }
+
+    // ============================================================
+    // Tests for narrow polyline edge detection
+    // ============================================================
+
+    /// Helper to create a polyline Line object.
+    fn make_polyline(points: Vec<(f32, f32)>) -> Line {
+        Line {
+            line_type: LineType::Polyline,
+            points: points
+                .into_iter()
+                .map(|(x, y)| (OrderedFloat(x), OrderedFloat(y)))
+                .collect(),
+            color: PdfColor::new(0, 0, 0, 255),
+            width: OrderedFloat(1.0),
+        }
+    }
+
+    /// Helper to create a curve Line object.
+    fn make_curve(points: Vec<(f32, f32)>) -> Line {
+        Line {
+            line_type: LineType::Curve,
+            points: points
+                .into_iter()
+                .map(|(x, y)| (OrderedFloat(x), OrderedFloat(y)))
+                .collect(),
+            color: PdfColor::new(0, 0, 0, 255),
+            width: OrderedFloat(1.0),
+        }
+    }
+
+    #[test]
+    fn test_narrow_vertical_polyline_becomes_vertical_edge() {
+        // A closed narrow polyline that zigzags slightly around x=100,
+        // with first == last (closed path), should be detected as a vertical edge.
+        let polyline = make_polyline(vec![
+            (100.0, 10.0),
+            (100.5, 50.0),
+            (100.0, 90.0),
+            (100.0, 10.0), // closed: same as first point
+        ]);
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+
+        assert_eq!(
+            v_edges.len(),
+            1,
+            "Should detect one vertical edge from narrow polyline"
+        );
+        assert_eq!(h_edges.len(), 0, "Should not detect any horizontal edge");
+
+        let edge = &v_edges[0];
+        assert_eq!(edge.x1, of(100.0));
+        assert_eq!(edge.y1, of(10.0));
+        assert_eq!(edge.x2, of(100.0));
+        assert_eq!(edge.y2, of(90.0));
+        assert_eq!(edge.width, of(0.5)); // x_max - x_min = 100.5 - 100.0
+    }
+
+    #[test]
+    fn test_narrow_horizontal_polyline_becomes_horizontal_edge() {
+        // A narrow polyline that zigzags slightly around y=200,
+        // with first.x == last.x, should be detected as a horizontal edge.
+        let polyline = make_polyline(vec![
+            (10.0, 200.0),
+            (50.0, 200.5),
+            (90.0, 200.2),
+            (10.0, 200.0),
+        ]);
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        assert_eq!(
+            h_edges.len(),
+            1,
+            "Should detect one horizontal edge from narrow polyline"
+        );
+        assert_eq!(v_edges.len(), 0, "Should not detect any vertical edge");
+
+        let edge = &h_edges[0];
+        assert_eq!(edge.x1, of(10.0));
+        assert_eq!(edge.y1, of(200.0));
+        assert_eq!(edge.x2, of(90.0));
+        assert_eq!(edge.y2, of(200.0));
+    }
+
+    #[test]
+    fn test_wide_polyline_not_detected_as_edge() {
+        // A closed polyline that is too wide (spread > snap_tolerance=3.0)
+        // should NOT be detected as an edge.
+        let polyline = make_polyline(vec![
+            (100.0, 10.0),
+            (105.0, 50.0), // x spread = 5.0 > snap_x_tolerance(3.0)
+            (100.0, 10.0), // closed: same as first point
+        ]);
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+
+        assert_eq!(
+            v_edges.len(),
+            0,
+            "Wide polyline should not become a vertical edge"
+        );
+        assert_eq!(
+            h_edges.len(),
+            0,
+            "Wide polyline should not become a horizontal edge"
+        );
+    }
+
+    #[test]
+    fn test_non_closed_polyline_ignored() {
+        // Only closed polylines (first == last) are considered as potential edges.
+        // A narrow but non-closed polyline should NOT be detected.
+        let polyline = make_polyline(vec![
+            (100.0, 10.0),
+            (100.5, 50.0),
+            (100.0, 90.0), // last != first (y differs), not a closed path
+        ]);
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+
+        assert_eq!(
+            v_edges.len(),
+            0,
+            "Non-closed polyline should not be detected as edge"
+        );
+        assert_eq!(h_edges.len(), 0);
+    }
+
+    #[test]
+    fn test_curve_line_not_detected_as_polyline_edge() {
+        // A curve (non-polyline) should NOT be processed by the polyline edge logic,
+        // even if it is narrow and closed.
+        let curve = make_curve(vec![
+            (100.0, 10.0),
+            (100.5, 50.0),
+            (100.0, 10.0), // closed path
+        ]);
+        let objects = Objects {
+            lines: vec![curve],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+
+        assert_eq!(
+            v_edges.len(),
+            0,
+            "Curve should not be detected as a polyline edge"
+        );
+        assert_eq!(h_edges.len(), 0);
+    }
+
+    #[test]
+    fn test_polyline_edge_detection_respects_strategy() {
+        // When strategy is Explicit (not Lines/LinesStrict), polylines should be ignored.
+        let polyline = make_polyline(vec![
+            (100.0, 10.0),
+            (100.5, 50.0),
+            (100.0, 10.0), // closed path
+        ]);
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::Explicit,
+            horizontal_strategy: StrategyType::Explicit,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+
+        assert_eq!(
+            v_edges.len(),
+            0,
+            "Polyline should be ignored with Explicit strategy"
+        );
+        assert_eq!(h_edges.len(), 0);
+    }
+
+    #[test]
+    fn test_multiple_narrow_polylines_all_detected() {
+        // Multiple closed narrow polylines should each be detected as edges.
+        let v_polyline1 = make_polyline(vec![
+            (50.0, 0.0),
+            (50.5, 50.0),
+            (50.0, 100.0),
+            (50.0, 0.0), // closed
+        ]);
+        let v_polyline2 = make_polyline(vec![
+            (200.0, 0.0),
+            (200.3, 50.0),
+            (200.0, 100.0),
+            (200.0, 0.0), // closed
+        ]);
+        let objects = Objects {
+            lines: vec![v_polyline1, v_polyline2],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        assert_eq!(
+            v_edges.len(),
+            2,
+            "Both narrow polylines should be detected as vertical edges"
+        );
     }
 
     #[test]

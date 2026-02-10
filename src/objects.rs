@@ -110,6 +110,7 @@ impl Line {
     fn line_type(&self) -> &str {
         match self.line_type {
             LineType::Straight => "straight",
+            LineType::Polyline => "polyline",
             LineType::Curve => "curve",
         }
     }
@@ -198,7 +199,9 @@ pub enum Orientation {
 pub enum LineType {
     /// A straight line between two points.
     Straight,
-    /// A curved line (Bezier curve).
+    /// Multiple straight line segments connected.
+    Polyline,
+    /// A curved line (Bezier curve) or multiple lines connected including curves.
     Curve,
 }
 

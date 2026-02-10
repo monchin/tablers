@@ -744,3 +744,46 @@ class TestNestedXobj:
         assert math.isclose(actual_bbox[3], expected_bbox[3], abs_tol=0.01), (
             f"y2 mismatch: expected {expected_bbox[3]}, got {actual_bbox[3]}"
         )
+
+
+class TestNarrowPolylineAsEdge:
+    """Tests for #13-narrow-polyline-as-edge.pdf table extraction."""
+
+    def test_narrow_polyline_table_extraction(self, narrow_polyline_doc: Document) -> None:
+        """
+        Test that #13-narrow-polyline-as-edge.pdf extracts exactly 1 table with 150 cells and
+        expected bbox.
+        """
+        page = narrow_polyline_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        # Should extract exactly 1 table
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+
+        table = tables[0]
+
+        # Check the number of cells
+        assert len(table.cells) == 150, f"Expected 150 cells, got {len(table.cells)}"
+
+        # Check the bbox matches expected values (with tolerance)
+        expected_bbox = (
+            41.625,
+            9.525,
+            552.9,
+            822.337,
+        )
+        actual_bbox = table.bbox
+
+        # Compare each coordinate using math.isclose with abs_tol=0.01
+        assert math.isclose(actual_bbox[0], expected_bbox[0], abs_tol=0.01), (
+            f"x1 mismatch: expected {expected_bbox[0]}, got {actual_bbox[0]}"
+        )
+        assert math.isclose(actual_bbox[1], expected_bbox[1], abs_tol=0.01), (
+            f"y1 mismatch: expected {expected_bbox[1]}, got {actual_bbox[1]}"
+        )
+        assert math.isclose(actual_bbox[2], expected_bbox[2], abs_tol=0.01), (
+            f"x2 mismatch: expected {expected_bbox[2]}, got {actual_bbox[2]}"
+        )
+        assert math.isclose(actual_bbox[3], expected_bbox[3], abs_tol=0.01), (
+            f"y2 mismatch: expected {expected_bbox[3]}, got {actual_bbox[3]}"
+        )

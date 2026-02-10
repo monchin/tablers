@@ -256,9 +256,18 @@ impl Page {
                     color: obj.stroke_color().unwrap(),
                     width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),
                 });
-            } else if points[0] != points[points.len() - 1] {
+            } else {
+                // Check if all points except points[0] have LineTo as their second element
+                let all_line_to = points[1..]
+                    .iter()
+                    .all(|p| p.1 == PdfPathSegmentType::LineTo);
+                let line_type = if points.len() >= 3 && all_line_to {
+                    LineType::Polyline
+                } else {
+                    LineType::Curve
+                };
                 objects.lines.push(Line {
-                    line_type: LineType::Curve,
+                    line_type,
                     points: points.iter().map(|p| p.0).collect(),
                     color: obj.stroke_color().unwrap(),
                     width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),

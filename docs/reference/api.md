@@ -403,7 +403,7 @@ Represents a line segment extracted from a PDF page.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `line_type` | `Literal["straight", "curve"]` | Type of line |
+| `line_type` | `Literal["straight", "polyline", "curve"]` | Type of line |
 | `points` | `list[tuple[float, float]]` | Points defining the line path |
 | `color` | `tuple[int, int, int, int]` | Color (RGBA) |
 | `width` | `float` | Line width |
