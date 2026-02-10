@@ -261,7 +261,7 @@ impl Page {
                 let all_line_to = points[1..]
                     .iter()
                     .all(|p| p.1 == PdfPathSegmentType::LineTo);
-                let line_type = if all_line_to {
+                let line_type = if points.len() >= 3 && all_line_to {
                     LineType::Polyline
                 } else {
                     LineType::Curve
