@@ -83,9 +83,9 @@ impl Page {
         self.process_chars(&mut objects);
         for obj in self.inner.objects().iter() {
             if let Some(obj) = obj.as_path_object() {
-                self.process_path_obj(&mut objects, obj);
+                self.process_path_obj(&mut objects, obj, None);
             } else if let Some(obj) = obj.as_x_object_form_object() {
-                self.process_x_object_form_obj(&mut objects, obj);
+                self.process_x_object_form_obj(&mut objects, obj, None);
             }
         }
 
@@ -190,11 +190,28 @@ impl Page {
     ///
     /// * `objects` - The Objects struct to populate.
     /// * `obj` - The PDF path object to process.
-    fn process_path_obj(&self, objects: &mut Objects, obj: &PdfPagePathObject) {
+    /// * `parent_matrix` - Optional parent transformation matrix (e.g., from Form XObject).
+    fn process_path_obj(
+        &self,
+        objects: &mut Objects,
+        obj: &PdfPagePathObject,
+        parent_matrix: Option<PdfMatrix>,
+    ) {
         let n_segs = obj.segments().len();
         let mut points_vec = Vec::new();
         let mut points = Vec::with_capacity(n_segs as usize);
-        for seg in obj.segments().transform(obj.matrix().unwrap()).iter() {
+
+        // Apply transformation matrices
+        // For Form XObject: point_in_page = form_matrix * path_matrix * point_in_form
+        // The correct order is: obj_matrix.multiply(parent_matrix)
+        let transform_matrix = if let Some(parent) = parent_matrix {
+            let obj_matrix = obj.matrix().unwrap();
+            obj_matrix.multiply(parent)
+        } else {
+            obj.matrix().unwrap()
+        };
+
+        for seg in obj.segments().transform(transform_matrix).iter() {
             let x = OrderedFloat::from(seg.x().value);
             let y = self.get_v_coord_with_bottom_origin(seg.y().value);
 
@@ -258,13 +275,31 @@ impl Page {
     ///
     /// * `objects` - The Objects struct to populate.
     /// * `obj` - The XObject form object to process.
-    fn process_x_object_form_obj(&self, objects: &mut Objects, obj: &PdfPageXObjectFormObject) {
+    /// * `parent_matrix` - The accumulated transformation matrix from parent forms.
+    fn process_x_object_form_obj(
+        &self,
+        objects: &mut Objects,
+        obj: &PdfPageXObjectFormObject,
+        parent_matrix: Option<PdfMatrix>,
+    ) {
         if !obj.is_empty() {
+            // Get the current form's matrix and compose with parent matrix
+            // The correct order for nested forms: current_form_matrix.multiply(parent_matrix)
+            let current_matrix = if let Ok(form_matrix) = obj.matrix() {
+                if let Some(parent) = parent_matrix {
+                    Some(form_matrix.multiply(parent))
+                } else {
+                    Some(form_matrix)
+                }
+            } else {
+                parent_matrix
+            };
+
             for sub_obj in obj.iter() {
                 if let Some(sub_obj) = sub_obj.as_path_object() {
-                    self.process_path_obj(objects, sub_obj);
+                    self.process_path_obj(objects, sub_obj, current_matrix);
                 } else if let Some(sub_obj) = sub_obj.as_x_object_form_object() {
-                    self.process_x_object_form_obj(objects, sub_obj);
+                    self.process_x_object_form_obj(objects, sub_obj, current_matrix);
                 }
             }
         }

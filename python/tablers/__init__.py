@@ -183,7 +183,7 @@ class Document:
             password=password,
         )
 
-    def __enter__(self):
+    def __enter__(self) -> Document:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):

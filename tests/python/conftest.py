@@ -43,6 +43,12 @@ def text_lines_tables_pdf_path() -> Path:
 
 
 @pytest.fixture
+def nested_xobj_pdf_path() -> Path:
+    """Return path to the nested-xobj.pdf file."""
+    return TEST_DATA_DIR / "nested-xobj.pdf"
+
+
+@pytest.fixture
 def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for edge-test.pdf, closing it after the test."""
     doc = Document(path=edge_test_pdf_path)
@@ -88,6 +94,17 @@ def text_lines_tables_doc(
 ) -> Generator[Document, None, None]:
     """Open and return a Document for text-lines-tables.pdf, closing it after the test."""
     doc = Document(path=text_lines_tables_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def nested_xobj_doc(
+    nested_xobj_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for nested-xobj.pdf, closing it after the test."""
+    doc = Document(path=nested_xobj_pdf_path)
     yield doc
     if not doc.is_closed():
         doc.close()

@@ -2,6 +2,8 @@
 Tests for table finding functions.
 """
 
+import math
+
 import pytest
 from tablers import (
     Document,
@@ -707,3 +709,38 @@ class TestTableExtractionClip:
         )
         # Both Table 2 and Table 3 have 2 rows
         assert len(tables) == 2
+
+
+class TestNestedXobj:
+    """Tests for nested-xobj.pdf table extraction."""
+
+    def test_nested_xobj_table_extraction(self, nested_xobj_doc: Document) -> None:
+        """Test that nested-xobj.pdf extracts exactly 1 table with the expected bbox."""
+        page = nested_xobj_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        # Should extract exactly 1 table
+        assert len(tables) == 1
+
+        # Check the bbox matches expected values (with 2 decimal places tolerance)
+        expected_bbox = (
+            125.59,
+            112.64,
+            514.11,
+            218.84,
+        )
+        actual_bbox = tables[0].bbox
+
+        # Compare each coordinate using math.isclose with abs_tol=0.01 (2 decimal places)
+        assert math.isclose(actual_bbox[0], expected_bbox[0], abs_tol=0.01), (
+            f"x1 mismatch: expected {expected_bbox[0]}, got {actual_bbox[0]}"
+        )
+        assert math.isclose(actual_bbox[1], expected_bbox[1], abs_tol=0.01), (
+            f"y1 mismatch: expected {expected_bbox[1]}, got {actual_bbox[1]}"
+        )
+        assert math.isclose(actual_bbox[2], expected_bbox[2], abs_tol=0.01), (
+            f"x2 mismatch: expected {expected_bbox[2]}, got {actual_bbox[2]}"
+        )
+        assert math.isclose(actual_bbox[3], expected_bbox[3], abs_tol=0.01), (
+            f"y2 mismatch: expected {expected_bbox[3]}, got {actual_bbox[3]}"
+        )
