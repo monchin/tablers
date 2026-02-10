@@ -49,6 +49,12 @@ def nested_xobj_pdf_path() -> Path:
 
 
 @pytest.fixture
+def narrow_polyline_pdf_path() -> Path:
+    """Return path to the #13-narrow-polyline-as-edge.pdf file."""
+    return TEST_DATA_DIR / "#13-narrow-polyline-as-edge.pdf"
+
+
+@pytest.fixture
 def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for edge-test.pdf, closing it after the test."""
     doc = Document(path=edge_test_pdf_path)
@@ -105,6 +111,17 @@ def nested_xobj_doc(
 ) -> Generator[Document, None, None]:
     """Open and return a Document for nested-xobj.pdf, closing it after the test."""
     doc = Document(path=nested_xobj_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def narrow_polyline_doc(
+    narrow_polyline_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for #13-narrow-polyline-as-edge.pdf, closing it after the test."""
+    doc = Document(path=narrow_polyline_pdf_path)
     yield doc
     if not doc.is_closed():
         doc.close()

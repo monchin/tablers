@@ -339,11 +339,11 @@ class Line:
     """
     Represents a line segment extracted from a PDF page.
 
-    Lines can be straight or curved and are commonly used for table borders.
+    Lines can be straight, polyline or curved and are commonly used for table borders.
 
     Attributes
     ----------
-    line_type : {"straight", "curve"}
+    line_type : {"straight", "polyline", "curve"}
         The type of line segment.
     points : list of Point
         The points that define the line path.
@@ -353,7 +353,7 @@ class Line:
         The width of the line stroke.
     """
 
-    line_type: Literal["straight", "curve"]
+    line_type: Literal["straight", "polyline", "curve"]
     points: list[Point]
     color: Color
     width: float

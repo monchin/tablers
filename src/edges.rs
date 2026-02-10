@@ -616,6 +616,35 @@ pub(crate) fn make_edges(
                         color: line.color,
                     })
                 }
+            } else if line.line_type == LineType::Polyline
+                && line.points.first().unwrap().0 == line.points.last().unwrap().0
+            {
+                let pts = &line.points;
+                let x_min = pts.iter().map(|p| p.0).min().unwrap();
+                let x_max = pts.iter().map(|p| p.0).max().unwrap();
+                let y_min = pts.iter().map(|p| p.1).min().unwrap();
+                let y_max = pts.iter().map(|p| p.1).max().unwrap();
+                if ((v_strat & 0b11u8) != 0) && ((x_max - x_min) < *snap_x_tol) {
+                    edges.get_mut(&Orientation::Vertical).unwrap().push(Edge {
+                        orientation: Orientation::Vertical,
+                        x1: x_min,
+                        y1: y_min,
+                        x2: x_min,
+                        y2: y_max,
+                        width: x_max - x_min,
+                        color: line.color,
+                    });
+                } else if ((h_strat & 0b11u8) != 0) && ((y_max - y_min) < *snap_y_tol) {
+                    edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
+                        orientation: Orientation::Horizontal,
+                        x1: x_min,
+                        y1: y_min,
+                        x2: x_max,
+                        y2: y_min,
+                        width: y_max - y_min,
+                        color: line.color,
+                    });
+                }
             }
         }
 
