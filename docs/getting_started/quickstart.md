@@ -100,7 +100,7 @@ Process all pages in a document efficiently:
 from tablers import Document, find_tables
 
 with Document("multi_page.pdf") as doc:
-    print(f"Processing {doc.page_count()} pages")
+    print(f"Processing {doc.page_count} pages")
 
     all_tables = []
     for page in doc.pages():

@@ -28,23 +28,27 @@ based on the operating system (Windows, Linux, or macOS).
 from __future__ import annotations
 
 import platform
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
-from .tablers import Document as RsDoc
+from .page import Page
 from .tablers import (
     Edge,
-    Page,
-    PageIterator,
     PdfiumRuntime,
+    Pyo3Doc,
+    Pyo3Page,
     TfSettings,
     WordsExtractSettings,
     __version__,
-    find_all_cells_bboxes,
-    find_tables,
-    find_tables_from_cells,
-    get_edges,
 )
+from .tablers import find_all_cells_bboxes as _find_all_cells_bboxes
+from .tablers import find_tables as _find_tables
+from .tablers import find_tables_from_cells as _find_tables_from_cells
+from .tablers import get_edges as _get_edges
+
+if TYPE_CHECKING:
+    from .tablers import BBox
 
 SYSTEM: Final = platform.system()
 
@@ -107,6 +111,186 @@ def get_runtime(path: Path | str | None = None) -> PdfiumRuntime:
 # Initialize the global runtime using the default path
 # This will reuse an existing instance if already initialized from Rust
 PDFIUM_RT = get_runtime()
+
+
+def _unwrap_page(page: Page | Pyo3Page | None) -> Pyo3Page | None:
+    """Pass through to Rust: use inner when page is our Page wrapper."""
+    if page is None:
+        return None
+    return page.inner if isinstance(page, Page) else page
+
+
+def find_tables(
+    page: Page | Pyo3Page | None = None,
+    extract_text: bool = True,
+    clip=None,
+    tf_settings=None,
+    **kwargs,
+):
+    """
+    Find all tables in a PDF page.
+
+    Thin wrapper around the Rust ``find_tables`` binding that accepts either
+    a :class:`Page` wrapper or a raw :class:`Pyo3Page` for the *page* argument.
+    All other parameters are forwarded unchanged; see the Rust binding's
+    docstring (:func:`tablers.tablers.find_tables`) for the full parameter list.
+
+    Parameters
+    ----------
+    page : Page or Pyo3Page, optional
+        The page to extract tables from.
+    extract_text : bool
+        Whether to extract text content from cells.
+    clip : BBox, optional
+        Clip region ``(x0, y0, x1, y1)`` in page coordinates.
+    tf_settings : TfSettings, optional
+        Table-finder settings; keyword arguments are accepted as an alternative.
+    **kwargs
+        Additional ``TfSettings`` fields passed as keyword arguments.
+
+    Returns
+    -------
+    list[Table]
+        Detected tables with their cells and optional text content.
+    """
+    return _find_tables(
+        page=_unwrap_page(page),
+        extract_text=extract_text,
+        clip=clip,
+        tf_settings=tf_settings,
+        **kwargs,
+    )
+
+
+def find_all_cells_bboxes(
+    page: Page | Pyo3Page | None = None,
+    clip=None,
+    tf_settings=None,
+    **kwargs,
+):
+    """
+    Find all table cell bounding boxes in a PDF page.
+
+    Thin wrapper around the Rust ``find_all_cells_bboxes`` binding that accepts
+    either a :class:`Page` wrapper or a raw :class:`Pyo3Page` for *page*.
+    All other parameters are forwarded unchanged.
+
+    Parameters
+    ----------
+    page : Page or Pyo3Page, optional
+        The page to extract cell bounding boxes from.
+    clip : BBox, optional
+        Clip region ``(x0, y0, x1, y1)`` in page coordinates.
+    tf_settings : TfSettings, optional
+        Table-finder settings; keyword arguments are accepted as an alternative.
+    **kwargs
+        Additional ``TfSettings`` fields passed as keyword arguments.
+
+    Returns
+    -------
+    list[BBox]
+        Bounding boxes of all detected table cells.
+    """
+    return _find_all_cells_bboxes(
+        page=_unwrap_page(page),
+        clip=clip,
+        tf_settings=tf_settings,
+        **kwargs,
+    )
+
+
+def find_tables_from_cells(
+    cells: list[BBox],
+    extract_text: bool,
+    page: Page | Pyo3Page | None = None,
+    tf_settings=None,
+    **kwargs,
+):
+    """
+    Build tables from pre-computed cell bounding boxes.
+
+    Thin wrapper around the Rust ``find_tables_from_cells`` binding that accepts
+    either a :class:`Page` wrapper or a raw :class:`Pyo3Page` for *page*.
+
+    Parameters
+    ----------
+    cells : list[BBox]
+        Cell bounding boxes as returned by :func:`find_all_cells_bboxes`.
+    extract_text : bool
+        Whether to extract text content from cells.  Requires *page* when
+        ``True``.
+    page : Page or Pyo3Page, optional
+        The source page, required when *extract_text* is ``True``.
+    tf_settings : TfSettings, optional
+        Table-finder settings; keyword arguments are accepted as an alternative.
+    **kwargs
+        Additional ``TfSettings`` fields passed as keyword arguments.
+
+    Returns
+    -------
+    list[Table]
+        Tables constructed from the provided cell bounding boxes.
+
+    Notes
+    -----
+    The parameter was renamed from ``pdf_page`` to ``page`` in version 0.5.
+    Passing ``pdf_page`` still works but raises a :class:`DeprecationWarning`.
+    """
+    import warnings
+
+    if "pdf_page" in kwargs:
+        warnings.warn(
+            (
+                "The 'pdf_page' parameter is deprecated and will be removed in a future version. "
+                "Use 'page' instead."
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if page is None:
+            page = kwargs.pop("pdf_page")
+        else:
+            kwargs.pop("pdf_page")
+
+    return _find_tables_from_cells(
+        cells=cells,
+        extract_text=extract_text,
+        page=_unwrap_page(page),
+        tf_settings=tf_settings,
+        **kwargs,
+    )
+
+
+def get_edges(
+    page: Page | Pyo3Page | None = None,
+    tf_settings=None,
+    **kwargs,
+):
+    """
+    Extract edges from a PDF page.
+
+    Thin wrapper around the Rust ``get_edges`` binding that accepts either a
+    :class:`Page` wrapper or a raw :class:`Pyo3Page` for *page*.
+
+    Parameters
+    ----------
+    page : Page or Pyo3Page, optional
+        The page to extract edges from.
+    tf_settings : TfSettings, optional
+        Table-finder settings; keyword arguments are accepted as an alternative.
+    **kwargs
+        Additional ``TfSettings`` fields passed as keyword arguments.
+
+    Returns
+    -------
+    dict[str, list[Edge]]
+        Detected edges grouped by direction (``"h"`` / ``"v"``).
+    """
+    return _get_edges(
+        page=_unwrap_page(page),
+        tf_settings=tf_settings,
+        **kwargs,
+    )
 
 
 __all__ = [
@@ -176,7 +360,7 @@ class Document:
         bytes: bytes | None = None,
         password: str | None = None,
     ):
-        self.doc = RsDoc(
+        self.doc = Pyo3Doc(
             PDFIUM_RT,
             path=str(path) if path is not None else None,
             bytes=bytes,
@@ -206,6 +390,37 @@ class Document:
         """
         return self.doc.page_count()
 
+    def save_to_bytes(self) -> bytes:
+        """
+        Serialize the document to bytes, **always without encryption**.
+
+        Internally creates a new, empty PDF, copies every page from the current
+        document into it, and serializes the result via ``FPDF_SaveAsCopy``.
+        The returned bytes can always be opened without a password—even when the
+        source was an encrypted PDF that was unlocked with a password.
+
+        .. warning::
+            If the original document was password-protected, this method
+            **strips the encryption**.  Ensure this is intentional before
+            distributing or persisting the result.
+
+        .. note::
+            This method is **not** cheap.  It allocates a full in-memory copy
+            of the PDF on every call.  Cache the result if you need it more
+            than once; do not call it in a loop.
+
+        Returns
+        -------
+        bytes
+            The serialized PDF content.
+
+        Raises
+        ------
+        RuntimeError
+            If the document has been closed or serialization fails.
+        """
+        return self.doc.save_to_bytes()
+
     def get_page(self, page_num: int) -> Page:
         """
         Retrieve a specific page by index.
@@ -233,9 +448,9 @@ class Document:
         >>> first_page = doc.get_page(0)
         >>> print(f"Page size: {first_page.width} x {first_page.height}")
         """
-        return self.doc.get_page(page_num)
+        return Page(self.doc.get_page(page_num), self)
 
-    def pages(self) -> PageIterator:
+    def pages(self) -> Iterator[Page]:
         """
         Get an iterator over all pages in the document.
 
@@ -244,7 +459,7 @@ class Document:
 
         Returns
         -------
-        PageIterator
+        Iterator[Page]
             An iterator that yields pages one at a time.
 
         Examples
@@ -253,7 +468,7 @@ class Document:
         >>> for page in doc.pages():
         ...     print(f"Page size: {page.width} x {page.height}")
         """
-        return self.doc.pages()
+        return (Page(p, self) for p in self.doc.pages())
 
     def close(self) -> None:
         """

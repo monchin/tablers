@@ -47,8 +47,8 @@ tablers/
 #### 1. **Document Management** (`lib.rs`)
 
 - `PdfiumRuntime`: Manages the Pdfium library lifecycle (singleton pattern)
-- `Document`: Represents an opened PDF document with lazy page loading
-- `PyPage`: Represents a single PDF page with caching support
+- `Pyo3Doc`: Represents an opened PDF document with lazy page loading
+- `Pyo3Page`: Represents a single PDF page with caching support
 
 #### 2. **Edge Detection** (`edges.rs`)
 

@@ -30,16 +30,17 @@ A `Page` represents a single page in the PDF document. You can access pages by i
 from tablers import Document
 
 with Document("example.pdf") as doc:
-    # Get page count
-    print(f"Total pages: {doc.page_count()}")
+    # Get page count (property, no parentheses)
+    print(f"Total pages: {doc.page_count}")
 
     # Get specific page (0-indexed)
     page = doc.get_page(0)
     print(f"Page size: {page.width} x {page.height}")
+    print(f"Page index: {page.page_idx}")
 
     # Iterate through all pages
     for page in doc.pages():
-        print(f"Processing page...")
+        print(f"Processing page {page.page_idx}...")
 ```
 
 ### Table
@@ -210,6 +211,38 @@ print(html_content)
 with open("output.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 ```
+
+## Saving a Document to Bytes
+
+Use `save_to_bytes()` to serialize the current document into an in-memory byte buffer. This is useful for passing the PDF to another library, uploading it, or storing it without writing to disk.
+
+```python
+from tablers import Document
+
+with Document("example.pdf") as doc:
+    data: bytes = doc.save_to_bytes()
+    # data is a valid PDF byte stream
+    with open("copy.pdf", "wb") as f:
+        f.write(data)
+```
+
+### Decrypting an Encrypted PDF
+
+`save_to_bytes()` always produces an **unencrypted** output. If the original PDF was password-protected, the returned bytes can be opened without any password:
+
+```python
+from tablers import Document
+
+with Document("encrypted.pdf", password="secret") as doc:
+    decrypted: bytes = doc.save_to_bytes()
+
+# Re-open without password
+with Document(bytes=decrypted) as doc2:
+    print(doc2.page_count)
+```
+
+!!! warning
+    `save_to_bytes()` **strips the encryption** from the document. Only use this when you intentionally want to remove password protection. The method also allocates a full in-memory copy of the PDF on each call—cache the result if you need it more than once.
 
 ## Resource Management
 

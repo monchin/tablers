@@ -163,7 +163,7 @@ class TestFindTablesFromCells:
         """find_tables_from_cells should work with text extraction when page provided."""
         page = edge_test_doc.get_page(0)
         cells = find_all_cells_bboxes(page)
-        tables = find_tables_from_cells(cells, extract_text=True, pdf_page=page)
+        tables = find_tables_from_cells(cells, extract_text=True, page=page)
         assert isinstance(tables, list)
 
     def test_extract_text_without_page_raises(self, edge_test_doc: Document) -> None:
@@ -171,7 +171,7 @@ class TestFindTablesFromCells:
         page = edge_test_doc.get_page(0)
         cells = find_all_cells_bboxes(page)
         with pytest.raises(RuntimeError):
-            find_tables_from_cells(cells, extract_text=True, pdf_page=None)
+            find_tables_from_cells(cells, extract_text=True, page=None)
 
     def test_empty_cells_returns_empty(self) -> None:
         """find_tables_from_cells with empty cells should return empty list."""
@@ -190,7 +190,7 @@ class TestFindTablesFromCells:
         cells = find_all_cells_bboxes(page)
         we_settings = WordsExtractSettings(x_tolerance=5.0)
         tables = find_tables_from_cells(
-            cells, extract_text=True, pdf_page=page, we_settings=we_settings
+            cells, extract_text=True, page=page, we_settings=we_settings
         )
         assert isinstance(tables, list)
 
@@ -198,7 +198,7 @@ class TestFindTablesFromCells:
         """Tables returned should have proper structure."""
         page = edge_test_doc.get_page(0)
         cells = find_all_cells_bboxes(page)
-        tables = find_tables_from_cells(cells, extract_text=True, pdf_page=page)
+        tables = find_tables_from_cells(cells, extract_text=True, page=page)
         for table in tables:
             assert hasattr(table, "bbox")
             assert hasattr(table, "cells")
@@ -414,7 +414,7 @@ class TestTableExtractionIntegration:
         cell_bboxes = find_all_cells_bboxes(page)
 
         # Step 2: Construct tables with text extraction
-        tables = find_tables_from_cells(cell_bboxes, extract_text=True, pdf_page=page)
+        tables = find_tables_from_cells(cell_bboxes, extract_text=True, page=page)
 
         # Verify table structure
         for table in tables:

@@ -176,13 +176,24 @@ def find_tables_from_cells(
 |-----------|------|-------------|
 | `cells` | `list[BBox]` | A list of cell bounding boxes to group into tables |
 | `extract_text` | `bool` | Whether to extract text content from cells |
-| `page` | `Optional[Page]` | The PDF page (required if extract_text is True) |
+| `page` | `Optional[Page]` | The PDF page (required if `extract_text` is `True`) |
 | `tf_settings` | `Optional[TfSettings]` | Table finder settings |
 | `**kwargs` |`Unpack[TfSettingItems]` | Additional keyword arguments for settings |
 
 **Returns:** `list[Table]` - A list of Table objects constructed from the cells.
 
-**Raises:** `RuntimeError` - If extract_text is True but page is not provided.
+**Raises:** `RuntimeError` - If `extract_text` is `True` but `page` is not provided.
+
+!!! warning "Deprecated parameter `pdf_page`"
+    The parameter was renamed from `pdf_page` to `page`. Passing `pdf_page` as a keyword argument still works but emits a `DeprecationWarning` and will be removed in a future release. Update your call sites:
+
+    ```python
+    # Old (deprecated)
+    find_tables_from_cells(cells, extract_text=True, pdf_page=page)
+
+    # New
+    find_tables_from_cells(cells, extract_text=True, page=page)
+    ```
 
 ---
 
@@ -270,21 +281,30 @@ class Document:
 !!! note
     Either `path` or `bytes` must be provided, but not both. If both are provided, only `path` is used.
 
+**Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `page_count` | `int` | Total number of pages in the document |
+
 **Methods:**
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `page_count()` | `int` | Get the total number of pages |
 | `get_page(page_num)` | `Page` | Retrieve a specific page by index (0-based) |
-| `pages()` | `PageIterator` | Get an iterator over all pages |
+| `pages()` | `Iterator[Page]` | Get a lazy iterator over all pages |
+| `save_to_bytes()` | `bytes` | Serialize the document to bytes without encryption (see warning below) |
 | `close()` | `None` | Close the document and release resources |
 | `is_closed()` | `bool` | Check if the document has been closed |
+
+!!! warning "`save_to_bytes()` strips encryption"
+    If the original document was password-protected, `save_to_bytes()` returns a byte buffer that **can be opened without a password**. This is intentional—use it only when stripping the encryption is appropriate for your use case. The method also allocates a full in-memory copy of the PDF on every call; cache the result if you need it more than once.
 
 **Context Manager:**
 
 ```python
 with Document("example.pdf") as doc:
-    for page in doc:
+    for page in doc.pages():
         print(page.width, page.height)
 ```
 
@@ -300,7 +320,10 @@ Represents a single page in a PDF document.
 |-----------|------|-------------|
 | `width` | `float` | The width of the page in points |
 | `height` | `float` | The height of the page in points |
-| `objects` | `Optional[Objects]` | Extracted objects, or None if not extracted |
+| `page_idx` | `int` | Zero-based index of this page within its document |
+| `rotation_degrees` | `float` | Clockwise rotation of the page in degrees |
+| `objects` | `Optional[Objects]` | Extracted objects, or `None` if not yet extracted |
+| `doc` | `Document` | The `Document` instance this page belongs to |
 
 **Methods:**
 
@@ -308,7 +331,8 @@ Represents a single page in a PDF document.
 |--------|---------|-------------|
 | `is_valid()` | `bool` | Check if the page reference is still valid |
 | `extract_objects()` | `None` | Extract all objects from the page |
-| `clear()` | `None` | Clear cached objects to free memory |
+| `clear_cache()` | `None` | Clear cached objects to free memory |
+| `clear()` | `None` | Alias for `clear_cache()`; deprecated, prefer `clear_cache()` |
 
 ---
 

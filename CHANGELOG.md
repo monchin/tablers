@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Add `Document.save_to_bytes()` method to serialize the PDF to an in-memory byte buffer, always without encryption; if the original was password-protected the returned bytes can be opened without a password
+- Add `page.doc` back-reference: every `Page` object now carries a reference to the `Document` it belongs to
+- Add `Page.page_idx` property: zero-based index of the page within its document
+- Add `Page.rotation_degrees` property: clockwise rotation of the page in degrees
+- Add `Page.clear_cache()` method as the canonical name for clearing cached objects
+
+### Changed
+
+- `Page` is now a Python-level wrapper that holds a `doc` back-reference; Rust-side type is `Pyo3Page`
+
+### Deprecated
+
+- `find_tables_from_cells` parameter `pdf_page` has been renamed to `page` for arguments naming consistency; passing `pdf_page` still works but raises a `DeprecationWarning` and will be removed in a future release
+- `Page.clear()` is now an alias for `Page.clear_cache()`; prefer `clear_cache()` going forward
+
 ## [0.4.2] - 2026-02-11
 
 ### Fixed

@@ -75,7 +75,7 @@ class PdfiumRuntime:
         """
         ...
 
-class PageIterator(Iterator[Page]):
+class PageIterator(Iterator[Pyo3Page]):
     """
     Iterator over PDF pages.
 
@@ -84,14 +84,14 @@ class PageIterator(Iterator[Page]):
 
     Yields
     ------
-    Page
+    Pyo3Page
         The next page in the document.
     """
 
     def __iter__(self) -> PageIterator: ...
-    def __next__(self) -> Page: ...
+    def __next__(self) -> Pyo3Page: ...
 
-class Document:
+class Pyo3Doc:
     """
     Represents an opened PDF document.
 
@@ -121,6 +121,37 @@ class Document:
         bytes: bytes | None = None,
         password: str | None = None,
     ): ...
+    def save_to_bytes(self) -> bytes:
+        """
+        Serialize the document to bytes, **always without encryption**.
+
+        Internally creates a new, empty PDF, copies every page from the current
+        document into it, and serializes the result via ``FPDF_SaveAsCopy``.
+        The returned bytes can always be opened without a password—even when the
+        source was an encrypted PDF that was unlocked with a password.
+
+        .. warning::
+            If the original document was password-protected, this method
+            **strips the encryption**.  Ensure this is intentional before
+            distributing or persisting the result.
+
+        .. note::
+            This method is **not** cheap.  It allocates a full in-memory copy
+            of the PDF on every call.  Cache the result if you need it more
+            than once; do not call it in a loop.
+
+        Returns
+        -------
+        bytes
+            The serialized PDF content.
+
+        Raises
+        ------
+        RuntimeError
+            If the document is closed or serialization fails.
+        """
+        ...
+
     def page_count(self) -> int:
         """
         Get the total number of pages in the document.
@@ -137,7 +168,7 @@ class Document:
         """
         ...
 
-    def get_page(self, page_num: int) -> Page:
+    def get_page(self, page_num: int) -> Pyo3Page:
         """
         Retrieve a specific page by index.
 
@@ -237,9 +268,9 @@ class Document:
         """
         ...
 
-class Page:
+class Pyo3Page:
     """
-    Represents a single page in a PDF document.
+    Represents a single page in a PDF document (Rust binding).
 
     Provides access to page properties like dimensions and rotation,
     as well as methods to extract objects and text from the page.
@@ -254,6 +285,8 @@ class Page:
 
     width: float
     height: float
+    page_idx: int
+    rotation_degrees: float
 
     def is_valid(self) -> bool:
         """
@@ -275,7 +308,7 @@ class Page:
         """
         ...
 
-    def clear(self):
+    def clear_cache(self) -> None:
         """
         Clear the cached objects to free memory.
         """
@@ -863,7 +896,7 @@ class TfSettings:
     def __eq__(self, other: object) -> bool: ...
 
 def find_all_cells_bboxes(
-    page: Page | None = None,
+    page: Pyo3Page | None = None,
     clip: BBox | None = None,
     tf_settings: TfSettings | None = None,
     **kwargs,
@@ -936,7 +969,7 @@ def find_all_cells_bboxes(
 def find_tables_from_cells(
     cells: list[BBox],
     extract_text: bool,
-    page: Page | None = None,
+    page: Pyo3Page | None = None,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems],
 ) -> list[Table]:
@@ -977,7 +1010,7 @@ def find_tables_from_cells(
     ...
 
 def find_tables(
-    page: Page | None = None,
+    page: Pyo3Page | None = None,
     extract_text: bool = True,
     clip: BBox | None = None,
     tf_settings: TfSettings | None = None,
@@ -1056,7 +1089,7 @@ def find_tables(
     ...
 
 def get_edges(
-    page: Page | None = None,
+    page: Pyo3Page | None = None,
     tf_settings: TfSettings | None = None,
     **kwargs: Unpack[TfSettingItems],
 ) -> dict[Literal["v", "h"], list[Edge]]:

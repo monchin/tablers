@@ -216,6 +216,33 @@ class TestPage:
         page.extract_objects()
         assert page.objects is not None
 
+    def test_page_doc_is_document(self, edge_test_doc: Document) -> None:
+        """page.doc should be a Document instance."""
+        page = edge_test_doc.get_page(0)
+        assert isinstance(page.doc, Document)
+
+    def test_page_doc_is_same_object(self, edge_test_doc: Document) -> None:
+        """page.doc should be the exact Document the page was retrieved from."""
+        page = edge_test_doc.get_page(0)
+        assert page.doc is edge_test_doc
+
+    def test_page_doc_via_pages_iterator(self, edge_test_doc: Document) -> None:
+        """Every page yielded by pages() should reference the same Document."""
+        for page in edge_test_doc.pages():
+            assert page.doc is edge_test_doc
+
+    def test_page_doc_page_count_consistent(self, edge_test_doc: Document) -> None:
+        """page.doc.page_count should equal the count of the originating document."""
+        page = edge_test_doc.get_page(0)
+        assert page.doc.page_count == edge_test_doc.page_count
+
+    def test_page_doc_get_page_roundtrip(self, edge_test_doc: Document) -> None:
+        """page.doc.get_page() should return a new Page with matching dimensions."""
+        page = edge_test_doc.get_page(0)
+        same_page = page.doc.get_page(page.page_idx)
+        assert same_page.width == page.width
+        assert same_page.height == page.height
+
 
 class TestEncryptedPDF:
     """Tests for opening and reading encrypted PDF documents."""
@@ -276,3 +303,51 @@ class TestEncryptedPDF:
         assert len(pages) == encrypted_doc.page_count
         for page in pages:
             assert isinstance(page, Page)
+
+
+class TestSaveToBytes:
+    """Tests for Document.save_to_bytes()."""
+
+    def test_save_to_bytes_returns_bytes(self, edge_test_doc: Document) -> None:
+        """save_to_bytes() should return a non-empty bytes object."""
+        data = edge_test_doc.save_to_bytes()
+        assert isinstance(data, bytes)
+        assert len(data) > 0
+
+    def test_save_to_bytes_starts_with_pdf_header(self, edge_test_doc: Document) -> None:
+        """Returned bytes should be a valid PDF (starts with %PDF-)."""
+        data = edge_test_doc.save_to_bytes()
+        assert data.startswith(b"%PDF-")
+
+    def test_save_to_bytes_roundtrip_page_count(self, edge_test_doc: Document) -> None:
+        """Re-opening the saved bytes should yield the same page count."""
+        original_count = edge_test_doc.page_count
+        data = edge_test_doc.save_to_bytes()
+        reopened = Document(bytes=data)
+        assert reopened.page_count == original_count
+        reopened.close()
+
+    def test_save_to_bytes_roundtrip_page_dimensions(self, edge_test_doc: Document) -> None:
+        """Page dimensions should be preserved after a save-and-reload round trip."""
+        original_page = edge_test_doc.get_page(0)
+        data = edge_test_doc.save_to_bytes()
+        reopened = Document(bytes=data)
+        reloaded_page = reopened.get_page(0)
+        assert reloaded_page.width == original_page.width
+        assert reloaded_page.height == original_page.height
+        reopened.close()
+
+    def test_save_to_bytes_encrypted_strips_password(self, encrypted_doc: Document) -> None:
+        """save_to_bytes() on an encrypted document should produce password-free bytes."""
+        data = encrypted_doc.save_to_bytes()
+        # Must be openable without any password.
+        reopened = Document(bytes=data)
+        assert reopened.page_count == encrypted_doc.page_count
+        reopened.close()
+
+    def test_save_to_bytes_after_close_raises(self, edge_test_pdf_path: Path) -> None:
+        """save_to_bytes() should raise RuntimeError after the document is closed."""
+        doc = Document(path=edge_test_pdf_path)
+        doc.close()
+        with pytest.raises(RuntimeError):
+            doc.save_to_bytes()

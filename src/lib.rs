@@ -228,6 +228,30 @@ impl PdfiumRuntime {
     }
 }
 
+/// Creates a new, unencrypted copy of a PDF document as a byte buffer.
+///
+/// All pages from `doc` are imported into a fresh `PdfDocument` created via
+/// `pdfium.create_new_pdf()`.  Because the new document carries no security
+/// settings, the returned bytes can be opened without a password even when the
+/// source `doc` was encrypted.
+fn save_doc_without_security(
+    pdfium: &Pdfium,
+    doc: &PdfDocument<'_>,
+) -> Result<Vec<u8>, pdfium_render::prelude::PdfiumError> {
+    use pdfium_render::prelude::PdfPageIndex;
+
+    let mut new_doc = pdfium.create_new_pdf()?;
+    let page_count = doc.pages().len();
+    if page_count > 0 {
+        new_doc.pages_mut().copy_page_range_from_document(
+            doc,
+            0..=((page_count - 1) as PdfPageIndex),
+            0,
+        )?;
+    }
+    new_doc.save_to_bytes()
+}
+
 /// Shared inner state for the Document.
 ///
 /// Contains the Pdfium reference and the actual PDF document.
@@ -242,13 +266,13 @@ struct DocumentInner {
 /// This struct provides methods to access pages and metadata of a PDF document.
 /// The document can be closed explicitly, after which all operations will fail.
 #[pyclass(unsendable)]
-pub struct Document {
+pub struct Pyo3Doc {
     inner: Rc<RefCell<DocumentInner>>,
 }
 
 #[pymethods]
-impl Document {
-    /// Creates a new Document instance from a file path or bytes.
+impl Pyo3Doc {
+    /// Creates a new Pyo3Doc instance from a file path or bytes.
     ///
     /// # Arguments
     ///
@@ -259,7 +283,7 @@ impl Document {
     ///
     /// # Returns
     ///
-    /// A new `Document` instance or a Python error if the document cannot be opened.
+    /// A new `Pyo3Doc` instance or a Python error if the document cannot be opened.
     ///
     /// # Note
     ///
@@ -324,6 +348,45 @@ impl Document {
         self.inner.borrow().doc.is_none()
     }
 
+    /// Serialize the document to bytes, **always without encryption**.
+    ///
+    /// Internally this creates a brand-new, empty PDF document, copies every page
+    /// from the current document into it, and serializes the result via
+    /// `FPDF_SaveAsCopy`.  Because the destination document carries no security
+    /// settings, the returned bytes can always be opened without a password—even
+    /// when the source was an encrypted PDF that was unlocked with a password.
+    ///
+    /// # Warning
+    ///
+    /// If the original document was password-protected, calling this method
+    /// effectively **strips the encryption**.  The caller is responsible for
+    /// ensuring this is intentional and appropriate for their use case.
+    ///
+    /// # Performance
+    ///
+    /// This method is **not** cheap: it allocates and populates a new in-memory
+    /// PDF document on every call.  For large documents the peak memory usage
+    /// will temporarily reach ~2× the document size.  Do not call this in a
+    /// tight loop or on every request; cache the result if you need it more than once.
+    ///
+    /// # Returns
+    ///
+    /// The serialized PDF bytes, or a Python error if the document is closed or
+    /// serialization fails.
+    fn save_to_bytes(&self) -> PyResult<Vec<u8>> {
+        let inner = self.inner.borrow();
+        let doc = inner.doc.as_ref().ok_or_else(|| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
+        })?;
+        let pdfium: &Pdfium = &inner._pdfium;
+        save_doc_without_security(pdfium, doc).map_err(|e| {
+            PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                "Failed to serialize PDF without security: {:?}",
+                e
+            ))
+        })
+    }
+
     /// Returns the total number of pages in the document.
     ///
     /// # Returns
@@ -351,8 +414,8 @@ impl Document {
     ///
     /// # Returns
     ///
-    /// A `PyPage` instance or a Python error if the index is out of range or document is closed.
-    fn get_page(&self, page_idx: usize) -> PyResult<PyPage> {
+    /// A `Pyo3Page` instance or a Python error if the index is out of range or document is closed.
+    fn get_page(&self, page_idx: usize) -> PyResult<Pyo3Page> {
         let inner = self.inner.borrow();
         let doc = inner.doc.as_ref().ok_or_else(|| {
             PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("Document is closed")
@@ -370,7 +433,7 @@ impl Document {
                 page_idx, page_count
             )));
         }
-        Ok(PyPage {
+        Ok(Pyo3Page {
             doc_inner: Rc::clone(&self.inner),
             inner: Page::new(doc.pages().get(page_idx as PdfPageIndex).unwrap(), page_idx),
         })
@@ -458,8 +521,8 @@ impl PyPageIterator {
     ///
     /// # Returns
     ///
-    /// The next `PyPage` or `None` if iteration is complete.
-    fn __next__(&mut self) -> PyResult<Option<PyPage>> {
+    /// The next `Pyo3Page` or `None` if iteration is complete.
+    fn __next__(&mut self) -> PyResult<Option<Pyo3Page>> {
         if self.current_idx >= self.page_count {
             return Ok(None);
         }
@@ -472,7 +535,7 @@ impl PyPageIterator {
         let page_idx = self.current_idx;
         self.current_idx += 1;
 
-        Ok(Some(PyPage {
+        Ok(Some(Pyo3Page {
             doc_inner: Rc::clone(&self.doc_inner),
             inner: Page::new(doc.pages().get(page_idx as PdfPageIndex).unwrap(), page_idx),
         }))
@@ -483,13 +546,13 @@ impl PyPageIterator {
 ///
 /// Provides access to page properties like dimensions and rotation,
 /// as well as methods to extract objects and text from the page.
-#[pyclass(unsendable, name = "Page")]
-pub struct PyPage {
+#[pyclass(unsendable, name = "Pyo3Page")]
+pub struct Pyo3Page {
     doc_inner: Rc<RefCell<DocumentInner>>,
     inner: Page,
 }
 
-impl PyPage {
+impl Pyo3Page {
     /// Checks if the parent document is still valid (not closed).
     ///
     /// # Returns
@@ -506,7 +569,7 @@ impl PyPage {
 }
 
 #[pymethods]
-impl PyPage {
+impl Pyo3Page {
     /// Returns the index of the page within the document.
     #[getter]
     fn page_idx(&self) -> PyResult<usize> {
@@ -594,7 +657,7 @@ impl PyPage {
 #[pyfunction]
 #[pyo3(name = "get_edges", signature = (page=None, tf_settings=None, **kwargs))]
 fn py_get_edges(
-    page: Option<&PyPage>,
+    page: Option<&Pyo3Page>,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Py<PyDict>> {
@@ -693,7 +756,7 @@ fn py_bbox_to_rs_bbox(bbox: &PyBbox) -> BboxKey {
 #[pyfunction]
 #[pyo3(name="find_all_cells_bboxes", signature = (page=None, clip=None, tf_settings=None, **kwargs))]
 fn py_find_all_cells_bboxes(
-    page: Option<&PyPage>,
+    page: Option<&Pyo3Page>,
     clip: Option<PyBbox>,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
@@ -735,11 +798,11 @@ fn py_find_all_cells_bboxes(
 ///
 /// A list of Table objects constructed from the cells.
 #[pyfunction]
-#[pyo3(name = "find_tables_from_cells", signature = (cells, extract_text, pdf_page=None, tf_settings=None, **kwargs))]
+#[pyo3(name = "find_tables_from_cells", signature = (cells, extract_text, page=None, tf_settings=None, **kwargs))]
 fn py_find_tables_from_cells(
     cells: &Bound<'_, PyList>,
     extract_text: bool,
-    pdf_page: Option<&PyPage>,
+    page: Option<&Pyo3Page>,
     tf_settings: Option<TfSettings>,
     kwargs: Option<&Bound<'_, PyDict>>,
 ) -> PyResult<Vec<Table>> {
@@ -756,11 +819,11 @@ fn py_find_tables_from_cells(
     };
 
     let page = match extract_text {
-        true => match pdf_page {
-            Some(pdf_page) => Some(&pdf_page.inner),
+        true => match page {
+            Some(page) => Some(&page.inner),
             None => {
                 return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(
-                    "pdf_page is required when extract_text is true",
+                    "page is required when extract_text is true",
                 ));
             }
         },
@@ -794,7 +857,7 @@ fn py_find_tables_from_cells(
 #[pyfunction]
 #[pyo3(name = "find_tables", signature = (page=None, extract_text=true, clip=None, tf_settings=None, **kwargs))]
 fn py_find_tables(
-    page: Option<&PyPage>,
+    page: Option<&Pyo3Page>,
     extract_text: bool,
     clip: Option<PyBbox>,
     tf_settings: Option<TfSettings>,
@@ -841,8 +904,8 @@ fn py_find_tables(
 fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<PdfiumRuntime>()?;
-    m.add_class::<Document>()?;
-    m.add_class::<PyPage>()?;
+    m.add_class::<Pyo3Doc>()?;
+    m.add_class::<Pyo3Page>()?;
     m.add_class::<PyPageIterator>()?;
     m.add_class::<Edge>()?;
     m.add_class::<TableCell>()?;
@@ -975,6 +1038,77 @@ mod tests {
             doc.is_err(),
             "Should fail to open encrypted PDF from bytes with wrong password"
         );
+    }
+
+    #[test]
+    fn test_save_to_bytes_from_encrypted_pdf_matches_original() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+        let runtime = PdfiumRuntime::from_pdfium(pdfium);
+
+        let pdf_path = format!(
+            "{}/tests/data/test-encryption-pswd-qwerty.pdf",
+            project_root
+        );
+
+        // Open the encrypted PDF with the correct password.
+        let original = runtime
+            .open_doc_from_path(&pdf_path, Some("qwerty"))
+            .expect("Should open encrypted PDF with password");
+
+        // Serialize via save_doc_without_security – the core logic behind Pyo3Doc::save_to_bytes.
+        let stream_bytes = save_doc_without_security(pdfium, &original)
+            .expect("Should serialize decrypted document to bytes without password");
+
+        assert!(
+            !stream_bytes.is_empty(),
+            "Serialized stream should not be empty"
+        );
+
+        // The stream must be openable without any password.
+        let from_stream = runtime
+            .open_doc_from_bytes(&stream_bytes, None)
+            .expect("Stream bytes should be openable without a password");
+
+        // Page count must match.
+        let original_page_count = original.pages().len();
+        let stream_page_count = from_stream.pages().len();
+        assert_eq!(
+            original_page_count, stream_page_count,
+            "Page count should match: original={original_page_count}, stream={stream_page_count}"
+        );
+
+        assert!(
+            original_page_count > 0,
+            "Document should have at least one page"
+        );
+
+        // Dimensions of every page must match.
+        for idx in 0..original_page_count as usize {
+            use pdfium_render::prelude::PdfPageIndex;
+            let orig_page = original
+                .pages()
+                .get(idx as PdfPageIndex)
+                .expect("Should get original page");
+            let stream_page = from_stream
+                .pages()
+                .get(idx as PdfPageIndex)
+                .expect("Should get stream page");
+
+            let orig_w = orig_page.width().value;
+            let orig_h = orig_page.height().value;
+            let stream_w = stream_page.width().value;
+            let stream_h = stream_page.height().value;
+
+            assert_eq!(
+                orig_w, stream_w,
+                "Page {idx} width mismatch: original={orig_w}, stream={stream_w}"
+            );
+            assert_eq!(
+                orig_h, stream_h,
+                "Page {idx} height mismatch: original={orig_h}, stream={stream_h}"
+            );
+        }
     }
 
     #[test]

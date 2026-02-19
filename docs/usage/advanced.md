@@ -265,7 +265,7 @@ with Document("example.pdf") as doc:
             print(f"  '{char.unicode_char}' at {char.bbox}")
 
     # Clear cached objects to free memory
-    page.clear()
+    page.clear_cache()
 ```
 
 ## Tolerance Settings
