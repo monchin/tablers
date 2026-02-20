@@ -31,6 +31,9 @@ Repository = "https://github.com/monchin/tablers"
 Documentation = "https://monchin.github.io/tablers/"
 Changelog = "https://monchin.github.io/tablers/changelog/"
 
+[project.optional-dependencies]
+debug = ["pillow>=12.1.0", "pypdfium2>=5.4.0"]
+
 [dependency-groups]
 stub = [
     "typing-extensions>=4.15.0; python_version < \"3.11\"",

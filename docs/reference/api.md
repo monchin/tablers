@@ -548,3 +548,135 @@ v_edge = Edge("v", 50.0, 0.0, 50.0, 100.0, width=2.0, color=(255, 0, 0, 255))
 | `Point` | `tuple[float, float]` | A 2D point (x, y) |
 | `BBox` | `tuple[float, float, float, float]` | Bounding box (x1, y1, x2, y2) |
 | `Color` | `tuple[int, int, int, int]` | RGBA color (0-255 each) |
+
+---
+
+## Debug Module (`tablers.debug`)
+
+!!! note "Optional dependency"
+    The debug module requires the `debug` extra. Install it with:
+    ```bash
+    pip install tablers[debug]
+    ```
+
+### PageImage
+
+Renders a PDF page to a PIL image and provides drawing primitives for annotating detected tables, edges, and intersection points.
+
+```python
+from tablers.debug import PageImage
+
+class PageImage:
+    def __init__(
+        self,
+        page: Page,
+        original: PIL.Image.Image | None = None,
+        resolution: int | float = 72,
+        antialias: bool = False,
+    )
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | `Page` | - | The page to render |
+| `original` | `Optional[PIL.Image.Image]` | `None` | Pre-rendered image. If `None`, the page is rendered at the given resolution |
+| `resolution` | `Union[int, float]` | `72` | Rendering resolution in DPI |
+| `antialias` | `bool` | `False` | Enable anti-aliasing during rendering |
+
+**Raises:** `RuntimeError` — If `original` is `None` and the document has already been closed.
+
+!!! note "Password-protected PDFs"
+    PageImage rendering supports only documents **without a password**. For password-protected PDFs, use `Document.save_to_bytes()` to obtain a decrypted copy, then open it with `Document(bytes=...)` and pass the resulting page to PageImage.
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `original` | `PIL.Image.Image` | The unmodified rendered page image |
+| `annotated` | `PIL.Image.Image` | The working copy with all annotations applied |
+| `scale` | `float` | Ratio of image pixels to page points (`image_width / page_width`) |
+| `bbox` | `BBox` | Page coordinate space: `(0, 0, page.width, page.height)` |
+| `resolution` | `Union[int, float]` | The DPI used for rendering |
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `reset()` | `PageImage` | Discard all annotations and restore `annotated` to `original` |
+| `copy()` | `PageImage` | Return a new `PageImage` sharing the same `original` but with an independent `annotated` copy |
+| `save(dest, format, quantize, colors, bits, **kwargs)` | `None` | Save the annotated image to a file path or `BytesIO` |
+| `show()` | `None` | Display the annotated image (calls `PIL.Image.show`) |
+| `_repr_png_()` | `bytes` | Return PNG bytes for Jupyter notebook inline display |
+
+**Drawing methods** (all return `self` for chaining):
+
+| Method | Description |
+|--------|-------------|
+| `draw_line(points, stroke, stroke_width)` | Draw a polyline. Accepts a tuple or list of two `(x, y)` points |
+| `draw_lines(list_of_lines, stroke, stroke_width)` | Draw multiple lines |
+| `draw_vline(location, stroke, stroke_width)` | Draw a vertical line spanning the full page height at `x = location` |
+| `draw_vlines(locations, stroke, stroke_width)` | Draw multiple vertical lines |
+| `draw_hline(location, stroke, stroke_width)` | Draw a horizontal line spanning the full page width at `y = location` |
+| `draw_hlines(locations, stroke, stroke_width)` | Draw multiple horizontal lines |
+| `draw_rect(bbox, fill, stroke, stroke_width)` | Draw a filled rectangle. Accepts a 4-tuple bbox `(x1, y1, x2, y2)` |
+| `draw_rects(list_of_rects, fill, stroke, stroke_width)` | Draw multiple rectangles |
+| `draw_circle(center, radius, fill, stroke)` | Draw a circle. Accepts a `(cx, cy)` center tuple |
+| `draw_circles(list_of_circles, radius, fill, stroke)` | Draw multiple circles |
+| `debug_table(table, fill, stroke, stroke_width)` | Draw a filled rectangle over every cell in a `Table` |
+| `debug_tablefinder(tf_settings, **kwargs)` | Draw all detected tables (cell outlines) and detected edges |
+
+**Default color constants** (importable from `tablers.debug`):
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `DEFAULT_FILL` | `(0, 0, 255, 50)` | Semi-transparent blue fill |
+| `DEFAULT_STROKE` | `(255, 0, 0, 200)` | Near-opaque red stroke |
+| `DEFAULT_STROKE_WIDTH` | `1` | Stroke width in pixels |
+| `DEFAULT_RESOLUTION` | `72` | Default rendering DPI |
+
+**Example — visualize table detection in Jupyter:**
+
+```python
+from tablers import Document
+from tablers.debug import PageImage
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    img = PageImage(page, resolution=150)
+
+    # Draw tables, edges, and intersection points in one call
+    img.debug_tablefinder()
+
+    # Display inline (Jupyter auto-calls _repr_png_)
+    img
+```
+
+**Example — annotate and save:**
+
+```python
+from tablers import Document, find_tables
+from tablers.debug import PageImage
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    tables = find_tables(page, extract_text=False)
+
+    img = PageImage(page)
+    for table in tables:
+        img.debug_table(table)
+    img.save("annotated.png", quantize=False)
+```
+
+**Example — method chaining:**
+
+```python
+img = (
+    PageImage(page)
+    .draw_hline(200.0)
+    .draw_vline(300.0)
+    .debug_tablefinder()
+)
+img.save("debug.png", quantize=False)
+```

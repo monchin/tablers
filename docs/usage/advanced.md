@@ -401,6 +401,92 @@ except RuntimeError as e:
     print(f"Runtime error: {e}")
 ```
 
+## Visualizing Table Detection
+
+The optional `tablers.debug` module lets you render a page to an image and annotate it with detected tables, edges, and intersection points. Install the extra dependencies first:
+
+```bash
+pip install tablers[debug]
+```
+
+Rendering supports only **documents without a password**. For password-protected PDFs, use `Document.save_to_bytes()` to get a decrypted copy, then open it with `Document(bytes=...)` and pass the resulting page to `PageImage`.
+
+### Quick Visual Debug
+
+`debug_tablefinder()` renders all detection results in one call: cell outlines (blue fill, red border) and detected edges (red lines):
+
+```python
+from tablers import Document
+from tablers.debug import PageImage
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    img = PageImage(page, resolution=150)
+    img.debug_tablefinder()
+
+    # Save to file
+    img.save("debug.png", quantize=False)
+
+    # Or display inline in Jupyter (auto-detected via _repr_png_)
+    img
+```
+
+Pass `TfSettings` or keyword arguments to use non-default detection settings:
+
+```python
+img.debug_tablefinder(vertical_strategy="lines", horizontal_strategy="text")
+```
+
+### Annotating Individual Tables
+
+Use `debug_table()` to annotate specific tables, or combine it with other drawing methods:
+
+```python
+from tablers import Document, find_tables
+from tablers.debug import PageImage
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    tables = find_tables(page, extract_text=False)
+
+    img = PageImage(page)
+
+    # Annotate all tables individually
+    for table in tables:
+        img.debug_table(table)
+
+    img.save("tables.png", quantize=False)
+```
+
+### Drawing Primitives
+
+`PageImage` provides low-level drawing helpers that all return `self` for chaining:
+
+```python
+img = (
+    PageImage(page)
+    .draw_hline(200.0)                        # horizontal guide line
+    .draw_vline(300.0)                        # vertical guide line
+    .draw_rect((50, 100, 250, 400))           # arbitrary bbox
+    .draw_circle((150.0, 250.0), radius=5)    # point of interest
+)
+img.save("annotated.png", quantize=False)
+```
+
+### Resetting and Copying
+
+```python
+img = PageImage(page)
+img.debug_tablefinder()
+
+# Remove all annotations and start fresh
+img.reset()
+
+# Create an independent copy to try different annotations
+img2 = img.copy()
+img2.debug_tablefinder(vertical_strategy="text")
+```
+
 ## Next Steps
 
 - See [Settings Reference](../reference/settings.md) for all configuration options
