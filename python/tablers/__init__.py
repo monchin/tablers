@@ -30,7 +30,7 @@ from __future__ import annotations
 import platform
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 from .page import Page
 from .tablers import (
@@ -47,9 +47,7 @@ from .tablers import find_all_cells_bboxes as _find_all_cells_bboxes
 from .tablers import find_tables as _find_tables
 from .tablers import find_tables_from_cells as _find_tables_from_cells
 from .tablers import get_edges as _get_edges
-
-if TYPE_CHECKING:
-    from .tablers import BBox
+from .typing import BBox, Color, NonNegativeFloat, NonNegativeInt, Point
 
 SYSTEM: Final = platform.system()
 
@@ -295,10 +293,15 @@ def get_edges(
 
 
 __all__ = [
+    "BBox",
+    "Color",
     "Document",
     "Edge",
+    "NonNegativeFloat",
+    "NonNegativeInt",
     "Page",
     "PdfiumRuntime",
+    "Point",
     "TfSettings",
     "WordsExtractSettings",
     "find_all_cells_bboxes",

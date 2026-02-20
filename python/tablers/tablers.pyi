@@ -11,30 +11,14 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
-from typing import Annotated, Literal, TypeAlias, TypedDict
+from typing import Literal, TypedDict
 
 if sys.version_info < (3, 11):
     from typing_extensions import Self, Unpack
 else:
     from typing import Self, Unpack
 
-def validate_non_negative(value: int | float) -> bool:
-    return value >= 0
-
-NonNegativeFloat: TypeAlias = Annotated[float, validate_non_negative]
-"""A non-negative floating point number."""
-
-NonNegativeInt: TypeAlias = Annotated[int, validate_non_negative]
-"""A non-negative integer."""
-
-Point: TypeAlias = tuple[float, float]
-"""A 2D point represented as (x, y) coordinates."""
-
-BBox: TypeAlias = tuple[float, float, float, float]
-"""A bounding box represented as (x1, y1, x2, y2) coordinates."""
-
-Color: TypeAlias = tuple[int, int, int, int]
-"""An RGBA color tuple, each component in range 0-255."""
+from .typing import BBox, Color, NonNegativeFloat, NonNegativeInt, Point
 
 __version__: str
 """The version string of the tablers library."""
