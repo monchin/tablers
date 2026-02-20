@@ -855,3 +855,135 @@ class TestExplicitEdgesWithoutPage:
         cells = find_all_cells_bboxes(None, tf_settings=settings)
 
         assert len(cells) == 0
+
+
+class TestGetIntersectionsFromEdges:
+    """Tests for get_intersections_from_edges function."""
+
+    def test_single_crossing(self) -> None:
+        """One h-edge crossing one v-edge produces exactly one intersection."""
+        from tablers import get_intersections_from_edges
+
+        h = [Edge("h", 0.0, 50.0, 100.0, 50.0)]
+        v = [Edge("v", 50.0, 0.0, 50.0, 100.0)]
+
+        result = get_intersections_from_edges(h, v)
+
+        assert len(result) == 1
+        assert (50.0, 50.0) in result
+
+    def test_grid_2x2_produces_nine_intersections(self) -> None:
+        """3 h-edges × 3 v-edges form a 2×2 grid with 9 intersection points."""
+        from tablers import get_intersections_from_edges
+
+        h = [
+            Edge("h", 0.0, 0.0, 100.0, 0.0),
+            Edge("h", 0.0, 50.0, 100.0, 50.0),
+            Edge("h", 0.0, 100.0, 100.0, 100.0),
+        ]
+        v = [
+            Edge("v", 0.0, 0.0, 0.0, 100.0),
+            Edge("v", 50.0, 0.0, 50.0, 100.0),
+            Edge("v", 100.0, 0.0, 100.0, 100.0),
+        ]
+
+        result = get_intersections_from_edges(h, v)
+
+        assert len(result) == 9
+        # Corner points
+        assert (0.0, 0.0) in result
+        assert (100.0, 100.0) in result
+        assert (50.0, 50.0) in result
+
+    def test_empty_edges_return_empty_dict(self) -> None:
+        """No edges → no intersections."""
+        from tablers import get_intersections_from_edges
+
+        result = get_intersections_from_edges([], [])
+
+        assert result == {}
+
+    def test_no_crossing_edges(self) -> None:
+        """H-edge ends before v-edge starts → no intersection."""
+        from tablers import get_intersections_from_edges
+
+        h = [Edge("h", 0.0, 50.0, 40.0, 50.0)]  # x range [0, 40]
+        v = [Edge("v", 60.0, 0.0, 60.0, 100.0)]  # x = 60
+
+        result = get_intersections_from_edges(h, v)
+
+        assert result == {}
+
+    def test_only_h_edges_no_intersection(self) -> None:
+        """Only horizontal edges with no verticals → empty result."""
+        from tablers import get_intersections_from_edges
+
+        h = [
+            Edge("h", 0.0, 0.0, 100.0, 0.0),
+            Edge("h", 0.0, 50.0, 100.0, 50.0),
+        ]
+
+        result = get_intersections_from_edges(h, [])
+
+        assert result == {}
+
+    def test_result_structure(self) -> None:
+        """Each value in the result dict has 'h' and 'v' keys with Edge lists."""
+        from tablers import get_intersections_from_edges
+
+        h = [Edge("h", 0.0, 50.0, 100.0, 50.0)]
+        v = [Edge("v", 50.0, 0.0, 50.0, 100.0)]
+
+        result = get_intersections_from_edges(h, v)
+
+        for point, crossing in result.items():
+            assert isinstance(point, tuple)
+            assert len(point) == 2
+            assert isinstance(point[0], float)
+            assert isinstance(point[1], float)
+            assert "h" in crossing
+            assert "v" in crossing
+            assert isinstance(crossing["h"], list)
+            assert isinstance(crossing["v"], list)
+
+    def test_intersection_point_coordinates(self) -> None:
+        """Intersection point is (v.x1, h.y1)."""
+        from tablers import get_intersections_from_edges
+
+        h = [Edge("h", 10.0, 30.0, 90.0, 30.0)]
+        v = [Edge("v", 70.0, 10.0, 70.0, 80.0)]
+
+        result = get_intersections_from_edges(h, v)
+
+        assert len(result) == 1
+        assert (70.0, 30.0) in result
+
+    def test_custom_tolerance_allows_near_miss(self) -> None:
+        """A large tolerance makes a near-miss count as an intersection."""
+        from tablers import get_intersections_from_edges
+
+        # h-edge ends at x=45, v-edge starts at x=50 (gap = 5)
+        h = [Edge("h", 0.0, 50.0, 45.0, 50.0)]
+        v = [Edge("v", 50.0, 0.0, 50.0, 100.0)]
+
+        # With tight tolerance the gap is not bridged
+        strict = get_intersections_from_edges(h, v, intersection_x_tolerance=1.0)
+        assert len(strict) == 0
+
+        # With loose tolerance the gap is bridged
+        loose = get_intersections_from_edges(h, v, intersection_x_tolerance=10.0)
+        assert len(loose) == 1
+
+    def test_integration_with_get_edges(self, edge_test_doc: "Document") -> None:
+        """get_intersections_from_edges works with the output of get_edges."""
+        from tablers import get_edges, get_intersections_from_edges
+
+        page = edge_test_doc.get_page(0)
+        edges = get_edges(page)
+
+        result = get_intersections_from_edges(edges["h"], edges["v"])
+
+        assert isinstance(result, dict)
+        for point, crossing in result.items():
+            assert len(point) == 2
+            assert "h" in crossing and "v" in crossing

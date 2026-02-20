@@ -1142,3 +1142,48 @@ def get_edges(
     ... )
     """
     ...
+
+def get_intersections_from_edges(
+    h_edges: list[Edge],
+    v_edges: list[Edge],
+    tf_settings: TfSettings | None = None,
+    **kwargs: Unpack[TfSettingItems],
+) -> dict[Point, dict[Literal["v", "h"], list[Edge]]]:
+    """
+    Compute intersection points from a set of horizontal and vertical edges.
+
+    Finds every point where a horizontal edge and a vertical edge cross each
+    other, subject to the configured intersection tolerances.
+
+    Parameters
+    ----------
+    h_edges : list[Edge]
+        Horizontal edges (e.g. ``edges["h"]`` from :func:`get_edges`).
+    v_edges : list[Edge]
+        Vertical edges (e.g. ``edges["v"]`` from :func:`get_edges`).
+    tf_settings : TfSettings, optional
+        TableFinder settings object. If not provided, default settings are used.
+    **kwargs : TfSettingItems
+        Additional keyword arguments passed to TfSettings (e.g.
+        ``intersection_x_tolerance``, ``intersection_y_tolerance``).
+
+    Returns
+    -------
+    dict[Point, dict[str, list[Edge]]]
+        A mapping from ``(x, y)`` intersection coordinates to a dict with
+        keys ``"h"`` and ``"v"`` listing the edges that pass through that
+        point.
+
+    Examples
+    --------
+    >>> from tablers import Document, get_edges, get_intersections_from_edges
+    >>> doc = Document("example.pdf")
+    >>> page = doc.get_page(0)
+    >>> edges = get_edges(page)
+    >>> intersections = get_intersections_from_edges(edges["h"], edges["v"])
+    >>> for (x, y), crossing in intersections.items():
+    ...     print(f"Intersection at ({x}, {y}): "
+    ...           f"{len(crossing['h'])} h-edges, {len(crossing['v'])} v-edges")
+    >>> doc.close()
+    """
+    ...

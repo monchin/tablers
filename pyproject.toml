@@ -85,7 +85,7 @@ include = ["python/tablers"]
 python = "./.venv"
 
 [tool.rumdl]
-disable = ["MD013", "MD033", "MD041"]
+disable = ["MD013", "MD033", "MD038", "MD041"]
 include = ["docs/**/*.md", "README.md"]
 exclude = [".github/**/*.md", ".agents/**/*.md"]
 

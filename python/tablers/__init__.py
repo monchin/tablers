@@ -41,6 +41,7 @@ from .tablers import (
     TfSettings,
     WordsExtractSettings,
     __version__,
+    get_intersections_from_edges,
 )
 from .tablers import find_all_cells_bboxes as _find_all_cells_bboxes
 from .tablers import find_tables as _find_tables
@@ -305,6 +306,7 @@ __all__ = [
     "find_tables",
     "get_default_pdfium_path",
     "get_edges",
+    "get_intersections_from_edges",
     "get_runtime",
     "__version__",
 ]

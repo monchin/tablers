@@ -135,6 +135,38 @@ with Document("example.pdf") as doc:
         print(f"  ({edge.x1}, {edge.y1}) -> ({edge.x2}, {edge.y2})")
 ```
 
+### Inspecting Intersections
+
+Once you have edges, you can inspect the intersection points directly with
+`get_intersections_from_edges`. This is useful for debugging table layout or
+building custom post-processing pipelines on top of the raw grid data.
+
+```python
+from tablers import Document, get_edges, get_intersections_from_edges
+
+with Document("example.pdf") as doc:
+    page = doc.get_page(0)
+    edges = get_edges(page)
+
+    intersections = get_intersections_from_edges(edges["h"], edges["v"])
+    print(f"Found {len(intersections)} intersection points")
+
+    for (x, y), crossing in sorted(intersections.items()):
+        print(f"  ({x:.1f}, {y:.1f}): "
+              f"{len(crossing['h'])} h-edge(s), {len(crossing['v'])} v-edge(s)")
+```
+
+You can pass the same tolerance settings as `get_edges`:
+
+```python
+intersections = get_intersections_from_edges(
+    edges["h"],
+    edges["v"],
+    intersection_x_tolerance=5.0,
+    intersection_y_tolerance=5.0,
+)
+```
+
 ## Using Explicit Edges
 
 Create tables programmatically by providing explicit edges instead of extracting from a PDF:

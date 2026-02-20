@@ -1189,7 +1189,7 @@ fn edges_to_intersections(
                 intersection
                     .entry(Orientation::Horizontal)
                     .or_default()
-                    .push((*v).clone());
+                    .push((*h).clone());
             }
         }
     }
@@ -1531,6 +1531,32 @@ impl TableFinder {
             .unwrap()
             .sort_by_key(|e| (e.y1, e.x1));
         edges_merged
+    }
+
+    /// Computes intersection points from a set of horizontal and vertical edges.
+    ///
+    /// # Arguments
+    ///
+    /// * `h_edges` - A vector of horizontal edges.
+    /// * `v_edges` - A vector of vertical edges.
+    ///
+    /// # Returns
+    ///
+    /// A HashMap mapping each intersection point `(x, y)` to a map of
+    /// `Orientation -> Vec<Edge>` indicating which edges pass through that point.
+    pub(crate) fn get_intersections_from_edges(
+        &self,
+        h_edges: Vec<Edge>,
+        v_edges: Vec<Edge>,
+    ) -> HashMap<Point, HashMap<Orientation, Vec<Edge>>> {
+        let mut edges = HashMap::new();
+        edges.insert(Orientation::Horizontal, h_edges);
+        edges.insert(Orientation::Vertical, v_edges);
+        edges_to_intersections(
+            &mut edges,
+            *self.settings.intersection_x_tolerance,
+            *self.settings.intersection_y_tolerance,
+        )
     }
 }
 
@@ -3373,5 +3399,120 @@ mod tests {
         // Second edge: y2 clipped from 150 to 100
         assert_eq!(v_edges[1].y1, of(80.0));
         assert_eq!(v_edges[1].y2, of(100.0));
+    }
+
+    // ── get_intersections_from_edges ────────────────────────────────────────
+
+    fn make_h_edge(x1: f32, y: f32, x2: f32) -> Edge {
+        use pdfium_render::prelude::PdfColor;
+        Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(x1),
+            y1: of(y),
+            x2: of(x2),
+            y2: of(y),
+            width: of(1.0),
+            color: PdfColor::new(0, 0, 0, 255),
+        }
+    }
+
+    fn make_v_edge(x: f32, y1: f32, y2: f32) -> Edge {
+        use pdfium_render::prelude::PdfColor;
+        Edge {
+            orientation: Orientation::Vertical,
+            x1: of(x),
+            y1: of(y1),
+            x2: of(x),
+            y2: of(y2),
+            width: of(1.0),
+            color: PdfColor::new(0, 0, 0, 255),
+        }
+    }
+
+    #[test]
+    fn test_get_intersections_from_edges_single_crossing() {
+        // One h-edge crossing one v-edge → exactly one intersection point.
+        let h = vec![make_h_edge(0.0, 50.0, 100.0)];
+        let v = vec![make_v_edge(50.0, 0.0, 100.0)];
+
+        let settings = Rc::new(TfSettings::default());
+        let intersections = TableFinder::new(settings).get_intersections_from_edges(h, v);
+
+        assert_eq!(intersections.len(), 1);
+        let point = (of(50.0), of(50.0));
+        assert!(intersections.contains_key(&point));
+    }
+
+    #[test]
+    fn test_get_intersections_from_edges_grid_2x2() {
+        // 3 h-edges × 3 v-edges form a 2×2 grid → 9 intersection points.
+        let h = vec![
+            make_h_edge(0.0, 0.0, 100.0),
+            make_h_edge(0.0, 50.0, 100.0),
+            make_h_edge(0.0, 100.0, 100.0),
+        ];
+        let v = vec![
+            make_v_edge(0.0, 0.0, 100.0),
+            make_v_edge(50.0, 0.0, 100.0),
+            make_v_edge(100.0, 0.0, 100.0),
+        ];
+
+        let settings = Rc::new(TfSettings::default());
+        let intersections = TableFinder::new(settings).get_intersections_from_edges(h, v);
+
+        assert_eq!(intersections.len(), 9);
+        // Spot-check a few corners
+        assert!(intersections.contains_key(&(of(0.0), of(0.0))));
+        assert!(intersections.contains_key(&(of(100.0), of(100.0))));
+        assert!(intersections.contains_key(&(of(50.0), of(50.0))));
+    }
+
+    #[test]
+    fn test_get_intersections_from_edges_empty_input() {
+        // No edges → no intersections.
+        let settings = Rc::new(TfSettings::default());
+        let intersections = TableFinder::new(settings).get_intersections_from_edges(vec![], vec![]);
+
+        assert!(intersections.is_empty());
+    }
+
+    #[test]
+    fn test_get_intersections_from_edges_no_crossing() {
+        // Parallel edges that never cross → no intersections.
+        let h = vec![make_h_edge(0.0, 50.0, 40.0)]; // ends at x=40
+        let v = vec![make_v_edge(60.0, 0.0, 100.0)]; // starts at x=60
+
+        let settings = Rc::new(TfSettings::default());
+        let intersections = TableFinder::new(settings).get_intersections_from_edges(h, v);
+
+        assert!(intersections.is_empty());
+    }
+
+    #[test]
+    fn test_get_intersections_from_edges_only_h_edges() {
+        // Only horizontal edges, no vertical → no intersections.
+        let h = vec![make_h_edge(0.0, 0.0, 100.0), make_h_edge(0.0, 50.0, 100.0)];
+
+        let settings = Rc::new(TfSettings::default());
+        let intersections = TableFinder::new(settings).get_intersections_from_edges(h, vec![]);
+
+        assert!(intersections.is_empty());
+    }
+
+    #[test]
+    fn test_get_intersections_from_edges_point_coordinates() {
+        // Verify the exact (x, y) coordinates of the intersection point.
+        // h-edge at y=30, from x=10 to x=90
+        // v-edge at x=70, from y=10 to y=80
+        let h = vec![make_h_edge(10.0, 30.0, 90.0)];
+        let v = vec![make_v_edge(70.0, 10.0, 80.0)];
+
+        let settings = Rc::new(TfSettings::default());
+        let intersections = TableFinder::new(settings).get_intersections_from_edges(h, v);
+
+        assert_eq!(intersections.len(), 1);
+        // The intersection point must be (v.x1, h.y1) = (70, 30)
+        let point = (of(70.0), of(30.0));
+        assert!(intersections.contains_key(&point));
     }
 }

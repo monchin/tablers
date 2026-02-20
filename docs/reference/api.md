@@ -223,6 +223,40 @@ def get_edges(
 
 ---
 
+### get_intersections_from_edges
+
+Compute intersection points from a set of horizontal and vertical edges.
+
+```python
+def get_intersections_from_edges(
+    h_edges: list[Edge],
+    v_edges: list[Edge],
+    tf_settings: TfSettings | None = None,
+    **kwargs: Unpack[TfSettingItems]
+) -> dict[tuple[float, float], dict[str, list[Edge]]]
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `h_edges` | `list[Edge]` | Horizontal edges (e.g. `edges["h"]` from `get_edges`) |
+| `v_edges` | `list[Edge]` | Vertical edges (e.g. `edges["v"]` from `get_edges`) |
+| `tf_settings` | `Optional[TfSettings]` | TableFinder settings object; controls intersection tolerances |
+| `**kwargs` | `Unpack[TfSettingItems]` | Additional keyword arguments passed to TfSettings |
+
+**Returns:** `dict` - A mapping from `(x, y)` intersection coordinates to a dict with keys `"h"` and `"v"`, each containing the list of edges that pass through that point.
+
+!!! tip
+    This function is designed to consume the output of `get_edges` directly:
+    ```python
+    edges = get_edges(page)
+    intersections = get_intersections_from_edges(edges["h"], edges["v"])
+    ```
+    See [Inspecting Intersections](../usage/advanced.md#inspecting-intersections) for more details.
+
+---
+
 ### plumber_edge_to_tablers_edge
 
 Convert a pdfplumber edge dictionary to a Tablers `Edge` object.

@@ -700,6 +700,55 @@ fn py_get_edges(
     })
 }
 
+/// Computes intersection points from a set of horizontal and vertical edges.
+///
+/// # Arguments
+///
+/// * `h_edges` - A list of horizontal edges (as returned by ``get_edges``).
+/// * `v_edges` - A list of vertical edges (as returned by ``get_edges``).
+/// * `tf_settings` - Optional TfSettings object for tolerance configuration.
+/// * `kwargs` - Optional keyword arguments for settings.
+///
+/// # Returns
+///
+/// A dictionary mapping ``(x, y)`` intersection points to a dict with keys
+/// ``"h"`` and ``"v"`` containing the edges that pass through that point.
+#[pyfunction]
+#[pyo3(name = "get_intersections_from_edges", signature = (h_edges, v_edges, tf_settings=None, **kwargs))]
+fn py_get_intersections_from_edges(
+    h_edges: Vec<Edge>,
+    v_edges: Vec<Edge>,
+    tf_settings: Option<TfSettings>,
+    kwargs: Option<&Bound<'_, PyDict>>,
+) -> PyResult<Py<PyDict>> {
+    let settings = if let Some(s) = tf_settings {
+        Rc::new(s)
+    } else {
+        Rc::new(TfSettings::py_new(kwargs)?)
+    };
+
+    let intersections = TableFinder::new(settings).get_intersections_from_edges(h_edges, v_edges);
+
+    Python::attach(|py| {
+        let res = PyDict::new(py);
+        for ((x, y), edge_map) in intersections {
+            let h = edge_map
+                .get(&Orientation::Horizontal)
+                .cloned()
+                .unwrap_or_default();
+            let v = edge_map
+                .get(&Orientation::Vertical)
+                .cloned()
+                .unwrap_or_default();
+            let point_dict = PyDict::new(py);
+            point_dict.set_item("h", h)?;
+            point_dict.set_item("v", v)?;
+            res.set_item((x.into_inner(), y.into_inner()), point_dict)?;
+        }
+        Ok(res.unbind())
+    })
+}
+
 /// Converts a Rust bounding box to a Python tuple.
 ///
 /// # Arguments
@@ -917,6 +966,7 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables_from_cells, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_tables, m)?)?;
     m.add_function(pyo3::wrap_pyfunction!(py_get_edges, m)?)?;
+    m.add_function(pyo3::wrap_pyfunction!(py_get_intersections_from_edges, m)?)?;
     Ok(())
 }
 
