@@ -413,7 +413,7 @@ Rendering supports only **documents without a password**. For password-protected
 
 ### Quick Visual Debug
 
-`debug_tablefinder()` renders all detection results in one call: cell outlines (blue fill, red border) and detected edges (red lines):
+`debug_tablefinder()` renders all detection results in one call: cell outlines (blue fill, red border) and detected edges (red lines). You can pass custom colors to `debug_table()` and the drawing methods; `fill` and `stroke` accept either RGBA tuples or strings. For supported string color formats, see the [PIL ImageColor reference](https://pillow.readthedocs.io/en/stable/reference/ImageColor.html).
 
 ```python
 from tablers import Document
@@ -439,7 +439,7 @@ img.debug_tablefinder(vertical_strategy="lines", horizontal_strategy="text")
 
 ### Annotating Individual Tables
 
-Use `debug_table()` to annotate specific tables, or combine it with other drawing methods:
+Use `debug_table()` to annotate specific tables, or combine it with other drawing methods. Color arguments (`fill`, `stroke`) accept RGBA tuples or strings; for supported string formats see the [PIL ImageColor reference](https://pillow.readthedocs.io/en/stable/reference/ImageColor.html).
 
 ```python
 from tablers import Document, find_tables
@@ -451,9 +451,9 @@ with Document("example.pdf") as doc:
 
     img = PageImage(page)
 
-    # Annotate all tables individually
+    # Annotate all tables individually (optional: custom colors; same as default blue/red here)
     for table in tables:
-        img.debug_table(table)
+        img.debug_table(table, fill="blue", stroke="red")
 
     img.save("tables.png", quantize=False)
 ```

@@ -627,6 +627,8 @@ class PageImage:
 | `debug_table(table, fill, stroke, stroke_width)` | Draw a filled rectangle over every cell in a `Table` |
 | `debug_tablefinder(tf_settings, **kwargs)` | Draw all detected tables (cell outlines) and detected edges |
 
+**Color arguments** (`fill`, `stroke` in the methods above): accept either an RGBA tuple `(r, g, b, a)` or a string. String colors are resolved via PIL's [`ImageColor.getrgb`](https://pillow.readthedocs.io/en/stable/reference/ImageColor.html). For the list of supported string formats, see the [ImageColor reference](https://pillow.readthedocs.io/en/stable/reference/ImageColor.html). Alpha is set to 255 (opaque) for string colors; for transparency use an RGBA tuple.
+
 **Default color constants** (importable from `tablers.debug`):
 
 | Constant | Value | Description |

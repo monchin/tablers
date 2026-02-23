@@ -18,7 +18,7 @@ pytest.importorskip("pypdfium2")
 
 import PIL.Image  # noqa: E402
 from tablers import Edge
-from tablers.debug import PageImage
+from tablers.debug import PageImage, _normalize_color
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -122,6 +122,15 @@ class TestPageImageCopy:
         c.draw_rect((5.0, 5.0, 90.0, 90.0), fill=(255, 0, 0, 255), stroke_width=0)
         assert list(pi.annotated.get_flattened_data()) != list(c.annotated.get_flattened_data())
 
+    def test_copy_preserves_resolution_and_antialias(self) -> None:
+        """copy() should preserve resolution and antialias of the source."""
+        page = _make_page()
+        img = PIL.Image.new("RGB", (IMG_W, IMG_H))
+        pi = PageImage(page, original=img, resolution=144, antialias=True)
+        c = pi.copy()
+        assert c.resolution == 144
+        assert c.antialias is True
+
 
 class TestPageImageSave:
     """Tests for PageImage.save."""
@@ -205,6 +214,62 @@ class TestReproject:
         assert top < bottom
 
 
+class TestNormalizeColor:
+    """Tests for _normalize_color (color spec to RGBA tuple)."""
+
+    def test_valid_rgb_tuple(self) -> None:
+        """RGB 3-tuple should get alpha 255."""
+        assert _normalize_color((10, 20, 30)) == (10, 20, 30, 255)
+
+    def test_valid_rgba_tuple(self) -> None:
+        """RGBA 4-tuple should pass through."""
+        assert _normalize_color((1, 2, 3, 128)) == (1, 2, 3, 128)
+
+    def test_valid_string_name(self) -> None:
+        """Common color names should resolve via PIL ImageColor."""
+        assert _normalize_color("red") == (255, 0, 0, 255)
+        assert _normalize_color("green") == (0, 128, 0, 255)
+
+    def test_invalid_empty_tuple_raises(self) -> None:
+        """Empty tuple should raise ValueError."""
+        with pytest.raises(
+            ValueError,
+            match="color tuple must have 3 \\(RGB\\) or 4 \\(RGBA\\) elements, got length 0",
+        ):
+            _normalize_color(())
+
+    def test_invalid_two_element_tuple_raises(self) -> None:
+        """2-element tuple should raise ValueError."""
+        with pytest.raises(ValueError, match="got length 2"):
+            _normalize_color((1, 2))
+
+    def test_invalid_five_element_tuple_raises(self) -> None:
+        """5-element tuple should raise ValueError."""
+        with pytest.raises(ValueError, match="got length 5"):
+            _normalize_color((1, 2, 3, 4, 5))
+
+    def test_invalid_color_string_raises(self) -> None:
+        """Invalid color string should raise ValueError with helpful message and doc link."""
+        with pytest.raises(
+            ValueError, match=r"Invalid color string.*Supported formats"
+        ) as exc_info:
+            _normalize_color("notacolor")
+        msg = str(exc_info.value)
+        assert "ImageColor" in msg or "pillow.readthedocs.io" in msg
+
+    def test_invalid_tuple_component_out_of_range_raises(self) -> None:
+        """Tuple with component > 255 or < 0 should raise ValueError."""
+        with pytest.raises(ValueError, match="color component .* must be 0-255"):
+            _normalize_color((256, 0, 0))
+        with pytest.raises(ValueError, match="color component .* must be 0-255"):
+            _normalize_color((0, 0, 0, -1))
+
+    def test_invalid_tuple_component_not_int_raises(self) -> None:
+        """Tuple with non-int component should raise TypeError."""
+        with pytest.raises(TypeError, match="color component .* must be int"):
+            _normalize_color((1.0, 0, 0))
+
+
 class TestDrawLine:
     """Tests for PageImage.draw_line."""
 
@@ -220,6 +285,18 @@ class TestDrawLine:
     def test_custom_stroke_color(self) -> None:
         """draw_line should accept a custom stroke color without raising."""
         _make_page_image().draw_line([(0, 0), (50, 50)], stroke=(0, 255, 0, 255))
+
+    def test_stroke_color_string_name(self) -> None:
+        """draw_line should accept common color names (e.g. 'red', 'green') as stroke."""
+        _make_page_image().draw_line([(0, 0), (50, 50)], stroke="green")
+
+    def test_invalid_stroke_tuple_length_raises(self) -> None:
+        """draw_line with stroke tuple of length != 3 or 4 should raise ValueError."""
+        pi = _make_page_image()
+        with pytest.raises(
+            ValueError, match="color tuple must have 3 \\(RGB\\) or 4 \\(RGBA\\) elements"
+        ):
+            pi.draw_line([(0, 0), (50, 50)], stroke=(1, 2))
 
     def test_custom_stroke_width(self) -> None:
         """draw_line should accept a custom stroke width without raising."""
@@ -368,6 +445,12 @@ class TestDebugTable:
         pi = _make_page_image()
         table = self._mock_table((10.0, 10.0, 80.0, 80.0))
         pi.debug_table(table, fill=(0, 255, 0, 80), stroke=(0, 0, 255, 255), stroke_width=2)
+
+    def test_fill_and_stroke_string_names(self) -> None:
+        """debug_table should accept common color names (e.g. 'red', 'blue') for fill and stroke."""
+        pi = _make_page_image()
+        table = self._mock_table((10.0, 10.0, 80.0, 80.0))
+        pi.debug_table(table, fill="blue", stroke="red", stroke_width=1)
 
 
 class TestDebugTablefinder:
