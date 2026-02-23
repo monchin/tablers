@@ -724,6 +724,9 @@ class TfSettings:
         Explicit horizontal edges to include in table detection.
     explicit_v_edges : list[Edge] or None
         Explicit vertical edges to include in table detection.
+    exclude_white_edges : bool
+        Whether to exclude white edges (RGB = 255, 255, 255) from table detection.
+        Default is True.
 
     Parameters
     ----------
@@ -757,6 +760,7 @@ class TfSettings:
     text_expand_ligatures: bool
     explicit_h_edges: list[Edge] | None
     explicit_v_edges: list[Edge] | None
+    exclude_white_edges: bool
 
     def __init__(self, **kwargs: Unpack[TfSettingItems]) -> None: ...
     def __repr__(self) -> str: ...

@@ -16,10 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `Page.rotation_degrees` property: clockwise rotation of the page in degrees
 - Add `Page.clear_cache()` method as the canonical name for clearing cached objects
 - Add `tablers.debug` module with `PageImage` class for visualizing detected tables and edges on a rendered page image; requires the optional `debug` extra (`pip install tablers[debug]`)
+- Add `exclude_white_edges` parameter to `TfSettings` to control filtering of white edges (RGB = 255, 255, 255) during table extraction
 
 ### Changed
 
 - `Page` is now a Python-level wrapper that holds a `doc` back-reference; Rust-side type is `Pyo3Page`
+- **BREAKING CHANGE:** White edges (RGB = 255, 255, 255) are now excluded by default during table extraction. This may change the behavior of existing code that relied on white edges being included. To restore the previous behavior, set `exclude_white_edges=False` in `TfSettings`.
 
 ### Deprecated
 

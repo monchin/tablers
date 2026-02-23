@@ -70,6 +70,7 @@ class TfSettingItems(TypedDict, total=False):
     text_expand_ligatures: bool
     explicit_h_edges: list[Edge] | None
     explicit_v_edges: list[Edge] | None
+    exclude_white_edges: bool
 
 
 class WordsExtractSettingsItems(TypedDict, total=False):

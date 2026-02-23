@@ -193,6 +193,8 @@ pub struct TfSettings {
     pub explicit_h_edges: Option<Vec<Edge>>,
     /// Explicit vertical edges to include in table detection.
     pub explicit_v_edges: Option<Vec<Edge>>,
+    /// Whether to exclude white edges (color RGB = 255,255,255) from table detection.
+    pub exclude_white_edges: bool,
 }
 impl Default for TfSettings {
     /// Creates a TfSettings instance with default values.
@@ -216,6 +218,7 @@ impl Default for TfSettings {
             text_settings: WordsExtractSettings::default(),
             explicit_h_edges: None,
             explicit_v_edges: None,
+            exclude_white_edges: true,
         }
     }
 }
@@ -384,6 +387,9 @@ impl TfSettings {
                     "explicit_v_edges" => {
                         settings.explicit_v_edges = value.extract::<Option<Vec<Edge>>>().unwrap()
                     }
+                    "exclude_white_edges" => {
+                        settings.exclude_white_edges = value.extract::<bool>().unwrap()
+                    }
                     _ => (), // Ignore unknown settings
                 }
             }
@@ -523,6 +529,11 @@ impl TfSettings {
     #[getter]
     fn explicit_v_edges(&self) -> Option<Vec<Edge>> {
         self.explicit_v_edges.clone()
+    }
+
+    #[getter]
+    fn exclude_white_edges(&self) -> bool {
+        self.exclude_white_edges
     }
 
     // Setters
@@ -669,6 +680,11 @@ impl TfSettings {
         self.explicit_v_edges = value;
     }
 
+    #[setter]
+    fn set_exclude_white_edges(&mut self, value: bool) {
+        self.exclude_white_edges = value;
+    }
+
     // Dataclass-like methods
     fn __repr__(&self) -> String {
         format!(
@@ -683,7 +699,7 @@ impl TfSettings {
              text_keep_blank_chars={}, text_use_text_flow={}, \
              text_read_in_clockwise={}, text_split_at_punctuation={:?}, \
              text_expand_ligatures={}, \
-             explicit_h_edges={}, explicit_v_edges={})",
+             explicit_h_edges={}, explicit_v_edges={}, exclude_white_edges={})",
             Self::strategy_enum_to_str(self.vertical_strategy),
             Self::strategy_enum_to_str(self.horizontal_strategy),
             self.snap_x_tolerance,
@@ -713,6 +729,7 @@ impl TfSettings {
             self.explicit_v_edges
                 .as_ref()
                 .map_or("None".to_string(), |v| format!("[{} edges]", v.len())),
+            self.exclude_white_edges,
         )
     }
 
@@ -745,6 +762,7 @@ impl TfSettings {
                     == other.explicit_h_edges.as_ref().map(|v| v.len())
                 && self.explicit_v_edges.as_ref().map(|v| v.len())
                     == other.explicit_v_edges.as_ref().map(|v| v.len())
+                && self.exclude_white_edges == other.exclude_white_edges
         } else {
             false
         }
@@ -1013,6 +1031,7 @@ mod tests {
         assert_eq!(settings.min_words_horizontal, 1);
         assert_eq!(settings.intersection_x_tolerance.into_inner(), 3.0);
         assert_eq!(settings.intersection_y_tolerance.into_inner(), 3.0);
+        assert_eq!(settings.exclude_white_edges, true);
     }
 
     #[test]
@@ -1262,5 +1281,21 @@ mod tests {
     fn test_words_extract_settings_negative_y_tolerance_fails() {
         let result = NonNegativeF32::new(-0.1, "y_tolerance");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_exclude_white_edges_default() {
+        let settings = TfSettings::default();
+        assert_eq!(settings.exclude_white_edges, true);
+    }
+
+    #[test]
+    fn test_exclude_white_edges_custom_value() {
+        let mut settings = TfSettings::default();
+        settings.exclude_white_edges = false;
+        assert_eq!(settings.exclude_white_edges, false);
+
+        settings.exclude_white_edges = true;
+        assert_eq!(settings.exclude_white_edges, true);
     }
 }

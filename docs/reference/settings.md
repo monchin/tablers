@@ -50,6 +50,7 @@ settings = TfSettings(
 | `edge_min_length_prefilter` | `float` | `1.0` | Minimum length for edges before merging operations |
 | `min_words_vertical` | `int` | `3` | Minimum words required for vertical text-based edge detection |
 | `min_words_horizontal` | `int` | `1` | Minimum words required for horizontal text-based edge detection |
+| `exclude_white_edges` | `bool` | `True` | Whether to exclude white edges (RGB = 255, 255, 255) from table detection |
 
 ### Explicit Edges
 
@@ -130,6 +131,7 @@ settings = TfSettings(
     edge_min_length_prefilter=5.0,
     min_words_vertical=3,
     min_words_horizontal=1,
+    exclude_white_edges=True,
 
     # Table filtering
     include_single_cell=False,
