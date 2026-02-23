@@ -41,7 +41,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias, cast
 
 import PIL.Image
 import PIL.ImageColor
@@ -83,13 +83,15 @@ def _normalize_color(color: T_color_spec) -> Color:
             ) from e
         return (rgb[0], rgb[1], rgb[2], 255)
     if len(color) == 3:
-        r, g, b = color
+        color_tuple = cast(tuple[int, int, int], color)
+        r, g, b = color_tuple
         _validate_color_component(r, "R")
         _validate_color_component(g, "G")
         _validate_color_component(b, "B")
         return (r, g, b, 255)
     if len(color) == 4:
-        r, g, b, a = color
+        color_tuple = cast(tuple[int, int, int, int], color)
+        r, g, b, a = color_tuple
         _validate_color_component(r, "R")
         _validate_color_component(g, "G")
         _validate_color_component(b, "B")
@@ -115,8 +117,8 @@ class Colors:
     TRANSPARENT = (0, 0, 0, 0)
 
 
-DEFAULT_FILL = Colors.BLUE + (50,)
-DEFAULT_STROKE = Colors.RED + (200,)
+DEFAULT_FILL: T_color_spec = cast(T_color_spec, (*Colors.BLUE, 50))
+DEFAULT_STROKE: T_color_spec = cast(T_color_spec, (*Colors.RED, 200))
 DEFAULT_STROKE_WIDTH = 1
 DEFAULT_RESOLUTION = 72
 
@@ -218,7 +220,10 @@ class PageImage:
         )
 
     def copy(self) -> PageImage:
-        """Return a copy that shares the same original image and preserves resolution and antialias."""
+        """Return a copy that shares the same original image and preserves resolution and antialias.
+
+        The copy shares the same original image but has its own annotated layer.
+        """
         return self.__class__(
             self.page,
             self.original,
@@ -455,7 +460,7 @@ class PageImage:
             list(intersections.keys()),
             radius=3,
             fill=Colors.TRANSPARENT,
-            stroke=Colors.BLUE + (200,),
+            stroke=cast(T_color_spec, (*Colors.BLUE, 200)),
         )
         return self
 
