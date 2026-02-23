@@ -18,6 +18,18 @@ The recommended way to install Tablers is via pip:
 pip install tablers
 ```
 
+## Optional Dependencies
+
+### Debug / Visualization
+
+The `tablers.debug` module provides tools for visualizing detected tables, edges, and intersection points on a rendered page image. It requires two additional packages:
+
+```bash
+pip install tablers[debug]
+```
+
+This installs `pillow` and `pypdfium2` alongside Tablers. If these packages are not present, importing `tablers.debug` will raise an `ImportError`.
+
 ## Building from Source
 
 If you need to build Tablers from source, follow these steps:

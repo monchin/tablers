@@ -11,14 +11,20 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import TracebackType
-from typing import Literal, TypedDict
+from typing import Literal
 
 if sys.version_info < (3, 11):
     from typing_extensions import Self, Unpack
 else:
     from typing import Self, Unpack
 
-from .typing import BBox, Color, NonNegativeFloat, NonNegativeInt, Point
+from .typing import (
+    BBox,
+    Color,
+    Point,
+    TfSettingItems,
+    WordsExtractSettingsItems,
+)
 
 __version__: str
 """The version string of the tablers library."""
@@ -612,39 +618,6 @@ class Table:
         """
         ...
 
-class WordsExtractSettingsItems(TypedDict, total=False):
-    """
-    TypedDict for WordsExtractSettings keyword arguments.
-
-    Attributes
-    ----------
-    x_tolerance : float
-        X-axis tolerance for grouping characters into words. Default: 3.0
-    y_tolerance : float
-        Y-axis tolerance for grouping characters into lines. Default: 3.0
-    keep_blank_chars : bool
-        Whether to preserve blank/whitespace characters. Default: False
-    use_text_flow : bool
-        Whether to use the PDF's text flow order. Default: False
-    text_read_in_clockwise : bool
-        Whether text reads in clockwise direction. Default: True
-    split_at_punctuation : {"all"} or str or None
-        Punctuation splitting configuration. Default: None
-    expand_ligatures : bool
-        Whether to expand ligatures into individual characters. Default: True
-    need_strip : bool
-        Whether to strip leading/trailing whitespace from cell text. Default: True
-    """
-
-    x_tolerance: NonNegativeFloat  # Default: 3.0
-    y_tolerance: NonNegativeFloat  # Default: 3.0
-    keep_blank_chars: bool  # Default: False
-    use_text_flow: bool  # Default: False
-    text_read_in_clockwise: bool  # Default: True
-    split_at_punctuation: Literal["all"] | str | None  # Default: None
-    expand_ligatures: bool  # Default: True
-    need_strip: bool  # Default: True
-
 class WordsExtractSettings:
     """
     Settings for text/word extraction from PDF pages.
@@ -689,96 +662,6 @@ class WordsExtractSettings:
     def __init__(self, **kwargs: Unpack[WordsExtractSettingsItems]) -> None: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object) -> bool: ...
-
-class TfSettingItems(TypedDict, total=False):
-    """
-    TypedDict for TfSettings keyword arguments.
-
-    Attributes
-    ----------
-    vertical_strategy : {"lines", "lines_strict", "text", "explicit"}
-        Strategy for detecting vertical edges. Default: "lines_strict"
-    horizontal_strategy : {"lines", "lines_strict", "text", "explicit"}
-        Strategy for detecting horizontal edges. Default: "lines_strict"
-    snap_x_tolerance : float
-        Tolerance for snapping vertical edges together. Default: 3.0
-    snap_y_tolerance : float
-        Tolerance for snapping horizontal edges together. Default: 3.0
-    join_x_tolerance : float
-        Tolerance for joining horizontal edges. Default: 3.0
-    join_y_tolerance : float
-        Tolerance for joining vertical edges. Default: 3.0
-    edge_min_length : float
-        Minimum length for edges to be included. Default: 3.0
-    edge_min_length_prefilter : float
-        Minimum length for edges before merging. Default: 1.0
-    min_words_vertical : int
-        Minimum words for vertical text-based edge detection. Default: 3
-    min_words_horizontal : int
-        Minimum words for horizontal text-based edge detection. Default: 1
-    intersection_x_tolerance : float
-        X-tolerance for detecting edge intersections. Default: 3.0
-    intersection_y_tolerance : float
-        Y-tolerance for detecting edge intersections. Default: 3.0
-    include_single_cell : bool
-        Whether to include tables with only a single cell. Default: False
-    min_rows : int or None
-        Minimum number of rows required for a table. None means would not filter by this arg.
-        Default: None
-    min_columns : int or None
-        Minimum number of columns required for a table. None means would not filter by this arg.
-        Default: None
-    text_x_tolerance : float
-        X-tolerance for text extraction. Default: 3.0
-    text_y_tolerance : float
-        Y-tolerance for text extraction. Default: 3.0
-    text_keep_blank_chars : bool
-        Whether to keep blank characters in text. Default: False
-    text_use_text_flow : bool
-        Whether to use PDF text flow order. Default: False
-    text_read_in_clockwise : bool
-        Whether text reads clockwise. Default: True
-    text_split_at_punctuation : {"all"} or str or None
-        Punctuation splitting for text. Default: None
-    text_expand_ligatures : bool
-        Whether to expand ligatures in text. Default: True
-    text_need_strip : bool
-        Whether to strip leading/trailing whitespace from cell text. Default: True
-    explicit_h_edges : list[Edge] or None
-        Explicit horizontal edges to include in table detection. Default: None
-    explicit_v_edges : list[Edge] or None
-        Explicit vertical edges to include in table detection. Default: None
-    """
-
-    vertical_strategy: Literal[
-        "lines", "lines_strict", "text", "explicit"
-    ]  # Default: "lines_strict"
-    horizontal_strategy: Literal[
-        "lines", "lines_strict", "text", "explicit"
-    ]  # Default: "lines_strict"
-    snap_x_tolerance: NonNegativeFloat  # Default: 3.0
-    snap_y_tolerance: NonNegativeFloat  # Default: 3.0
-    join_x_tolerance: NonNegativeFloat  # Default: 3.0
-    join_y_tolerance: NonNegativeFloat  # Default: 3.0
-    edge_min_length: NonNegativeFloat  # Default: 3.0
-    edge_min_length_prefilter: NonNegativeFloat  # Default: 1.0
-    min_words_vertical: NonNegativeInt  # Default: 3
-    min_words_horizontal: NonNegativeInt  # Default: 1
-    intersection_x_tolerance: NonNegativeFloat  # Default: 3.0
-    intersection_y_tolerance: NonNegativeFloat  # Default: 3.0
-    include_single_cell: bool  # Default: False
-    min_rows: int | None  # Default: None
-    min_columns: int | None  # Default: None
-    text_need_strip: bool  # Default: True
-    text_x_tolerance: NonNegativeFloat  # Default: 3.0
-    text_y_tolerance: NonNegativeFloat  # Default: 3.0
-    text_keep_blank_chars: bool  # Default: False
-    text_use_text_flow: bool  # Default: False
-    text_read_in_clockwise: bool  # Default: True
-    text_split_at_punctuation: Literal["all"] | str | None  # Default: None
-    text_expand_ligatures: bool  # Default: True
-    explicit_h_edges: list[Edge] | None  # Default: None
-    explicit_v_edges: list[Edge] | None  # Default: None
 
 class TfSettings:
     """

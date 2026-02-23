@@ -359,6 +359,8 @@ class Document:
     Always close the document when done to release resources.
     """
 
+    _stream: bytes | None  # type hint only; instance value set in __init__
+
     def __init__(
         self,
         path: Path | str | None = None,
@@ -371,6 +373,7 @@ class Document:
             bytes=bytes,
             password=password,
         )
+        self._stream = None
 
     def __enter__(self) -> Document:
         return self
@@ -424,7 +427,11 @@ class Document:
         RuntimeError
             If the document has been closed or serialization fails.
         """
-        return self.doc.save_to_bytes()
+        if self.doc.is_closed():
+            raise RuntimeError("Cannot serialize document: document has been closed")
+        if self._stream is None:
+            self._stream = self.doc.save_to_bytes()
+        return self._stream
 
     def get_page(self, page_num: int) -> Page:
         """
@@ -491,6 +498,7 @@ class Document:
         True
         """
         self.doc.close()
+        self._stream = None
 
     def is_closed(self) -> bool:
         """
