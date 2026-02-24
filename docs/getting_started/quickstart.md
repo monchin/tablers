@@ -90,6 +90,12 @@ with Document("example.pdf") as doc:
         html_content = table.to_html()
         with open(f"table_{i}.html", "w") as f:
             f.write(html_content)
+
+        # Get rows as list of list of TableCellValue (text + merge direction)
+        rows = table.to_list()
+        for row in rows:
+            for cell in row:
+                print(cell.text, cell.merged_left, cell.merged_top)
 ```
 
 ## Processing Multiple Pages
