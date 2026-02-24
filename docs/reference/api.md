@@ -392,9 +392,28 @@ Represents a table extracted from a PDF page.
 | `to_csv()` | `str` | Convert to CSV format |
 | `to_markdown()` | `str` | Convert to Markdown table format |
 | `to_html()` | `str` | Convert to HTML table format |
+| `to_list()` | `list[list[TableCellValue]]` | Convert to list of rows; each cell has `text`, `merged_left`, and `merged_top` (see [TableCellValue](#tablecellvalue)) |
 
 !!! warning
     Export methods raise `ValueError` if text has not been extracted.
+
+---
+
+### TableCellValue
+
+One grid slot returned by `Table.to_list()`. Carries the cell text (when present) and merge direction so you can tell whether a merged slot continues from the left or from above.
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `text` | `Optional[str]` | Cell text; `None` when this slot is merged (continuation of another cell) |
+| `merged_left` | `bool` | `True` if this slot is merged with the cell to the left (same row) |
+| `merged_top` | `bool` | `True` if this slot is merged with the cell above (same column) |
+
+For a slot with content, `text` is set and both `merged_left` and `merged_top` are `False`. For a merged slot, `text` is `None` and at least one of `merged_left` or `merged_top` is `True`. When a cell spans both right and below, the bottom-right slot can have both `merged_left` and `merged_top` true.
+
+**Repr:** `repr(cell)` returns a string `"(text, merged_left, merged_top)"`: `text` is shown as `None` or as a double-quoted string (internal quotes and backslashes are escaped); the two booleans are shown as `True` or `False`. Example: `("abc", False, False)` or `(None, True, False)`.
 
 ---
 

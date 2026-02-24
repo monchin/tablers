@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `Table.to_list()` returning `list[list[TableCellValue]]`: each cell has `text` (or `None` when merged), `merged_left`, and `merged_top` so merge direction (left vs above) is explicit
+- Add `TableCellValue` class with attributes `text`, `merged_left`, and `merged_top` for use with `to_list()`
 - Add `get_intersections_from_edges(h_edges, v_edges, ...)` function: given horizontal and vertical edges (as returned by `get_edges`), returns a mapping from every `(x, y)` intersection point to the edges that pass through it; accepts the same tolerance kwargs as `get_edges`
 - Add `Document.save_to_bytes()` method to serialize the PDF to an in-memory byte buffer, always without encryption; if the original was password-protected the returned bytes can be opened without a password
 - Add `page.doc` back-reference: every `Page` object now carries a reference to the `Document` it belongs to
