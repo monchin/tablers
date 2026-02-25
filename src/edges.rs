@@ -301,7 +301,9 @@ fn join_edge_group(
     let mut result = vec![sorted_edges[0].clone()];
     for edge in sorted_edges.iter_mut().skip(1) {
         let last_edge = result.last_mut().unwrap();
-        if get_min_prop(edge) <= get_max_prop(last_edge) + tolerance {
+        if get_min_prop(edge) <= get_max_prop(last_edge) + tolerance
+            && colors_equal(&edge.color, &last_edge.color)
+        {
             if get_max_prop(edge) > get_max_prop(last_edge) {
                 update_last_edge(last_edge, edge);
             }
@@ -312,9 +314,18 @@ fn join_edge_group(
     result
 }
 
+/// Helper function to check if two PdfColor values are equal.
+fn colors_equal(c1: &PdfColor, c2: &PdfColor) -> bool {
+    c1.red() == c2.red()
+        && c1.green() == c2.green()
+        && c1.blue() == c2.blue()
+        && c1.alpha() == c2.alpha()
+}
+
 /// Merges edges of a single orientation by snapping and joining.
 ///
 /// First snaps nearby edges together, then joins overlapping edges.
+/// Edges with different colors are not merged together.
 ///
 /// # Arguments
 ///

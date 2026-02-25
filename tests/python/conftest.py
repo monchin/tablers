@@ -55,6 +55,12 @@ def narrow_polyline_pdf_path() -> Path:
 
 
 @pytest.fixture
+def white_edges_pdf_path() -> Path:
+    """Return path to the pdfplumber#1360-white-edges.pdf file."""
+    return TEST_DATA_DIR / "pdfplumber#1360-white-edges.pdf"
+
+
+@pytest.fixture
 def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for edge-test.pdf, closing it after the test."""
     doc = Document(path=edge_test_pdf_path)
@@ -122,6 +128,17 @@ def narrow_polyline_doc(
 ) -> Generator[Document, None, None]:
     """Open and return a Document for #13-narrow-polyline-as-edge.pdf, closing it after the test."""
     doc = Document(path=narrow_polyline_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def white_edges_doc(
+    white_edges_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for pdfplumber#1360-white-edges.pdf, closing it after the test."""
+    doc = Document(path=white_edges_pdf_path)
     yield doc
     if not doc.is_closed():
         doc.close()

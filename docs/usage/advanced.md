@@ -381,6 +381,24 @@ settings = TfSettings(
 )
 ```
 
+### Filter White Edges
+
+By default, white edges (RGB = 255, 255, 255) are automatically excluded from table detection. This helps filter out invisible borders or background lines that might interfere with table extraction:
+
+```python
+# Default behavior: white edges are filtered
+settings = TfSettings(
+    exclude_white_edges=True,  # Default
+)
+
+# To include white edges in detection
+settings = TfSettings(
+    exclude_white_edges=False,
+)
+```
+
+This filtering happens early in the edge detection process, before length-based filtering and edge merging operations.
+
 ## Error Handling
 
 ```python

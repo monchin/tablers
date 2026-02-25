@@ -826,6 +826,22 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
+/// Filters out white edges (RGB = 255, 255, 255).
+///
+/// Removes edges with white color (RGB components all equal to 255).
+///
+/// # Arguments
+///
+/// * `edges` - The edges to filter (modified in place).
+fn filter_white_edges(edges: &mut Vec<Edge>) {
+    edges.retain(|edge| {
+        let r = edge.color.red();
+        let g = edge.color.green();
+        let b = edge.color.blue();
+        !(r == 255 && g == 255 && b == 255)
+    });
+}
+
 /// Clips edges to a bounding box region.
 ///
 /// Edges that intersect with the clip region are clipped to fit within it.
@@ -1642,11 +1658,17 @@ impl TableFinder {
             .get(&Orientation::Vertical)
             .cloned()
             .unwrap_or_default();
+        if settings.exclude_white_edges {
+            filter_white_edges(&mut v_edges);
+        }
         filter_edges_by_min_len(&mut v_edges, *settings.edge_min_length_prefilter);
         let mut h_edges = edges_all
             .get(&Orientation::Horizontal)
             .cloned()
             .unwrap_or_default();
+        if settings.exclude_white_edges {
+            filter_white_edges(&mut h_edges);
+        }
         filter_edges_by_min_len(&mut h_edges, *settings.edge_min_length_prefilter);
 
         let edges_prefiltered = HashMap::from([
@@ -2136,6 +2158,155 @@ mod tests {
         filter_edges_by_min_len(&mut edges, of(10.0));
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].x2, of(15.0)); // Only the long horizontal edge remains
+    }
+
+    #[test]
+    fn test_filter_white_edges() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(10.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(255, 255, 255, 255), // White edge - should be filtered
+            },
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(10.0),
+                x2: of(10.0),
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255), // Black edge - should be kept
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(255, 255, 255, 128), // White edge with different alpha - should be filtered
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(10.0),
+                y1: of(0.0),
+                x2: of(10.0),
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(255, 0, 0, 255), // Red edge - should be kept
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(20.0),
+                y1: of(0.0),
+                x2: of(20.0),
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(254, 255, 255, 255), // Almost white but not exactly - should be kept
+            },
+        ];
+
+        filter_white_edges(&mut edges);
+        assert_eq!(edges.len(), 3); // Only non-white edges should remain
+
+        // Check that white edges are removed
+        assert!(
+            !edges.iter().any(|e| {
+                e.color.red() == 255 && e.color.green() == 255 && e.color.blue() == 255
+            })
+        );
+
+        // Check that non-white edges are kept
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.color.red() == 0 && e.color.green() == 0 && e.color.blue() == 0)
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.color.red() == 255 && e.color.green() == 0 && e.color.blue() == 0)
+        );
+        assert!(
+            edges
+                .iter()
+                .any(|e| e.color.red() == 254 && e.color.green() == 255 && e.color.blue() == 255)
+        );
+    }
+
+    #[test]
+    fn test_filter_white_edges_empty() {
+        let mut edges: Vec<Edge> = vec![];
+        filter_white_edges(&mut edges);
+        assert_eq!(edges.len(), 0);
+    }
+
+    #[test]
+    fn test_filter_white_edges_all_white() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(10.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(255, 255, 255, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(255, 255, 255, 128),
+            },
+        ];
+
+        filter_white_edges(&mut edges);
+        assert_eq!(edges.len(), 0);
+    }
+
+    #[test]
+    fn test_filter_white_edges_no_white() {
+        use crate::edges::Edge;
+        use pdfium_render::prelude::PdfColor;
+
+        let mut edges = vec![
+            Edge {
+                orientation: Orientation::Horizontal,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(10.0),
+                y2: of(0.0),
+                width: of(1.0),
+                color: PdfColor::new(0, 0, 0, 255),
+            },
+            Edge {
+                orientation: Orientation::Vertical,
+                x1: of(0.0),
+                y1: of(0.0),
+                x2: of(0.0),
+                y2: of(10.0),
+                width: of(1.0),
+                color: PdfColor::new(128, 128, 128, 255),
+            },
+        ];
+
+        let original_len = edges.len();
+        filter_white_edges(&mut edges);
+        assert_eq!(edges.len(), original_len);
     }
 
     #[test]
