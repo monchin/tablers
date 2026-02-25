@@ -34,8 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `find_tables_from_cells` parameter `pdf_page` has been renamed to `page` for arguments naming consistency; passing `pdf_page` still works but raises a `DeprecationWarning` and will be removed in a future release
 - `Page.clear()` is now an alias for `Page.clear_cache()`; prefer `clear_cache()` going forward
 
-注：部分变更由直接合并到 master 的提交引入，暂无独立 issue/PR；已为通过 PR 合并的变更标注 #18、#19、#20。若需为整版建立跟踪，可在仓库中创建「Release 0.5.0」类 issue 并在此处引用。
-
 ## [0.4.2] - 2026-02-11
 
 ### Fixed
