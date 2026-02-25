@@ -5,27 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-02-25
 
 ### Added
 
 - Add `is_stroked` attribute to `Rect` and `Line`: indicates whether the PDF path is stroked (from `path.is_stroked()`)
 - Add `fill_mode` attribute to `Rect` and `Line`: fill rule from pdfium-render `PdfPathFillMode` (NONE, WINDING, or EVEN_ODD); expose `FillMode` enum to Python with same three values
 - Replace `Line.color` with `Line.stroke_color` and `Line.fill_color` (aligned with `Rect`)
-- Add `Table.to_list()` returning `list[list[TableCellValue]]`: each cell has `text` (or `None` when merged), `merged_left`, and `merged_top` so merge direction (left vs above) is explicit
-- Add `TableCellValue` class with attributes `text`, `merged_left`, and `merged_top` for use with `to_list()`
+- Add `Table.to_list()` returning `list[list[TableCellValue]]`: each cell has `text` (or `None` when merged), `merged_left`, and `merged_top` so merge direction (left vs above) is explicit (#19)
+- Add `TableCellValue` class with attributes `text`, `merged_left`, and `merged_top` for use with `to_list()` (#19)
 - Add `get_intersections_from_edges(h_edges, v_edges, ...)` function: given horizontal and vertical edges (as returned by `get_edges`), returns a mapping from every `(x, y)` intersection point to the edges that pass through it; accepts the same tolerance kwargs as `get_edges`
 - Add `Document.save_to_bytes()` method to serialize the PDF to an in-memory byte buffer, always without encryption; if the original was password-protected the returned bytes can be opened without a password
 - Add `page.doc` back-reference: every `Page` object now carries a reference to the `Document` it belongs to
 - Add `Page.page_idx` property: zero-based index of the page within its document
 - Add `Page.rotation_degrees` property: clockwise rotation of the page in degrees
 - Add `Page.clear_cache()` method as the canonical name for clearing cached objects
-- Add `tablers.debug` module with `PageImage` class for visualizing detected tables and edges on a rendered page image; requires the optional `debug` extra (`pip install tablers[debug]`)
-- Add `exclude_white_edges` parameter to `TfSettings` to control filtering of white edges (RGB = 255, 255, 255) during table extraction
+- Add `tablers.debug` module with `PageImage` class for visualizing detected tables and edges on a rendered page image; requires the optional `debug` extra (`pip install tablers[debug]`) (#18)
+- Add `exclude_white_edges` parameter to `TfSettings` to control filtering of white edges (RGB = 255, 255, 255) during table extraction (#20)
 
 ### Changed
 
-- **Breaking:** White edges (RGB = 255, 255, 255) are now excluded by default during table extraction. This may change the behavior of existing code that relied on white edges being included. To restore the previous behavior, set `exclude_white_edges=False` in `TfSettings`.
+- **Breaking:** White edges (RGB = 255, 255, 255) are now excluded by default during table extraction. This may change the behavior of existing code that relied on white edges being included. To restore the previous behavior, set `exclude_white_edges=False` in `TfSettings`. (#20)
 - **Breaking:** `Line.color` has been removed. Use `Line.stroke_color` and `Line.fill_color` instead (aligned with `Rect`).
 - `Page` is now a Python-level wrapper that holds a `doc` back-reference; Rust-side type is `Pyo3Page`
 
@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `find_tables_from_cells` parameter `pdf_page` has been renamed to `page` for arguments naming consistency; passing `pdf_page` still works but raises a `DeprecationWarning` and will be removed in a future release
 - `Page.clear()` is now an alias for `Page.clear_cache()`; prefer `clear_cache()` going forward
+
+注：部分变更由直接合并到 master 的提交引入，暂无独立 issue/PR；已为通过 PR 合并的变更标注 #18、#19、#20。若需为整版建立跟踪，可在仓库中创建「Release 0.5.0」类 issue 并在此处引用。
 
 ## [0.4.2] - 2026-02-11
 
