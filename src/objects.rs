@@ -1,6 +1,30 @@
 use ordered_float::OrderedFloat;
-use pdfium_render::prelude::{PdfColor, PdfPathSegmentType};
+use pdfium_render::prelude::{PdfColor, PdfPathFillMode, PdfPathSegmentType};
 use pyo3::prelude::*;
+
+/// PDF path fill rule: mirrors pdfium-render's PdfPathFillMode for Python exposure.
+#[pyclass]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+#[allow(clippy::upper_case_acronyms)]
+pub enum FillMode {
+    /// Path is not filled.
+    NONE,
+    /// Nonzero winding rule.
+    WINDING,
+    /// Even-odd rule.
+    EVEN_ODD,
+}
+
+impl From<PdfPathFillMode> for FillMode {
+    fn from(m: PdfPathFillMode) -> Self {
+        match m {
+            PdfPathFillMode::None => FillMode::NONE,
+            PdfPathFillMode::Winding => FillMode::WINDING,
+            PdfPathFillMode::EvenOdd => FillMode::EVEN_ODD,
+        }
+    }
+}
 
 /// Container for all extracted objects from a PDF page.
 ///
@@ -49,6 +73,11 @@ pub struct Rect {
     /// The stroke width of the rectangle border.
     #[pyo3(get)]
     pub stroke_width: f32,
+    /// Whether the path is stroked.
+    #[pyo3(get)]
+    pub is_stroked: bool,
+    /// Fill rule for the path (from pdfium-render PdfPathFillMode).
+    pub fill_mode: PdfPathFillMode,
 }
 
 #[pymethods]
@@ -85,6 +114,12 @@ impl Rect {
             self.stroke_color.alpha(),
         )
     }
+
+    /// Returns the fill mode (NONE, WINDING, or EVEN_ODD).
+    #[getter]
+    fn fill_mode(&self) -> FillMode {
+        self.fill_mode.into()
+    }
 }
 
 /// Represents a line segment extracted from a PDF page.
@@ -97,10 +132,17 @@ pub struct Line {
     pub line_type: LineType,
     /// The points that define the line path.
     pub points: Vec<Point>,
-    /// The color of the line.
-    pub color: PdfColor,
+    /// The stroke color of the line.
+    pub stroke_color: PdfColor,
+    /// The fill color of the line.
+    pub fill_color: PdfColor,
     /// The width of the line stroke.
     pub width: OrderedFloat<f32>,
+    /// Whether the line is stroked.
+    #[pyo3(get)]
+    pub is_stroked: bool,
+    /// Fill rule for the path (from pdfium-render PdfPathFillMode).
+    pub fill_mode: PdfPathFillMode,
 }
 
 #[pymethods]
@@ -124,14 +166,25 @@ impl Line {
             .collect()
     }
 
-    /// Returns the line color as an RGBA tuple.
+    /// Returns the stroke color as an RGBA tuple.
     #[getter]
-    fn color(&self) -> (u8, u8, u8, u8) {
+    fn stroke_color(&self) -> (u8, u8, u8, u8) {
         (
-            self.color.red(),
-            self.color.green(),
-            self.color.blue(),
-            self.color.alpha(),
+            self.stroke_color.red(),
+            self.stroke_color.green(),
+            self.stroke_color.blue(),
+            self.stroke_color.alpha(),
+        )
+    }
+
+    /// Returns the fill color as an RGBA tuple.
+    #[getter]
+    fn fill_color(&self) -> (u8, u8, u8, u8) {
+        (
+            self.fill_color.red(),
+            self.fill_color.green(),
+            self.fill_color.blue(),
+            self.fill_color.alpha(),
         )
     }
 
@@ -139,6 +192,12 @@ impl Line {
     #[getter]
     fn width(&self) -> f32 {
         self.width.into_inner()
+    }
+
+    /// Returns the fill mode (NONE, WINDING, or EVEN_ODD).
+    #[getter]
+    fn fill_mode(&self) -> FillMode {
+        self.fill_mode.into()
     }
 }
 

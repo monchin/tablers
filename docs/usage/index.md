@@ -212,6 +212,29 @@ with open("output.html", "w", encoding="utf-8") as f:
     f.write(html_content)
 ```
 
+### Export to list (with merge direction)
+
+`to_list()` returns a list of rows, where each cell is a `TableCellValue` with:
+
+- **`text`**: the cell content, or `None` if the slot is merged (continuation of another cell)
+- **`merged_left`**: `True` if this slot is merged with the cell to the left (same row)
+- **`merged_top`**: `True` if this slot is merged with the cell above (same column)
+
+This lets you distinguish whether a merged cell continues from the left or from above. When a cell spans both right and below, the bottom-right slot can have both `merged_left` and `merged_top` true.
+
+```python
+rows = table.to_list()
+for row in rows:
+    for cell in row:
+        if cell.text is not None:
+            print(cell.text, end=" ")
+        elif cell.merged_left:
+            print("(←)", end=" ")
+        elif cell.merged_top:
+            print("(↑)", end=" ")
+    print()
+```
+
 ## Saving a Document to Bytes
 
 Use `save_to_bytes()` to serialize the current document into an in-memory byte buffer. This is useful for passing the PDF to another library, uploading it, or storing it without writing to disk.

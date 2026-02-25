@@ -215,6 +215,58 @@ impl TableCell {
     }
 }
 
+/// Value of one grid slot: either text (top-left of a cell) or merge info.
+/// `merged_left` / `merged_top` indicate whether the spanning cell started left or above.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TableCellValue {
+    pub text: Option<String>,
+    pub merged_left: bool,
+    pub merged_top: bool,
+}
+
+/// Python-exposed TableCellValue for to_list().
+#[pyclass(name = "TableCellValue")]
+#[derive(Debug, Clone)]
+pub struct PyTableCellValue {
+    #[pyo3(get)]
+    pub text: Option<String>,
+    #[pyo3(get)]
+    pub merged_left: bool,
+    #[pyo3(get)]
+    pub merged_top: bool,
+}
+
+fn py_table_cell_value_repr(text: &Option<String>, merged_left: bool, merged_top: bool) -> String {
+    let text_repr = match text {
+        None => "None".to_string(),
+        Some(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+    };
+    let left_str = if merged_left { "True" } else { "False" };
+    let top_str = if merged_top { "True" } else { "False" };
+    format!("({}, {}, {})", text_repr, left_str, top_str)
+}
+
+#[pymethods]
+impl PyTableCellValue {
+    /// Return repr as "(text, merged_left, merged_top)". Text is None or double-quoted (escaped); booleans are True/False.
+    fn __repr__(&self) -> String {
+        py_table_cell_value_repr(&self.text, self.merged_left, self.merged_top)
+    }
+}
+
+/// Returns true if point (x, y) is inside bbox (x1 <= x < x2, y1 <= y < y2).
+fn point_in_bbox(x: OrderedFloat<f32>, y: OrderedFloat<f32>, bbox: &BboxKey) -> bool {
+    x >= bbox.0 && x < bbox.2 && y >= bbox.1 && y < bbox.3
+}
+
+/// Tolerance for float comparison when determining merge direction (same slot vs left/above).
+const MERGE_DIRECTION_TOLERANCE: f32 = 0.001;
+
+/// Returns true if two OrderedFloat values are equal within tolerance (for merge direction).
+fn float_eq(a: OrderedFloat<f32>, b: OrderedFloat<f32>) -> bool {
+    (a - b).abs() < MERGE_DIRECTION_TOLERANCE
+}
+
 /// Represents a table extracted from a PDF page.
 ///
 /// A table consists of cells organized in a grid structure.
@@ -308,6 +360,33 @@ impl Table {
     #[pyo3(name = "to_html")]
     fn py_to_html(&self) -> PyResult<String> {
         self.to_html()
+            .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Converts the table to a list of rows; each element is a TableCellValue with text and merge flags.
+    ///
+    /// Each inner list is one row. TableCellValue has `text` (None when merged), `merged_left`,
+    /// and `merged_top` so you can tell if the slot is merged with the cell to the left or above.
+    ///
+    /// # Errors
+    ///
+    /// Returns a PyValueError if text has not been extracted.
+    #[pyo3(name = "to_list")]
+    fn py_to_list(&self) -> PyResult<Vec<Vec<PyTableCellValue>>> {
+        self.to_vec()
+            .map(|vecs| {
+                vecs.into_iter()
+                    .map(|row| {
+                        row.into_iter()
+                            .map(|v| PyTableCellValue {
+                                text: v.text,
+                                merged_left: v.merged_left,
+                                merged_top: v.merged_top,
+                            })
+                            .collect()
+                    })
+                    .collect()
+            })
             .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 }
@@ -541,6 +620,72 @@ impl Table {
             }
         }
         self.text_extracted = true;
+    }
+
+    /// Converts the table to a vector of rows; each cell has text and merge direction flags.
+    ///
+    /// For each empty (merged) slot we find the covering cell by scanning `self.cells`; for very
+    /// large tables with many merged cells, a spatial index could be added later.
+    ///
+    /// # Returns
+    ///
+    /// A Result containing `Vec<Vec<TableCellValue>>`. Each slot has `text` (None when merged),
+    /// `merged_left` (cell spans from left), and `merged_top` (cell spans from above).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `text_extracted` is false.
+    pub fn to_vec(&self) -> Result<Vec<Vec<TableCellValue>>, &'static str> {
+        if !self.text_extracted {
+            return Err("Text has not been extracted. Call extract_text first.");
+        }
+
+        let rows = self.rows();
+        // Column positions xs match rows() column order (one x per column index).
+        let xs: Vec<OrderedFloat<f32>> = self
+            .cells
+            .iter()
+            .map(|c| c.bbox.0)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        let row_ys: Vec<OrderedFloat<f32>> = rows.iter().map(|r| r.bbox.1).collect();
+
+        let vecs: Vec<Vec<TableCellValue>> = rows
+            .iter()
+            .enumerate()
+            .map(|(ri, row)| {
+                row.cells
+                    .iter()
+                    .enumerate()
+                    .map(|(ci, cell)| {
+                        if let Some(c) = cell {
+                            TableCellValue {
+                                text: Some(c.text.clone()),
+                                merged_left: false,
+                                merged_top: false,
+                            }
+                        } else {
+                            let x = xs[ci];
+                            let y = row_ys[ri];
+                            // Each slot is assumed covered by at most one cell; if multiple overlap we use the first match.
+                            let covering = self.cells.iter().find(|c| point_in_bbox(x, y, &c.bbox));
+                            let (merged_left, merged_top) = match covering {
+                                Some(c) => (float_eq(c.bbox.1, y), float_eq(c.bbox.0, x)),
+                                None => (false, false),
+                            };
+                            TableCellValue {
+                                text: None,
+                                merged_left,
+                                merged_top,
+                            }
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+
+        Ok(vecs)
     }
 
     /// Converts the table to a CSV formatted string.
@@ -2309,6 +2454,170 @@ mod tests {
 
         let csv = table.to_csv().unwrap();
         assert_eq!(csv, "\"hello,world\",\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn test_to_vec_basic() {
+        let cells = vec![
+            TableCell {
+                text: "A".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "B".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "C".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "D".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let vecs = table.to_vec().unwrap();
+        assert_eq!(vecs.len(), 2);
+        assert_eq!(
+            vecs[0][0],
+            TableCellValue {
+                text: Some("A".to_string()),
+                merged_left: false,
+                merged_top: false,
+            }
+        );
+        assert_eq!(vecs[0][1].text, Some("B".to_string()));
+        assert!(vecs[1][0].text.as_deref() == Some("C"));
+        assert!(vecs[1][1].text.as_deref() == Some("D"));
+    }
+
+    #[test]
+    fn test_to_vec_with_empty_cells() {
+        let cells = vec![
+            TableCell {
+                text: "abc ".to_string(),
+                bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            },
+            TableCell {
+                text: "q".to_string(),
+                bbox: (of(10.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "w".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let vecs = table.to_vec().unwrap();
+        assert_eq!(vecs.len(), 2);
+        assert_eq!(vecs[0][0].text.as_deref(), Some("abc "));
+        assert_eq!(vecs[0][1].text.as_deref(), Some("q"));
+        assert_eq!(vecs[1][0].text.as_deref(), Some(""));
+        assert_eq!(vecs[1][1].text.as_deref(), Some("w"));
+        assert!(!vecs[0][0].merged_left && !vecs[0][0].merged_top);
+    }
+
+    #[test]
+    fn test_to_vec_with_merged_cells() {
+        // Row 0: one cell spanning two columns (x 0..20); row 1: two cells
+        let cells = vec![
+            TableCell {
+                text: "Merged".to_string(),
+                bbox: (of(0.0), of(0.0), of(20.0), of(10.0)),
+            },
+            TableCell {
+                text: "A".to_string(),
+                bbox: (of(0.0), of(10.0), of(10.0), of(20.0)),
+            },
+            TableCell {
+                text: "B".to_string(),
+                bbox: (of(10.0), of(10.0), of(20.0), of(20.0)),
+            },
+        ];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(20.0), of(20.0)),
+            page_index: 0,
+            text_extracted: true,
+        };
+
+        let vecs = table.to_vec().unwrap();
+        assert_eq!(vecs.len(), 2);
+        // Row 0: first cell has text, second is merged from left
+        assert_eq!(vecs[0][0].text.as_deref(), Some("Merged"));
+        assert!(!vecs[0][0].merged_left && !vecs[0][0].merged_top);
+        assert!(vecs[0][1].text.is_none());
+        assert!(vecs[0][1].merged_left && !vecs[0][1].merged_top);
+        // Row 1: both cells have text
+        assert_eq!(vecs[1][0].text.as_deref(), Some("A"));
+        assert_eq!(vecs[1][1].text.as_deref(), Some("B"));
+    }
+
+    #[test]
+    fn test_to_vec_without_text_extracted() {
+        let cells = vec![TableCell {
+            text: "".to_string(),
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+        }];
+        let table = Table {
+            cells,
+            bbox: (of(0.0), of(0.0), of(10.0), of(10.0)),
+            page_index: 0,
+            text_extracted: false,
+        };
+
+        let result = table.to_vec();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Text has not been extracted. Call extract_text first."
+        );
+    }
+
+    #[test]
+    fn test_py_table_cell_value_repr() {
+        use super::py_table_cell_value_repr;
+        // Text with content: double quotes around string
+        assert_eq!(
+            py_table_cell_value_repr(&Some("abc".to_string()), false, false),
+            "(\"abc\", False, False)"
+        );
+        // None (merged cell)
+        assert_eq!(
+            py_table_cell_value_repr(&None, true, false),
+            "(None, True, False)"
+        );
+        assert_eq!(
+            py_table_cell_value_repr(&None, false, true),
+            "(None, False, True)"
+        );
+        // String with double quote inside is escaped
+        assert_eq!(
+            py_table_cell_value_repr(&Some("say \"hi\"".to_string()), false, false),
+            "(\"say \\\"hi\\\"\", False, False)"
+        );
+        // String with backslash is escaped
+        assert_eq!(
+            py_table_cell_value_repr(&Some("a\\b".to_string()), false, false),
+            "(\"a\\\\b\", False, False)"
+        );
     }
 
     #[test]

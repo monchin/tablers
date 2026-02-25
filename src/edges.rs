@@ -612,7 +612,7 @@ pub(crate) fn make_edges(
                         x2: p1.0,
                         y2: cmp::max(p1.1, p2.1),
                         width: line.width,
-                        color: line.color,
+                        color: line.stroke_color,
                     });
                 } else if ((h_strat & 0b11u8) != 0)
                     && ((p1.1 - p2.1).abs() < snap_y_tol.into_inner())
@@ -624,7 +624,7 @@ pub(crate) fn make_edges(
                         x2: cmp::max(p1.0, p2.0),
                         y2: p1.1,
                         width: line.width,
-                        color: line.color,
+                        color: line.stroke_color,
                     })
                 }
             } else if line.line_type == LineType::Polyline
@@ -644,7 +644,7 @@ pub(crate) fn make_edges(
                         x2: x_min,
                         y2: y_max,
                         width: x_max - x_min,
-                        color: line.color,
+                        color: line.fill_color,
                     });
                 } else if ((h_strat & 0b11u8) != 0) && ((y_max - y_min) < *snap_y_tol) {
                     edges.get_mut(&Orientation::Horizontal).unwrap().push(Edge {
@@ -654,7 +654,7 @@ pub(crate) fn make_edges(
                         x2: x_max,
                         y2: y_min,
                         width: y_max - y_min,
-                        color: line.color,
+                        color: line.fill_color,
                     });
                 }
             }
@@ -754,7 +754,7 @@ mod tests {
     use crate::test_utils::load_pdfium;
     use crate::words::Word;
     use ordered_float::OrderedFloat;
-    use pdfium_render::prelude::PdfColor;
+    use pdfium_render::prelude::{PdfColor, PdfPathFillMode};
 
     fn of(v: f32) -> OrderedFloat<f32> {
         OrderedFloat(v)
@@ -1151,8 +1151,11 @@ mod tests {
                 .into_iter()
                 .map(|(x, y)| (OrderedFloat(x), OrderedFloat(y)))
                 .collect(),
-            color: PdfColor::new(0, 0, 0, 255),
+            stroke_color: PdfColor::new(0, 0, 0, 255),
+            fill_color: PdfColor::new(0, 0, 0, 255),
             width: OrderedFloat(1.0),
+            is_stroked: false,
+            fill_mode: PdfPathFillMode::Winding,
         }
     }
 
@@ -1164,8 +1167,11 @@ mod tests {
                 .into_iter()
                 .map(|(x, y)| (OrderedFloat(x), OrderedFloat(y)))
                 .collect(),
-            color: PdfColor::new(0, 0, 0, 255),
+            stroke_color: PdfColor::new(0, 0, 0, 255),
+            fill_color: PdfColor::new(0, 0, 0, 255),
             width: OrderedFloat(1.0),
+            is_stroked: true,
+            fill_mode: PdfPathFillMode::None,
         }
     }
 

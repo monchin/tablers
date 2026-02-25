@@ -391,6 +391,104 @@ class TestTableToHtml:
         assert row_count == 4
 
 
+class TestTableToList:
+    """Tests for Table.to_list() method."""
+
+    def test_to_list_basic(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_list should return a list of rows of TableCellValue."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        assert len(tables) == 1
+        table = tables[0]
+        rows = table.to_list()
+        assert isinstance(rows, list)
+        assert len(rows) == 4
+        for row in rows:
+            assert isinstance(row, list)
+            assert len(row) == 2
+            for cell in row:
+                assert (
+                    hasattr(cell, "text")
+                    and hasattr(cell, "merged_left")
+                    and hasattr(cell, "merged_top")
+                )
+                assert cell.text is None or isinstance(cell.text, str)
+                assert isinstance(cell.merged_left, bool)
+                assert isinstance(cell.merged_top, bool)
+
+    def test_to_list_expected_content(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """to_list text and merge flags should match expected content."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        rows = table.to_list()
+        # With need_strip=True (default), cell text is stripped.
+        # Second row: first slot is merged (empty grid position), second is "w".
+        expected_texts = [
+            ["abc", "q"],
+            [None, "w"],
+            ["1", "2"],
+            ["3", "4"],
+        ]
+        for r, exp_row in enumerate(expected_texts):
+            for c, exp_text in enumerate(exp_row):
+                assert rows[r][c].text == exp_text
+        # Second row first slot is merged (direction depends on PDF layout)
+        assert rows[1][0].text is None
+        assert rows[1][0].merged_left is False
+        assert rows[1][0].merged_top is True
+
+    def test_to_list_without_text_extraction_raises(self, edge_test_doc: Document) -> None:
+        """to_list should raise ValueError if text has not been extracted."""
+        page = edge_test_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+        assert len(tables) >= 1, (
+            "fixture must yield at least one table to test to_list() without text"
+        )
+        table = tables[0]
+        assert table.text_extracted is False
+        with pytest.raises(ValueError):
+            table.to_list()
+
+    def test_to_list_merged_cells_have_direction(self, text_lines_tables_doc: Document) -> None:
+        """Merged slots should have text None and merged_left or merged_top set."""
+        page = text_lines_tables_doc.get_page(0)
+        tables = find_tables(page, extract_text=True, horizontal_strategy="text")
+        assert len(tables) == 1
+        table = tables[0]
+        rows = table.to_list()
+        for row in rows:
+            for cell in row:
+                assert (
+                    hasattr(cell, "text")
+                    and hasattr(cell, "merged_left")
+                    and hasattr(cell, "merged_top")
+                )
+                if cell.text is None:
+                    assert cell.merged_left or cell.merged_top
+
+    def test_to_list_cell_repr(self, multiple_move_to_in_one_seg_doc: Document) -> None:
+        """TableCellValue __repr__ is (text, merged_left, merged_top), text in double quotes."""
+        page = multiple_move_to_in_one_seg_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        table = tables[0]
+        rows = table.to_list()
+        # Cell with text: repr has double-quoted string and two booleans
+        cell_with_text = rows[0][0]
+        r = repr(cell_with_text)
+        assert r.startswith("(") and r.endswith(")")
+        assert "False" in r or "True" in r
+        assert cell_with_text.text is not None
+        expected_text_part = f'"{cell_with_text.text}"'
+        assert expected_text_part in r, f"expected {expected_text_part!r} in repr, got {r!r}"
+        # Merged cell (second row first column in this fixture)
+        merged_cell = rows[1][0]
+        assert merged_cell.text is None
+        r_merged = repr(merged_cell)
+        assert "None" in r_merged
+        assert "True" in r_merged or "False" in r_merged
+
+
 class TestTableExtractionIntegration:
     """Integration tests for table extraction workflow."""
 

@@ -351,12 +351,25 @@ class Rect:
         The stroke (border) color as an RGBA tuple.
     stroke_width : float
         The stroke width of the rectangle border.
+    is_stroked : bool
+        Whether the path is stroked.
+    fill_mode : FillMode
+        Fill rule for the path (NONE, WINDING, or EVEN_ODD; mirrors pdfium-render PdfPathFillMode).
     """
 
     bbox: BBox
     fill_color: Color
     stroke_color: Color
     stroke_width: float
+    is_stroked: bool
+    fill_mode: FillMode
+
+class FillMode:
+    """PDF path fill rule: mirrors pdfium-render PdfPathFillMode (NONE, WINDING, EVEN_ODD)."""
+
+    NONE: FillMode  # Path not filled
+    WINDING: FillMode
+    EVEN_ODD: FillMode
 
 class Line:
     """
@@ -370,16 +383,25 @@ class Line:
         The type of line segment.
     points : list of Point
         The points that define the line path.
-    color : Color
-        The color of the line as an RGBA tuple.
+    stroke_color : Color
+        The stroke color of the line as an RGBA tuple.
+    fill_color : Color
+        The fill color of the line as an RGBA tuple.
     width : float
         The width of the line stroke.
+    is_stroked : bool
+        Whether the line is stroked.
+    fill_mode : FillMode
+        Fill rule for the path (NONE, WINDING, or EVEN_ODD; mirrors pdfium-render PdfPathFillMode).
     """
 
     line_type: Literal["straight", "polyline", "curve"]
     points: list[Point]
-    color: Color
+    stroke_color: Color
+    fill_color: Color
     width: float
+    is_stroked: bool
+    fill_mode: FillMode
 
 class Char:
     """
@@ -484,6 +506,31 @@ class TableCell:
     bbox: BBox
     text: str
 
+class TableCellValue:
+    """
+    One grid slot from :meth:`Table.to_list`: text plus merge direction flags.
+
+    Attributes
+    ----------
+    text : str or None
+        Cell text; ``None`` when this slot is merged (continuation of another cell).
+    merged_left : bool
+        ``True`` if this slot is merged with the cell to the left (same row).
+    merged_top : bool
+        ``True`` if this slot is merged with the cell above (same column).
+
+    Notes
+    -----
+    :meth:`__repr__` returns a string ``"(text, merged_left, merged_top)"``:
+    ``text`` is shown as ``None`` or a double-quoted string (internal ``"`` and
+    ``\\`` escaped); booleans are ``True`` / ``False``. Example:
+    ``("abc", False, False)`` or ``(None, True, False)``.
+    """
+
+    text: str | None
+    merged_left: bool
+    merged_top: bool
+
 class CellGroup:
     """
     Represents a group of table cells arranged in a row or column.
@@ -527,6 +574,39 @@ class Table:
     columns: list[CellGroup]
     page_index: int
     text_extracted: bool
+
+    def to_list(self) -> list[list[TableCellValue]]:
+        """
+        Convert the table to a list of rows; each cell has text and merge direction.
+
+        Each inner list is one row. Each element is a :class:`TableCellValue` with
+        ``text`` (``None`` when merged), ``merged_left``, and ``merged_top`` so you
+        can tell if the slot is merged with the cell to the left or above.
+
+        Returns
+        -------
+        list of list of TableCellValue
+            Rows of cell values. Use ``cell.text`` for content and
+            ``cell.merged_left`` / ``cell.merged_top`` for merge direction.
+
+        Raises
+        ------
+        ValueError
+            If text has not been extracted. Call extract_text first or
+            use `extract_text=True` when finding tables.
+
+        Examples
+        --------
+        >>> from tablers import Document, find_tables
+        >>> doc = Document("example.pdf")
+        >>> page = doc.get_page(0)
+        >>> tables = find_tables(page, extract_text=True)
+        >>> rows = tables[0].to_list()
+        >>> for row in rows:
+        ...     for cell in row:
+        ...         print(cell.text, cell.merged_left, cell.merged_top)
+        """
+        ...
 
     def to_csv(self) -> str:
         """
