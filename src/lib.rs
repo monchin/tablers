@@ -961,6 +961,7 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<Table>()?;
     m.add_class::<PyCellGroup>()?;
     m.add_class::<PyTableCellValue>()?;
+    m.add_class::<crate::objects::FillMode>()?;
     m.add_class::<TfSettings>()?;
     m.add_class::<WordsExtractSettings>()?;
     m.add_function(pyo3::wrap_pyfunction!(py_find_all_cells_bboxes, m)?)?;

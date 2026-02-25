@@ -351,12 +351,25 @@ class Rect:
         The stroke (border) color as an RGBA tuple.
     stroke_width : float
         The stroke width of the rectangle border.
+    is_stroked : bool
+        Whether the path is stroked.
+    fill_mode : FillMode
+        Fill rule for the path (NONE, WINDING, or EVEN_ODD; mirrors pdfium-render PdfPathFillMode).
     """
 
     bbox: BBox
     fill_color: Color
     stroke_color: Color
     stroke_width: float
+    is_stroked: bool
+    fill_mode: FillMode
+
+class FillMode:
+    """PDF path fill rule: mirrors pdfium-render PdfPathFillMode (NONE, WINDING, EVEN_ODD)."""
+
+    NONE: FillMode  # Path not filled
+    WINDING: FillMode
+    EVEN_ODD: FillMode
 
 class Line:
     """
@@ -370,16 +383,25 @@ class Line:
         The type of line segment.
     points : list of Point
         The points that define the line path.
-    color : Color
-        The color of the line as an RGBA tuple.
+    stroke_color : Color
+        The stroke color of the line as an RGBA tuple.
+    fill_color : Color
+        The fill color of the line as an RGBA tuple.
     width : float
         The width of the line stroke.
+    is_stroked : bool
+        Whether the line is stroked.
+    fill_mode : FillMode
+        Fill rule for the path (NONE, WINDING, or EVEN_ODD; mirrors pdfium-render PdfPathFillMode).
     """
 
     line_type: Literal["straight", "polyline", "curve"]
     points: list[Point]
-    color: Color
+    stroke_color: Color
+    fill_color: Color
     width: float
+    is_stroked: bool
+    fill_mode: FillMode
 
 class Char:
     """

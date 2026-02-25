@@ -469,6 +469,16 @@ Represents a rectangle extracted from a PDF page.
 | `fill_color` | `tuple[int, int, int, int]` | Fill color (RGBA) |
 | `stroke_color` | `tuple[int, int, int, int]` | Stroke color (RGBA) |
 | `stroke_width` | `float` | Stroke width |
+| `is_stroked` | `bool` | Whether the path is stroked |
+| `fill_mode` | `FillMode` | Fill rule (NONE, WINDING, or EVEN_ODD) |
+
+---
+
+### FillMode
+
+PDF path fill rule: winding (nonzero) or even-odd.
+
+**Values:** `FillMode.NONE`, `FillMode.WINDING`, `FillMode.EVEN_ODD` (mirrors pdfium-render `PdfPathFillMode`)
 
 ---
 
@@ -482,8 +492,11 @@ Represents a line segment extracted from a PDF page.
 |-----------|------|-------------|
 | `line_type` | `Literal["straight", "polyline", "curve"]` | Type of line |
 | `points` | `list[tuple[float, float]]` | Points defining the line path |
-| `color` | `tuple[int, int, int, int]` | Color (RGBA) |
+| `stroke_color` | `tuple[int, int, int, int]` | Stroke color (RGBA) |
+| `fill_color` | `tuple[int, int, int, int]` | Fill color (RGBA) |
 | `width` | `float` | Line width |
+| `is_stroked` | `bool` | Whether the line is stroked |
+| `fill_mode` | `FillMode` | Fill rule (NONE, WINDING, or EVEN_ODD) |
 
 ---
 

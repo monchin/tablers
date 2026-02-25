@@ -1,7 +1,7 @@
 use crate::objects::*;
 use ordered_float::OrderedFloat;
 use pdfium_render::prelude::PdfPage as PdfiumPage;
-use pdfium_render::prelude::*;
+use pdfium_render::prelude::{PdfPathFillMode, *};
 use std::cell::RefCell;
 use std::cmp;
 
@@ -248,13 +248,18 @@ impl Page {
                     fill_color: obj.fill_color().unwrap(),
                     stroke_color: obj.stroke_color().unwrap(),
                     stroke_width: obj.stroke_width().unwrap().value,
+                    is_stroked: obj.is_stroked().unwrap(),
+                    fill_mode: obj.fill_mode().unwrap_or(PdfPathFillMode::None),
                 });
             } else if points.len() == 2 && points[1].1 == PdfPathSegmentType::LineTo {
                 objects.lines.push(Line {
                     line_type: LineType::Straight,
                     points: points.iter().map(|p| p.0).collect(),
-                    color: obj.stroke_color().unwrap(),
+                    stroke_color: obj.stroke_color().unwrap(),
+                    fill_color: obj.fill_color().unwrap(),
                     width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),
+                    is_stroked: obj.is_stroked().unwrap(),
+                    fill_mode: obj.fill_mode().unwrap_or(PdfPathFillMode::None),
                 });
             } else {
                 // Check if all points except points[0] have LineTo as their second element
@@ -269,8 +274,11 @@ impl Page {
                 objects.lines.push(Line {
                     line_type,
                     points: points.iter().map(|p| p.0).collect(),
-                    color: obj.stroke_color().unwrap(),
+                    stroke_color: obj.stroke_color().unwrap(),
+                    fill_color: obj.fill_color().unwrap(),
                     width: OrderedFloat(obj.stroke_width().unwrap().value * 2.0),
+                    is_stroked: obj.is_stroked().unwrap(),
+                    fill_mode: obj.fill_mode().unwrap_or(PdfPathFillMode::None),
                 });
             }
         }

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `is_stroked` attribute to `Rect` and `Line`: indicates whether the PDF path is stroked (from `path.is_stroked()`)
+- Add `fill_mode` attribute to `Rect` and `Line`: fill rule from pdfium-render `PdfPathFillMode` (NONE, WINDING, or EVEN_ODD); expose `FillMode` enum to Python with same three values
+- Replace `Line.color` with `Line.stroke_color` and `Line.fill_color` (aligned with `Rect`)
 - Add `Table.to_list()` returning `list[list[TableCellValue]]`: each cell has `text` (or `None` when merged), `merged_left`, and `merged_top` so merge direction (left vs above) is explicit
 - Add `TableCellValue` class with attributes `text`, `merged_left`, and `merged_top` for use with `to_list()`
 - Add `get_intersections_from_edges(h_edges, v_edges, ...)` function: given horizontal and vertical edges (as returned by `get_edges`), returns a mapping from every `(x, y)` intersection point to the edges that pass through it; accepts the same tolerance kwargs as `get_edges`
@@ -21,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** `Line.color` has been removed. Use `Line.stroke_color` and `Line.fill_color` instead (aligned with `Rect`).
 - `Page` is now a Python-level wrapper that holds a `doc` back-reference; Rust-side type is `Pyo3Page`
 
 ### Deprecated
