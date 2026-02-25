@@ -25,9 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking:** White edges (RGB = 255, 255, 255) are now excluded by default during table extraction. This may change the behavior of existing code that relied on white edges being included. To restore the previous behavior, set `exclude_white_edges=False` in `TfSettings`.
 - **Breaking:** `Line.color` has been removed. Use `Line.stroke_color` and `Line.fill_color` instead (aligned with `Rect`).
 - `Page` is now a Python-level wrapper that holds a `doc` back-reference; Rust-side type is `Pyo3Page`
-- **BREAKING CHANGE:** White edges (RGB = 255, 255, 255) are now excluded by default during table extraction. This may change the behavior of existing code that relied on white edges being included. To restore the previous behavior, set `exclude_white_edges=False` in `TfSettings`.
 
 ### Deprecated
 
