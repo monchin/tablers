@@ -885,3 +885,31 @@ class TestNarrowPolylineAsEdge:
         assert math.isclose(actual_bbox[3], expected_bbox[3], abs_tol=0.01), (
             f"y2 mismatch: expected {expected_bbox[3]}, got {actual_bbox[3]}"
         )
+
+
+class TestWhiteEdgesPdf:
+    """Tests for pdfplumber#1360-white-edges.pdf with exclude_white_edges option."""
+
+    def test_exclude_white_edges_true(self, white_edges_doc: Document) -> None:
+        """
+        With exclude_white_edges=True (white edges excluded), should get 1 table with 231 cells.
+        """
+        page = white_edges_doc.get_page(0)
+        settings = TfSettings(exclude_white_edges=True)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+        assert len(tables[0].cells) == 231, (
+            f"Expected 231 cells with exclude_white_edges=True, got {len(tables[0].cells)}"
+        )
+
+    def test_exclude_white_edges_false(self, white_edges_doc: Document) -> None:
+        """
+        With exclude_white_edges=False (white edges included), should get 1 table with 245 cells.
+        """
+        page = white_edges_doc.get_page(0)
+        settings = TfSettings(exclude_white_edges=False)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+        assert len(tables[0].cells) == 245, (
+            f"Expected 245 cells with exclude_white_edges=False, got {len(tables[0].cells)}"
+        )
