@@ -25,6 +25,23 @@ static LIGATURES: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
 static PUNCTUATIONS: LazyLock<HashSet<char>> =
     LazyLock::new(|| "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".chars().collect());
 
+/// Returns `true` when the rotation indicates left-to-right horizontal text
+/// (approximately 0° including the [315°, 360°) wrap-around).
+#[inline]
+pub(crate) fn rotation_is_ltr(r: OrderedFloat<f32>) -> bool {
+    (r >= OrderedFloat(-0.001f32) && r < OrderedFloat(45.0f32))
+        || (r >= OrderedFloat(315.0f32) && r < OrderedFloat(360.001f32))
+}
+
+/// Returns `true` when the rotation indicates horizontal text (LTR **or** RTL).
+///
+/// Covers [−0.001°, 45°), [135°, 225°), and [315°, 360.001°).
+/// Use this to pick `x_tolerance` over `y_tolerance` for inter-word gap checks.
+#[inline]
+pub(crate) fn rotation_is_horizontal(r: OrderedFloat<f32>) -> bool {
+    rotation_is_ltr(r) || (r >= OrderedFloat(135.0f32) && r < OrderedFloat(225.0f32))
+}
+
 /// Represents a word extracted from PDF text.
 ///
 /// A word is a sequence of characters grouped by proximity and alignment.
@@ -35,7 +52,6 @@ pub(crate) struct Word {
     /// The bounding box of the word.
     pub bbox: BboxKey,
     /// The rotation of the word in degrees.
-    #[allow(dead_code)]
     pub rotation_degrees: OrderedFloat<f32>,
 }
 

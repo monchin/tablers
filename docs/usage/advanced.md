@@ -81,12 +81,14 @@ with Document("example.pdf") as doc:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `x_tolerance` | 3.0 | Horizontal tolerance for grouping characters into words |
-| `y_tolerance` | 3.0 | Vertical tolerance for grouping characters into lines |
+| `x_tolerance` | 3.0 | Horizontal tolerance for grouping characters into words; also controls when a space is inserted between two words in cell text (only when the gap between their bboxes exceeds this value) |
+| `y_tolerance` | 3.0 | Vertical tolerance for grouping characters into lines; same role for vertical text when building cell text |
 | `keep_blank_chars` | False | Whether to preserve whitespace characters |
 | `use_text_flow` | False | Whether to use PDF's text flow order |
 | `expand_ligatures` | True | Whether to expand ligatures (fi, fl, etc.) |
 | `need_strip` | True | Whether to strip whitespace from cell text |
+
+This ensures that languages like English get spaces where the PDF has visible gaps (e.g. "Table 1" and "Abcd"), while languages that do not use spaces between words (e.g. Chinese) do not get extra spaces.
 
 ## Two-Step Table Extraction
 

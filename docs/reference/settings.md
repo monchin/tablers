@@ -173,8 +173,8 @@ we_settings = WordsExtractSettings(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `x_tolerance` | `float` | `3.0` | Horizontal tolerance for grouping characters into words |
-| `y_tolerance` | `float` | `3.0` | Vertical tolerance for grouping characters into lines |
+| `x_tolerance` | `float` | `3.0` | Horizontal tolerance for grouping characters into words; also used when building table cell text to decide whether to insert a space between two words (space inserted only when the gap between their bboxes exceeds this value) |
+| `y_tolerance` | `float` | `3.0` | Vertical tolerance for grouping characters into lines; also used for vertical text when deciding whether to insert a space between two words in a cell |
 | `keep_blank_chars` | `bool` | `False` | Whether to preserve blank/whitespace characters |
 | `use_text_flow` | `bool` | `False` | Whether to use the PDF's text flow order |
 | `text_read_in_clockwise` | `bool` | `True` | Whether text reads in clockwise direction |
