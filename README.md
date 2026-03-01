@@ -47,7 +47,7 @@ This project draws significant inspiration from the table extraction modules of 
 
 ## Benchmark
 
-Performance comparison of tablers, pymupdf and pdfplumber for PDF table extraction:
+Benchmarked on the [ICDAR 2013](https://www.tamirhassan.com/html/dataset.html) dataset, evaluating both extraction speed and accuracy across tablers, pymupdf, pdfplumber, and camelot:
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/monchin/tablers-benchmark/master/table_extraction_benchmark.png" alt="Table Extraction Benchmark">
