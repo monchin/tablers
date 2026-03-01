@@ -861,7 +861,8 @@ class TestNestedXobj:
             f"First cell should contain 'Table 1' and 'Abcd', got: {first_cell_text!r}"
         )
         assert "Table 1Abcd" not in first_cell_text, (
-            f"First cell text must have space between 'Table 1' and 'Abcd', got: {first_cell_text!r}"
+            "First cell text must have space between 'Table 1' and 'Abcd', "
+            f"got: {first_cell_text!r}"
         )
         idx_table1 = first_cell_text.find("Table 1")
         idx_abcd = first_cell_text.find("Abcd")
