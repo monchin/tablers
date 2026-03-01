@@ -61,6 +61,12 @@ def white_edges_pdf_path() -> Path:
 
 
 @pytest.fixture
+def diff_bg_color_pdf_path() -> Path:
+    """Return path to the diff-bg-color-and-line-color.pdf file."""
+    return TEST_DATA_DIR / "diff-bg-color-and-line-color.pdf"
+
+
+@pytest.fixture
 def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for edge-test.pdf, closing it after the test."""
     doc = Document(path=edge_test_pdf_path)
@@ -139,6 +145,17 @@ def white_edges_doc(
 ) -> Generator[Document, None, None]:
     """Open and return a Document for pdfplumber#1360-white-edges.pdf, closing it after the test."""
     doc = Document(path=white_edges_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def diff_bg_color_doc(
+    diff_bg_color_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for diff-bg-color-and-line-color.pdf, closing it after test."""
+    doc = Document(path=diff_bg_color_pdf_path)
     yield doc
     if not doc.is_closed():
         doc.close()

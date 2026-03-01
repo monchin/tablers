@@ -193,8 +193,20 @@ pub struct TfSettings {
     pub explicit_h_edges: Option<Vec<Edge>>,
     /// Explicit vertical edges to include in table detection.
     pub explicit_v_edges: Option<Vec<Edge>>,
-    /// Whether to exclude white edges (color RGB = 255,255,255) from table detection.
-    pub exclude_white_edges: bool,
+    /// Whether to remove edges that are invisible against their immediate background.
+    ///
+    /// When enabled, each edge is evaluated by inspecting the fill colors of the
+    /// rectangles directly adjacent on both sides (within `snap_tolerance`):
+    ///
+    /// - *Both sides have an adjacent rect*: excluded if both colors match the edge.
+    /// - *One side has an adjacent rect*: the missing side is treated as the default
+    ///   white PDF background.  Excluded only when the edge is white *and* the adjacent
+    ///   rect is also white; any non-white edge is kept.
+    /// - *No adjacent rects, but a containing rect*: excluded if the containing rect's
+    ///   color matches the edge (artifact embedded in a same-colored fill).
+    /// - *No adjacent rects and no containing rect*: excluded only if the edge is white
+    ///   (invisible on the default white page background).
+    pub exclude_background_colored_edges: bool,
 }
 impl Default for TfSettings {
     /// Creates a TfSettings instance with default values.
@@ -218,7 +230,7 @@ impl Default for TfSettings {
             text_settings: WordsExtractSettings::default(),
             explicit_h_edges: None,
             explicit_v_edges: None,
-            exclude_white_edges: true,
+            exclude_background_colored_edges: true,
         }
     }
 }
@@ -387,8 +399,15 @@ impl TfSettings {
                     "explicit_v_edges" => {
                         settings.explicit_v_edges = value.extract::<Option<Vec<Edge>>>().unwrap()
                     }
+                    "exclude_background_colored_edges" => {
+                        settings.exclude_background_colored_edges = value.extract::<bool>().unwrap()
+                    }
                     "exclude_white_edges" => {
-                        settings.exclude_white_edges = value.extract::<bool>().unwrap()
+                        eprintln!(
+                            "DeprecationWarning: `exclude_white_edges` has been removed \
+                             and has no effect. Rename it to \
+                             `exclude_background_colored_edges`."
+                        );
                     }
                     _ => (), // Ignore unknown settings
                 }
@@ -532,8 +551,8 @@ impl TfSettings {
     }
 
     #[getter]
-    fn exclude_white_edges(&self) -> bool {
-        self.exclude_white_edges
+    fn exclude_background_colored_edges(&self) -> bool {
+        self.exclude_background_colored_edges
     }
 
     // Setters
@@ -681,8 +700,8 @@ impl TfSettings {
     }
 
     #[setter]
-    fn set_exclude_white_edges(&mut self, value: bool) {
-        self.exclude_white_edges = value;
+    fn set_exclude_background_colored_edges(&mut self, value: bool) {
+        self.exclude_background_colored_edges = value;
     }
 
     // Dataclass-like methods
@@ -699,7 +718,8 @@ impl TfSettings {
              text_keep_blank_chars={}, text_use_text_flow={}, \
              text_read_in_clockwise={}, text_split_at_punctuation={:?}, \
              text_expand_ligatures={}, \
-             explicit_h_edges={}, explicit_v_edges={}, exclude_white_edges={})",
+             explicit_h_edges={}, explicit_v_edges={}, \
+             exclude_background_colored_edges={})",
             Self::strategy_enum_to_str(self.vertical_strategy),
             Self::strategy_enum_to_str(self.horizontal_strategy),
             self.snap_x_tolerance,
@@ -729,7 +749,7 @@ impl TfSettings {
             self.explicit_v_edges
                 .as_ref()
                 .map_or("None".to_string(), |v| format!("[{} edges]", v.len())),
-            self.exclude_white_edges,
+            self.exclude_background_colored_edges,
         )
     }
 
@@ -762,7 +782,7 @@ impl TfSettings {
                     == other.explicit_h_edges.as_ref().map(|v| v.len())
                 && self.explicit_v_edges.as_ref().map(|v| v.len())
                     == other.explicit_v_edges.as_ref().map(|v| v.len())
-                && self.exclude_white_edges == other.exclude_white_edges
+                && self.exclude_background_colored_edges == other.exclude_background_colored_edges
         } else {
             false
         }
@@ -1031,7 +1051,7 @@ mod tests {
         assert_eq!(settings.min_words_horizontal, 1);
         assert_eq!(settings.intersection_x_tolerance.into_inner(), 3.0);
         assert_eq!(settings.intersection_y_tolerance.into_inner(), 3.0);
-        assert_eq!(settings.exclude_white_edges, true);
+        assert_eq!(settings.exclude_background_colored_edges, true);
     }
 
     #[test]
@@ -1284,18 +1304,21 @@ mod tests {
     }
 
     #[test]
-    fn test_exclude_white_edges_default() {
+    fn test_exclude_background_colored_edges_default() {
         let settings = TfSettings::default();
-        assert_eq!(settings.exclude_white_edges, true);
+        assert_eq!(settings.exclude_background_colored_edges, true);
     }
 
     #[test]
-    fn test_exclude_white_edges_custom_value() {
+    fn test_exclude_background_colored_edges_custom_value() {
         let mut settings = TfSettings::default();
-        settings.exclude_white_edges = false;
-        assert_eq!(settings.exclude_white_edges, false);
+        // Default is true; toggle to false and back to verify round-trip assignment.
+        assert_eq!(settings.exclude_background_colored_edges, true);
 
-        settings.exclude_white_edges = true;
-        assert_eq!(settings.exclude_white_edges, true);
+        settings.exclude_background_colored_edges = false;
+        assert_eq!(settings.exclude_background_colored_edges, false);
+
+        settings.exclude_background_colored_edges = true;
+        assert_eq!(settings.exclude_background_colored_edges, true);
     }
 }

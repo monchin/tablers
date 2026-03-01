@@ -804,8 +804,21 @@ class TfSettings:
         Explicit horizontal edges to include in table detection.
     explicit_v_edges : list[Edge] or None
         Explicit vertical edges to include in table detection.
-    exclude_white_edges : bool
-        Whether to exclude white edges (RGB = 255, 255, 255) from table detection.
+    exclude_background_colored_edges : bool
+        Whether to remove edges that are invisible against their immediate background.
+        For each edge the algorithm inspects the fill colors of the rectangles directly
+        adjacent on both sides (within ``snap_tolerance``).  An edge is excluded when it
+        is indistinguishable from its surroundings:
+
+        - **Both sides have an adjacent rect**: excluded if both colors match the edge.
+        - **One side has an adjacent rect**: the missing side is treated as the default
+          white PDF background.  Excluded only when the edge is white *and* the adjacent
+          rect is also white.  Any non-white edge is kept (visible from the page side).
+        - **No adjacent rects, but a containing rect**: excluded if the containing rect's
+          color matches the edge (artifact embedded in a same-colored fill).
+        - **No adjacent rects and no containing rect**: excluded only if the edge is
+          white (invisible on the default white page background).
+
         Default is True.
 
     Parameters
@@ -840,7 +853,7 @@ class TfSettings:
     text_expand_ligatures: bool
     explicit_h_edges: list[Edge] | None
     explicit_v_edges: list[Edge] | None
-    exclude_white_edges: bool
+    exclude_background_colored_edges: bool
 
     def __init__(self, **kwargs: Unpack[TfSettingItems]) -> None: ...
     def __repr__(self) -> str: ...

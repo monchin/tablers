@@ -381,23 +381,25 @@ settings = TfSettings(
 )
 ```
 
-### Filter White Edges
+### Filter Background-Colored Edges
 
-By default, white edges (RGB = 255, 255, 255) are automatically excluded from table detection. This helps filter out invisible borders or background lines that might interfere with table extraction:
+By default, edges that are invisible against their immediate background are automatically excluded from table detection. This removes artifact lines (e.g. white lines on a white background, or colored lines embedded inside a same-colored fill) that would otherwise interfere with table extraction.
+
+The algorithm checks the fill colors of the rectangles directly adjacent to each edge on both sides. An edge is excluded only when it is indistinguishable from its surroundings on all effective sides (missing sides default to the standard white PDF page background):
 
 ```python
-# Default behavior: white edges are filtered
+# Default behavior: invisible background-colored edges are filtered
 settings = TfSettings(
-    exclude_white_edges=True,  # Default
+    exclude_background_colored_edges=True,  # Default
 )
 
-# To include white edges in detection
+# To disable filtering and keep all edges
 settings = TfSettings(
-    exclude_white_edges=False,
+    exclude_background_colored_edges=False,
 )
 ```
 
-This filtering happens early in the edge detection process, before length-based filtering and edge merging operations.
+This works correctly for PDFs with mixed-background tables: a white edge between two differently-colored cells is kept (visible from one side), while a white artifact edge inside a white-background area is removed.
 
 ## Error Handling
 
