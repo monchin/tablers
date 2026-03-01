@@ -428,6 +428,9 @@ Represents a single cell in a table.
 | `bbox` | `tuple[float, float, float, float]` | Bounding box (x1, y1, x2, y2) |
 | `text` | `str` | Text content of the cell |
 
+!!! note "How cell text is built"
+    Cell text is produced by grouping characters into words (using [WordsExtractSettings](../reference/settings.md#wordsextractsettings)) and then joining those words. A **space is inserted between two consecutive words only when the gap between their bounding boxes** (in reading direction) **exceeds** the word-extraction tolerance (`x_tolerance` for horizontal text, `y_tolerance` for vertical). As a result, visible gaps in the PDF (e.g. between "Table 1" and "Abcd") are reflected as spaces, while languages that do not use spaces between words (e.g. Chinese) do not get extra spaces.
+
 ---
 
 ### CellGroup

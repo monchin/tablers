@@ -843,6 +843,34 @@ class TestNestedXobj:
             f"y2 mismatch: expected {expected_bbox[3]}, got {actual_bbox[3]}"
         )
 
+    def test_nested_xobj_first_cell_text_has_space_between_words(
+        self, nested_xobj_doc: Document
+    ) -> None:
+        """
+        First cell contains "Table 1" and "Abcd" with a visible gap in the PDF.
+        Extracted text must have a space between them (not "Table 1Abcd").
+        """
+        page = nested_xobj_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+        assert len(tables) == 1
+        table = tables[0]
+        assert len(table.cells) > 0
+        first_cell_text = table.cells[0].text
+        # "Table 1" and "Abcd" must be separated by at least one space
+        assert "Table 1" in first_cell_text and "Abcd" in first_cell_text, (
+            f"First cell should contain 'Table 1' and 'Abcd', got: {first_cell_text!r}"
+        )
+        assert "Table 1Abcd" not in first_cell_text, (
+            f"First cell text must have space between 'Table 1' and 'Abcd', got: {first_cell_text!r}"
+        )
+        idx_table1 = first_cell_text.find("Table 1")
+        idx_abcd = first_cell_text.find("Abcd")
+        assert idx_table1 < idx_abcd, "Abcd should appear after Table 1"
+        between = first_cell_text[idx_table1 + len("Table 1") : idx_abcd]
+        assert " " in between, (
+            f"Expected at least one space between 'Table 1' and 'Abcd', got: {between!r}"
+        )
+
 
 class TestNarrowPolylineAsEdge:
     """Tests for #13-narrow-polyline-as-edge.pdf table extraction."""

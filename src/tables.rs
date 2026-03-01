@@ -560,6 +560,39 @@ impl Table {
         Self::get_rows_or_cols(&self.cells, CellGroupKind::Column)
     }
 
+    /// Returns `true` when the gap between two consecutive words (in reading direction) exceeds
+    /// the relevant tolerance, indicating that a space should be inserted when joining them.
+    ///
+    /// The gap direction and tolerance axis are chosen from `next`'s rotation:
+    /// - LTR / RTL (horizontal): compares horizontal bbox edges, uses `x_tol`.
+    /// - Top-to-bottom / bottom-to-top (vertical): compares vertical bbox edges, uses `y_tol`.
+    ///
+    /// **Assumption**: `prev` and `next` share the same reading direction. When a cell contains
+    /// mixed-rotation text the result is undefined and this function uses `next`'s rotation only.
+    #[inline]
+    fn word_gap_requires_space(prev: &Word, next: &Word, x_tol: f32, y_tol: f32) -> bool {
+        let r = next.rotation_degrees;
+        let gap = if rotation_is_ltr(r) {
+            // horizontal LTR: gap = next left − prev right
+            next.bbox.0 - prev.bbox.2
+        } else if r >= OrderedFloat(45.0f32) && r < OrderedFloat(135.0f32) {
+            // vertical top-to-bottom: gap = next top − prev bottom
+            next.bbox.1 - prev.bbox.3
+        } else if r >= OrderedFloat(135.0f32) && r < OrderedFloat(225.0f32) {
+            // horizontal RTL: gap = prev left − next right
+            prev.bbox.0 - next.bbox.2
+        } else {
+            // vertical bottom-to-top: gap = prev top − next bottom
+            prev.bbox.1 - next.bbox.3
+        };
+        let tol = if rotation_is_horizontal(r) {
+            OrderedFloat(x_tol)
+        } else {
+            OrderedFloat(y_tol)
+        };
+        gap > tol
+    }
+
     /// Checks if a character's center is within a bounding box.
     ///
     /// # Arguments
@@ -598,6 +631,8 @@ impl Table {
             ..base_settings.clone()
         };
         let word_extractor = WordExtractor::new(&word_settings);
+        let x_tol = word_settings.x_tolerance.into_inner();
+        let y_tol = word_settings.y_tolerance.into_inner();
 
         for cell in &mut self.cells {
             let cell_chars: Vec<Char> = chars
@@ -608,11 +643,16 @@ impl Table {
 
             if !cell_chars.is_empty() {
                 let words = word_extractor.extract_words(&cell_chars);
-                let mut text = words
-                    .iter()
-                    .map(|w| w.text.replace("\r\n", "\n").replace('\r', "\n"))
-                    .collect::<Vec<_>>()
-                    .join("");
+                let mut text = String::new();
+                for (i, w) in words.iter().enumerate() {
+                    if i > 0 {
+                        let prev = &words[i - 1];
+                        if Self::word_gap_requires_space(prev, w, x_tol, y_tol) {
+                            text.push(' ');
+                        }
+                    }
+                    text.push_str(&w.text.replace("\r\n", "\n").replace('\r', "\n"));
+                }
                 if need_strip {
                     text = text.trim().to_string();
                 }
@@ -2328,6 +2368,63 @@ mod tests {
 
         // Char center is (16.5, 16.5), which is outside the bbox
         assert!(!Table::char_in_bbox(&char, &bbox));
+    }
+
+    fn make_word(x1: f32, y1: f32, x2: f32, y2: f32, rotation: f32) -> Word {
+        Word {
+            text: "w".to_string(),
+            bbox: (of(x1), of(y1), of(x2), of(y2)),
+            rotation_degrees: of(rotation),
+        }
+    }
+
+    #[test]
+    fn test_word_gap_requires_space_ltr_gap_exceeds_tol() {
+        // LTR (r=0°): prev ends at x=5, next starts at x=8 → gap=3 > x_tol=2
+        let prev = make_word(0.0, 0.0, 5.0, 10.0, 0.0);
+        let next = make_word(8.0, 0.0, 15.0, 10.0, 0.0);
+        assert!(Table::word_gap_requires_space(&prev, &next, 2.0, 5.0));
+    }
+
+    #[test]
+    fn test_word_gap_requires_space_ltr_gap_equals_tol_no_space() {
+        // gap == tol is NOT strictly greater, so no space
+        let prev = make_word(0.0, 0.0, 5.0, 10.0, 0.0);
+        let next = make_word(8.0, 0.0, 15.0, 10.0, 0.0);
+        assert!(!Table::word_gap_requires_space(&prev, &next, 3.0, 5.0));
+    }
+
+    #[test]
+    fn test_word_gap_requires_space_ltr_wraparound_uses_x_tol() {
+        // LTR wrap-around (r=320°): should use x_tol, not y_tol
+        // gap=3 > x_tol=2 → true; gap=3 <= y_tol=5 would give false if wrong tol were used
+        let prev = make_word(0.0, 0.0, 5.0, 10.0, 320.0);
+        let next = make_word(8.0, 0.0, 15.0, 10.0, 320.0);
+        assert!(Table::word_gap_requires_space(&prev, &next, 2.0, 5.0));
+    }
+
+    #[test]
+    fn test_word_gap_requires_space_vertical_ttb_gap_exceeds_tol() {
+        // Vertical top-to-bottom (r=90°): prev ends at y=5, next starts at y=8 → gap=3 > y_tol=2
+        let prev = make_word(0.0, 0.0, 10.0, 5.0, 90.0);
+        let next = make_word(0.0, 8.0, 10.0, 15.0, 90.0);
+        assert!(Table::word_gap_requires_space(&prev, &next, 5.0, 2.0));
+    }
+
+    #[test]
+    fn test_word_gap_requires_space_rtl_gap_exceeds_tol() {
+        // RTL (r=180°): gap = prev.bbox.0 − next.bbox.2 = 8 − 5 = 3 > x_tol=2
+        let prev = make_word(8.0, 0.0, 15.0, 10.0, 180.0);
+        let next = make_word(0.0, 0.0, 5.0, 10.0, 180.0);
+        assert!(Table::word_gap_requires_space(&prev, &next, 2.0, 5.0));
+    }
+
+    #[test]
+    fn test_word_gap_requires_space_vertical_btt_gap_exceeds_tol() {
+        // Vertical bottom-to-top (r=270°): gap = prev.bbox.1 − next.bbox.3 = 8 − 5 = 3 > y_tol=2
+        let prev = make_word(0.0, 8.0, 10.0, 15.0, 270.0);
+        let next = make_word(0.0, 0.0, 10.0, 5.0, 270.0);
+        assert!(Table::word_gap_requires_space(&prev, &next, 5.0, 2.0));
     }
 
     #[test]
