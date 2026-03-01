@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-03-01
 
 ### Added
 
@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking:** `exclude_white_edges` has been removed and replaced by `exclude_background_colored_edges`. The new parameter is `True` by default and subsumes the old behavior on white-background pages. Rename any existing `exclude_white_edges=False` to `exclude_background_colored_edges=False`.
 
-## [0.5.0] - 2026-02-25
+## [0.5.0] - 2026-02-25 [YANKED]
+
+> **Reason for yanking:** `exclude_white_edges` was not designed comprehensively enough — it failed to handle non-white and mixed-background pages correctly. It has been superseded by the more robust `exclude_background_colored_edges` introduced in 0.6.0.
 
 ### Added
 
