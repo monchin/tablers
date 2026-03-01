@@ -71,6 +71,7 @@ class TfSettingItems(TypedDict, total=False):
     explicit_h_edges: list[Edge] | None
     explicit_v_edges: list[Edge] | None
     exclude_background_colored_edges: bool
+    close_unclosed_boundaries: bool
 
 
 class WordsExtractSettingsItems(TypedDict, total=False):

@@ -996,3 +996,76 @@ class TestDiffBgColorAndLineColorPdf:
         tables = find_tables(page, extract_text=False)
         assert len(tables) == 1, f"Expected 1 table with default settings, got {len(tables)}"
         assert len(tables[0].cells) == 12, f"Expected 12 cells, got {len(tables[0].cells)}"
+
+
+class TestOuterUnclosedTablePdf:
+    """Tests for pdfplumber#1296-table-outer-unclosed.pdf.
+
+    The PDF contains a table whose left and right outer vertical edges are missing.
+    Without close_unclosed_boundaries, the two outermost columns are not detected.
+    With close_unclosed_boundaries=True (default), virtual closing edges are added
+    and all 20 cells (4 columns × 5 rows) are recovered.
+    """
+
+    def test_close_unclosed_boundaries_enabled_recovers_all_cells(
+        self, outer_unclosed_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=True (default), all 20 cells are extracted."""
+        page = outer_unclosed_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+        assert len(tables[0].cells) == 20, (
+            f"Expected 20 cells with close_unclosed_boundaries=True, got {len(tables[0].cells)}"
+        )
+
+    def test_close_unclosed_boundaries_disabled_misses_outer_columns(
+        self, outer_unclosed_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=False, the outer columns are not detected."""
+        page = outer_unclosed_doc.get_page(0)
+        settings = TfSettings(close_unclosed_boundaries=False)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+        assert len(tables[0].cells) == 10, (
+            f"Expected fewer than 20 cells without boundary closing, got {len(tables[0].cells)}"
+        )
+
+
+class TestUnclosedBottomBoundaryPdf:
+    """Tests for pdfplumber#631-unclosed-bottom-boundary.pdf.
+
+    The PDF contains two tables where the bottom outer horizontal edge is missing.
+    Without close_unclosed_boundaries, the bottom row of each table is not detected.
+    With close_unclosed_boundaries=True (default), virtual closing edges are added
+    and all cells are recovered: 42 cells in the first table, 12 in the second.
+    """
+
+    def test_close_unclosed_boundaries_enabled_recovers_all_cells(
+        self, unclosed_bottom_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=True (default), all cells are extracted."""
+        page = unclosed_bottom_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        assert len(tables) == 2, f"Expected 2 tables, got {len(tables)}"
+        assert len(tables[0].cells) == 42, (
+            f"Expected 42 cells in table 0, got {len(tables[0].cells)}"
+        )
+        assert len(tables[1].cells) == 12, (
+            f"Expected 12 cells in table 1, got {len(tables[1].cells)}"
+        )
+
+    def test_close_unclosed_boundaries_disabled_misses_bottom_row(
+        self, unclosed_bottom_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=False, the bottom rows are not detected."""
+        page = unclosed_bottom_doc.get_page(0)
+        settings = TfSettings(close_unclosed_boundaries=False)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        total_cells = sum(len(t.cells) for t in tables)
+        assert total_cells < 42 + 12, (
+            f"Expected fewer cells without boundary closing, got {total_cells}"
+        )

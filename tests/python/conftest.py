@@ -67,6 +67,12 @@ def diff_bg_color_pdf_path() -> Path:
 
 
 @pytest.fixture
+def outer_unclosed_pdf_path() -> Path:
+    """Return path to the pdfplumber#1296-table-outer-unclosed.pdf file."""
+    return TEST_DATA_DIR / "pdfplumber#1296-table-outer-unclosed.pdf"
+
+
+@pytest.fixture
 def edge_test_doc(edge_test_pdf_path: Path) -> Generator[Document, None, None]:
     """Open and return a Document for edge-test.pdf, closing it after the test."""
     doc = Document(path=edge_test_pdf_path)
@@ -156,6 +162,34 @@ def diff_bg_color_doc(
 ) -> Generator[Document, None, None]:
     """Open and return a Document for diff-bg-color-and-line-color.pdf, closing it after test."""
     doc = Document(path=diff_bg_color_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def outer_unclosed_doc(
+    outer_unclosed_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for pdfplumber#1296-table-outer-unclosed.pdf."""
+    doc = Document(path=outer_unclosed_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def unclosed_bottom_pdf_path() -> Path:
+    """Return path to the pdfplumber#631-unclosed-bottom-boundary.pdf file."""
+    return TEST_DATA_DIR / "pdfplumber#631-unclosed-bottom-boundary.pdf"
+
+
+@pytest.fixture
+def unclosed_bottom_doc(
+    unclosed_bottom_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for pdfplumber#631-unclosed-bottom-boundary.pdf."""
+    doc = Document(path=unclosed_bottom_pdf_path)
     yield doc
     if not doc.is_closed():
         doc.close()

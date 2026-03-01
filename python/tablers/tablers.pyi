@@ -574,6 +574,8 @@ class Table:
     columns: list[CellGroup]
     page_index: int
     text_extracted: bool
+    intersections: list[tuple[float, float]]
+    """All unique corner points of the table's cells, sorted by (x, y)."""
 
     def to_list(self) -> list[list[TableCellValue]]:
         """
@@ -820,6 +822,15 @@ class TfSettings:
           white (invisible on the default white page background).
 
         Default is True.
+    close_unclosed_boundaries : bool
+        Whether to automatically detect and close tables whose outer edges are missing.
+        After initial cell detection, each detected table is checked to see whether all
+        outermost intersection points on a given side have a corresponding edge that
+        extends past the table boundary.  When this condition holds for every point on
+        a side, a virtual closing edge is synthesised and the missing boundary cells are
+        added to the result.  The check is performed per-table, so two tables whose
+        horizontal edges extend to the same x are handled independently.
+        Default is True.
 
     Parameters
     ----------
@@ -854,6 +865,7 @@ class TfSettings:
     explicit_h_edges: list[Edge] | None
     explicit_v_edges: list[Edge] | None
     exclude_background_colored_edges: bool
+    close_unclosed_boundaries: bool
 
     def __init__(self, **kwargs: Unpack[TfSettingItems]) -> None: ...
     def __repr__(self) -> str: ...

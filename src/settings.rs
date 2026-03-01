@@ -207,6 +207,17 @@ pub struct TfSettings {
     /// - *No adjacent rects and no containing rect*: excluded only if the edge is white
     ///   (invisible on the default white page background).
     pub exclude_background_colored_edges: bool,
+    /// Whether to automatically detect and close tables with missing outer edges.
+    ///
+    /// When enabled, after initial cell detection, each detected table is inspected to
+    /// determine whether its outermost horizontal or vertical edges extend beyond the
+    /// table boundary.  If every intersection on a given side has a corresponding edge
+    /// that continues past that boundary, a virtual closing edge is synthesised at the
+    /// outermost endpoint and the missing boundary cells are added to the result.
+    ///
+    /// Uses `intersection_x_tolerance` / `intersection_y_tolerance` as the threshold
+    /// for deciding whether an edge truly extends beyond the boundary.
+    pub close_unclosed_boundaries: bool,
 }
 impl Default for TfSettings {
     /// Creates a TfSettings instance with default values.
@@ -231,6 +242,7 @@ impl Default for TfSettings {
             explicit_h_edges: None,
             explicit_v_edges: None,
             exclude_background_colored_edges: true,
+            close_unclosed_boundaries: true,
         }
     }
 }
@@ -402,6 +414,9 @@ impl TfSettings {
                     "exclude_background_colored_edges" => {
                         settings.exclude_background_colored_edges = value.extract::<bool>().unwrap()
                     }
+                    "close_unclosed_boundaries" => {
+                        settings.close_unclosed_boundaries = value.extract::<bool>().unwrap()
+                    }
                     "exclude_white_edges" => {
                         eprintln!(
                             "DeprecationWarning: `exclude_white_edges` has been removed \
@@ -555,6 +570,11 @@ impl TfSettings {
         self.exclude_background_colored_edges
     }
 
+    #[getter]
+    fn close_unclosed_boundaries(&self) -> bool {
+        self.close_unclosed_boundaries
+    }
+
     // Setters
     #[setter]
     fn set_vertical_strategy(&mut self, value: &str) {
@@ -704,6 +724,11 @@ impl TfSettings {
         self.exclude_background_colored_edges = value;
     }
 
+    #[setter]
+    fn set_close_unclosed_boundaries(&mut self, value: bool) {
+        self.close_unclosed_boundaries = value;
+    }
+
     // Dataclass-like methods
     fn __repr__(&self) -> String {
         format!(
@@ -719,7 +744,8 @@ impl TfSettings {
              text_read_in_clockwise={}, text_split_at_punctuation={:?}, \
              text_expand_ligatures={}, \
              explicit_h_edges={}, explicit_v_edges={}, \
-             exclude_background_colored_edges={})",
+             exclude_background_colored_edges={}, \
+             close_unclosed_boundaries={})",
             Self::strategy_enum_to_str(self.vertical_strategy),
             Self::strategy_enum_to_str(self.horizontal_strategy),
             self.snap_x_tolerance,
@@ -750,6 +776,7 @@ impl TfSettings {
                 .as_ref()
                 .map_or("None".to_string(), |v| format!("[{} edges]", v.len())),
             self.exclude_background_colored_edges,
+            self.close_unclosed_boundaries,
         )
     }
 
@@ -783,6 +810,7 @@ impl TfSettings {
                 && self.explicit_v_edges.as_ref().map(|v| v.len())
                     == other.explicit_v_edges.as_ref().map(|v| v.len())
                 && self.exclude_background_colored_edges == other.exclude_background_colored_edges
+                && self.close_unclosed_boundaries == other.close_unclosed_boundaries
         } else {
             false
         }

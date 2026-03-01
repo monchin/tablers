@@ -282,6 +282,9 @@ pub struct Table {
     /// Whether text has been extracted for cells.
     #[pyo3(get)]
     pub text_extracted: bool,
+    /// All unique intersection points that form the corners of the table's cells,
+    /// sorted by (x, y).  Each element is `(x, y)` in PDF coordinate space.
+    pub intersections: Vec<(f32, f32)>,
 }
 #[pymethods]
 impl Table {
@@ -300,6 +303,13 @@ impl Table {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
+    }
+
+    /// Returns all unique intersection points that form the corners of the table's
+    /// cells, sorted by (x, y).
+    #[getter]
+    fn intersections(&self) -> Vec<(f32, f32)> {
+        self.intersections.clone()
     }
 
     /// Get rows
@@ -463,11 +473,27 @@ impl Table {
                 bbox: *bbox,
             })
             .collect();
+        let intersections = {
+            let mut corners: HashSet<(OrderedFloat<f32>, OrderedFloat<f32>)> = HashSet::new();
+            for &(x1, y1, x2, y2) in cells_bbox {
+                corners.insert((x1, y1));
+                corners.insert((x1, y2));
+                corners.insert((x2, y1));
+                corners.insert((x2, y2));
+            }
+            let mut pts: Vec<(f32, f32)> = corners
+                .into_iter()
+                .map(|(x, y)| (x.into_inner(), y.into_inner()))
+                .collect();
+            pts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            pts
+        };
         let mut slf = Self {
             cells,
             bbox,
             page_index: page_idx,
             text_extracted: false,
+            intersections,
         };
         if extract_text {
             match chars {
@@ -1977,6 +2003,215 @@ impl TableFinder {
     }
 }
 
+/// Detects missing boundary cells caused by unclosed table edges and returns them.
+///
+/// For each of the four sides of the detected table, the function checks whether
+/// *every* outermost intersection point has a corresponding edge that extends past
+/// the table boundary by more than the given tolerance.  If so, a virtual closing
+/// edge is synthesised at the outermost extension endpoint and the missing boundary
+/// cells are returned.
+///
+/// Inner cells from the first-pass detection are never recomputed – only the new
+/// boundary cells (at most one extra column/row per side) are returned.
+///
+/// All four checks are **skipped entirely** when either `h_strategy` or
+/// `v_strategy` is `Text`.  In mixed-strategy configurations (one `Text`, one
+/// `Lines`), text-derived edges can extend across table boundaries in ways that
+/// produce false-positive missing columns or rows on any of the four sides.
+/// The checks are only reliable when both strategies produce real PDF lines.
+///
+/// # Arguments
+///
+/// * `table_cells` - Bounding boxes of cells already detected for this table.
+/// * `h_edges`     - All horizontal edges on the page (post-merge).
+/// * `v_edges`     - All vertical edges on the page (post-merge).
+/// * `x_tol`       - X-axis tolerance (reuses `intersection_x_tolerance`).
+/// * `y_tol`       - Y-axis tolerance (reuses `intersection_y_tolerance`).
+/// * `h_strategy`  - Active horizontal strategy.
+/// * `v_strategy`  - Active vertical strategy.
+///
+/// # Returns
+///
+/// A (possibly empty) vector of new cell bounding boxes to append.
+fn collect_unclosed_boundary_cells(
+    table_cells: &[BboxKey],
+    h_edges: &[Edge],
+    v_edges: &[Edge],
+    x_tol: f32,
+    y_tol: f32,
+    h_strategy: StrategyType,
+    v_strategy: StrategyType,
+) -> Vec<BboxKey> {
+    if table_cells.is_empty() {
+        return Vec::new();
+    }
+
+    let x_tol = OrderedFloat(x_tol);
+    let y_tol = OrderedFloat(y_tol);
+
+    let min_x = table_cells.iter().map(|c| c.0).min().unwrap();
+    let max_x = table_cells.iter().map(|c| c.2).max().unwrap();
+    let min_y = table_cells.iter().map(|c| c.1).min().unwrap();
+    let max_y = table_cells.iter().map(|c| c.3).max().unwrap();
+
+    // When either strategy is Text, the corresponding edges are derived from text
+    // positions rather than real PDF lines.  Text-derived edges can extend across
+    // table boundaries in ways that trigger false-positive missing columns/rows on
+    // every side, so we skip all four checks in that case.
+    if h_strategy == StrategyType::Text || v_strategy == StrategyType::Text {
+        return Vec::new();
+    }
+
+    let mut new_cells: Vec<BboxKey> = Vec::new();
+
+    // ── Left side ──────────────────────────────────────────────────────────────
+    // Collect all y-coordinates that appear as corners of left-boundary cells.
+    // For each such y, look for a horizontal edge that crosses the left boundary
+    // and continues further left (h.x1 < min_x - x_tol).
+    {
+        let boundary_ys: BTreeSet<OrderedFloat<f32>> = table_cells
+            .iter()
+            .filter(|c| c.0 == min_x)
+            .flat_map(|c| [c.1, c.3])
+            .collect();
+
+        if !boundary_ys.is_empty() {
+            // For every boundary y, find the rightmost (closest) left extension.
+            // Using max() ensures that all h-edges in the new column reach new_x.
+            let extending: Vec<OrderedFloat<f32>> = boundary_ys
+                .iter()
+                .filter_map(|&y| {
+                    h_edges
+                        .iter()
+                        .filter(|h| {
+                            h.y1 >= y - y_tol
+                                && h.y1 <= y + y_tol
+                                && h.x1 < min_x - x_tol
+                                && h.x2 >= min_x - x_tol
+                        })
+                        .map(|h| h.x1)
+                        .min()
+                })
+                .collect();
+
+            if extending.len() == boundary_ys.len() {
+                let new_x = extending.iter().cloned().max().unwrap();
+                let ys: Vec<OrderedFloat<f32>> = boundary_ys.into_iter().collect();
+                for i in 0..ys.len() - 1 {
+                    new_cells.push((new_x, ys[i], min_x, ys[i + 1]));
+                }
+            }
+        }
+    }
+
+    // ── Right side ─────────────────────────────────────────────────────────────
+    {
+        let boundary_ys: BTreeSet<OrderedFloat<f32>> = table_cells
+            .iter()
+            .filter(|c| c.2 == max_x)
+            .flat_map(|c| [c.1, c.3])
+            .collect();
+
+        if !boundary_ys.is_empty() {
+            let extending: Vec<OrderedFloat<f32>> = boundary_ys
+                .iter()
+                .filter_map(|&y| {
+                    h_edges
+                        .iter()
+                        .filter(|h| {
+                            h.y1 >= y - y_tol
+                                && h.y1 <= y + y_tol
+                                && h.x2 > max_x + x_tol
+                                && h.x1 <= max_x + x_tol
+                        })
+                        .map(|h| h.x2)
+                        .max()
+                })
+                .collect();
+
+            if extending.len() == boundary_ys.len() {
+                let new_x = extending.iter().cloned().min().unwrap();
+                let ys: Vec<OrderedFloat<f32>> = boundary_ys.into_iter().collect();
+                for i in 0..ys.len() - 1 {
+                    new_cells.push((max_x, ys[i], new_x, ys[i + 1]));
+                }
+            }
+        }
+    }
+
+    // ── Top side ───────────────────────────────────────────────────────────────
+    {
+        let boundary_xs: BTreeSet<OrderedFloat<f32>> = table_cells
+            .iter()
+            .filter(|c| c.1 == min_y)
+            .flat_map(|c| [c.0, c.2])
+            .collect();
+
+        if !boundary_xs.is_empty() {
+            let extending: Vec<OrderedFloat<f32>> = boundary_xs
+                .iter()
+                .filter_map(|&x| {
+                    v_edges
+                        .iter()
+                        .filter(|v| {
+                            v.x1 >= x - x_tol
+                                && v.x1 <= x + x_tol
+                                && v.y1 < min_y - y_tol
+                                && v.y2 >= min_y - y_tol
+                        })
+                        .map(|v| v.y1)
+                        .min()
+                })
+                .collect();
+
+            if extending.len() == boundary_xs.len() {
+                let new_y = extending.iter().cloned().max().unwrap();
+                let xs: Vec<OrderedFloat<f32>> = boundary_xs.into_iter().collect();
+                for i in 0..xs.len() - 1 {
+                    new_cells.push((xs[i], new_y, xs[i + 1], min_y));
+                }
+            }
+        }
+    }
+
+    // ── Bottom side ────────────────────────────────────────────────────────────
+    {
+        let boundary_xs: BTreeSet<OrderedFloat<f32>> = table_cells
+            .iter()
+            .filter(|c| c.3 == max_y)
+            .flat_map(|c| [c.0, c.2])
+            .collect();
+
+        if !boundary_xs.is_empty() {
+            let extending: Vec<OrderedFloat<f32>> = boundary_xs
+                .iter()
+                .filter_map(|&x| {
+                    v_edges
+                        .iter()
+                        .filter(|v| {
+                            v.x1 >= x - x_tol
+                                && v.x1 <= x + x_tol
+                                && v.y2 > max_y + y_tol
+                                && v.y1 <= max_y + y_tol
+                        })
+                        .map(|v| v.y2)
+                        .max()
+                })
+                .collect();
+
+            if extending.len() == boundary_xs.len() {
+                let new_y = extending.iter().cloned().min().unwrap();
+                let xs: Vec<OrderedFloat<f32>> = boundary_xs.into_iter().collect();
+                for i in 0..xs.len() - 1 {
+                    new_cells.push((xs[i], max_y, xs[i + 1], new_y));
+                }
+            }
+        }
+    }
+
+    new_cells
+}
+
 /// Finds all table cell bounding boxes in a PDF page or from explicit edges.
 ///
 /// # Arguments
@@ -2035,7 +2270,33 @@ pub fn find_all_cells_bboxes(
         *table_finder.settings.intersection_x_tolerance,
         *table_finder.settings.intersection_y_tolerance,
     );
-    intersections_to_cells(intersections)
+    let mut cells = intersections_to_cells(intersections);
+
+    if tf_settings.close_unclosed_boundaries && !cells.is_empty() {
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+        let x_tol = tf_settings.intersection_x_tolerance.into_inner();
+        let y_tol = tf_settings.intersection_y_tolerance.into_inner();
+
+        // Group detected cells by table so that each table's boundary is checked
+        // independently – prevents a shared extension x from merging two tables.
+        let tables = cells_to_tables(&cells);
+        let mut extra: Vec<BboxKey> = Vec::new();
+        for table_cells in &tables {
+            extra.extend(collect_unclosed_boundary_cells(
+                table_cells,
+                h_edges,
+                v_edges,
+                x_tol,
+                y_tol,
+                h_strat,
+                v_strat,
+            ));
+        }
+        cells.extend(extra);
+    }
+
+    cells
 }
 
 /// Creates Table objects from cell bounding boxes.
