@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Add `exclude_background_colored_edges` parameter to `TfSettings` (default: `True`) to replace `exclude_white_edges` (#20). Uses a spatial visibility algorithm: for each edge, the fill colors of the rectangles directly adjacent on both sides (within `snap_tolerance`) are inspected. An edge is excluded only when it is indistinguishable from its surroundings on all effective sides (missing sides default to the standard white PDF page background). This correctly handles pages with mixed-background tables and non-white backgrounds.
+
+### Changed
+
+- **Breaking:** `exclude_white_edges` has been removed and replaced by `exclude_background_colored_edges`. The new parameter is `True` by default and subsumes the old behavior on white-background pages. Rename any existing `exclude_white_edges=False` to `exclude_background_colored_edges=False`.
+
 ## [0.5.0] - 2026-02-25
 
 ### Added

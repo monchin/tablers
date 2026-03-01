@@ -888,28 +888,82 @@ class TestNarrowPolylineAsEdge:
 
 
 class TestWhiteEdgesPdf:
-    """Tests for pdfplumber#1360-white-edges.pdf with exclude_white_edges option."""
+    """Tests for pdfplumber#1360-white-edges.pdf with exclude_background_colored_edges.
 
-    def test_exclude_white_edges_true(self, white_edges_doc: Document) -> None:
+    The PDF name is inherited from the upstream pdfplumber issue tracker; the test
+    class exercises the spatial background-visibility algorithm that supersedes the
+    old global white-color filter.
+    """
+
+    def test_exclude_background_colored_edges_true(self, white_edges_doc: Document) -> None:
         """
-        With exclude_white_edges=True (white edges excluded), should get 1 table with 231 cells.
+        With exclude_background_colored_edges=True (default), invisible edges are excluded.
+
+        The PDF has two rows of background rects: a white row and a dark-red row.
+
+        White H-edge at the white/dark-red boundary (y≈39.37):
+          - above = white rect, below = dark-red rect → two adjacent rects, colors differ
+          → kept (visible at the boundary)
+
+        White H-edge at the top of the white-row area (y≈18.37):
+          - below = white rect, above = nothing (default page = white)
+          → edge is white, adjacent rect is white, page side is also white
+          → excluded (invisible from both sides)
+
+        This gives 232 cells.  The old global-color approach gave 231; the earlier
+        spatial implementation gave 233 because the y≈18.37 artifact was incorrectly
+        kept under the "1 adjacent → always keep" rule.
         """
         page = white_edges_doc.get_page(0)
-        settings = TfSettings(exclude_white_edges=True)
+        settings = TfSettings(exclude_background_colored_edges=True)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+        assert len(tables[0].cells) == 232, (
+            f"Expected 232 cells with exclude_background_colored_edges=True, "
+            f"got {len(tables[0].cells)}"
+        )
+
+        settings = TfSettings(
+            snap_y_tolerance=1,
+            join_y_tolerance=1,
+            intersection_y_tolerance=1,
+            exclude_background_colored_edges=True,
+        )
         tables = find_tables(page, extract_text=False, tf_settings=settings)
         assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
         assert len(tables[0].cells) == 231, (
-            f"Expected 231 cells with exclude_white_edges=True, got {len(tables[0].cells)}"
+            f"Expected 231 cells with exclude_background_colored_edges=True, "
+            f"got {len(tables[0].cells)}"
         )
 
-    def test_exclude_white_edges_false(self, white_edges_doc: Document) -> None:
+    def test_exclude_background_colored_edges_false(self, white_edges_doc: Document) -> None:
         """
-        With exclude_white_edges=False (white edges included), should get 1 table with 245 cells.
+        With exclude_background_colored_edges=False (no background filtering), all edges
+        including white ones are included and the table has 245 cells.
         """
         page = white_edges_doc.get_page(0)
-        settings = TfSettings(exclude_white_edges=False)
+        settings = TfSettings(exclude_background_colored_edges=False)
         tables = find_tables(page, extract_text=False, tf_settings=settings)
         assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
         assert len(tables[0].cells) == 245, (
-            f"Expected 245 cells with exclude_white_edges=False, got {len(tables[0].cells)}"
+            f"Expected 245 cells with exclude_background_colored_edges=False, "
+            f"got {len(tables[0].cells)}"
         )
+
+
+class TestDiffBgColorAndLineColorPdf:
+    """Tests for diff-bg-color-and-line-color.pdf with exclude_background_colored_edges."""
+
+    def test_default_settings_finds_table(self, diff_bg_color_doc: Document) -> None:
+        """
+        With default settings (exclude_background_colored_edges=True), the non-white
+        background color is auto-detected and background-colored edges are excluded.
+        The white table lines are preserved and the table is found correctly.
+
+        With default settings, the table in the non-white-background PDF is extracted
+        correctly: 3 rows × 4 columns = 12 cells.
+        """
+        page = diff_bg_color_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+        assert len(tables) == 1, f"Expected 1 table with default settings, got {len(tables)}"
+        assert len(tables[0].cells) == 12, f"Expected 12 cells, got {len(tables[0].cells)}"

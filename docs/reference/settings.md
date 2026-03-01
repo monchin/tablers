@@ -50,7 +50,16 @@ settings = TfSettings(
 | `edge_min_length_prefilter` | `float` | `1.0` | Minimum length for edges before merging operations |
 | `min_words_vertical` | `int` | `3` | Minimum words required for vertical text-based edge detection |
 | `min_words_horizontal` | `int` | `1` | Minimum words required for horizontal text-based edge detection |
-| `exclude_white_edges` | `bool` | `True` | Whether to exclude white edges (RGB = 255, 255, 255) from table detection |
+| `exclude_background_colored_edges` | `bool` | `True` | Whether to exclude edges invisible against their immediate background (see below) |
+
+**Background-colored edge filtering** (`exclude_background_colored_edges`):
+
+Each edge is evaluated by examining the fill colors of the rectangles directly adjacent on both sides (within `snap_tolerance`). An edge is excluded when it is indistinguishable from its surroundings:
+
+- **Both sides have an adjacent rect** – excluded if both colors match the edge.
+- **One side has an adjacent rect** – the missing side is treated as the default white PDF background. Excluded only when the edge is white *and* the adjacent rect is also white; any non-white edge is kept (visible from the page side).
+- **No adjacent rects, but a containing rect** – excluded if the containing rect's color matches the edge (artifact embedded in a same-colored fill).
+- **No adjacent rects and no containing rect** – excluded only if the edge is white (invisible on the default white page background).
 
 ### Explicit Edges
 
@@ -131,7 +140,7 @@ settings = TfSettings(
     edge_min_length_prefilter=5.0,
     min_words_vertical=3,
     min_words_horizontal=1,
-    exclude_white_edges=True,
+    exclude_background_colored_edges=True,
 
     # Table filtering
     include_single_cell=False,

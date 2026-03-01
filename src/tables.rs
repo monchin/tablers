@@ -826,19 +826,219 @@ fn filter_edges_by_min_len(edges: &mut Vec<Edge>, min_len: OrderedFloat<f32>) {
     });
 }
 
-/// Filters out white edges (RGB = 255, 255, 255).
+/// Returns `true` when a rectangle qualifies as a background fill for adjacency checks.
 ///
-/// Removes edges with white color (RGB components all equal to 255).
+/// A qualifying rect has a non-NONE fill mode and both dimensions ≥ the respective
+/// snap tolerances.  Narrow rects (width < snap_x_tol or height < snap_y_tol) are
+/// themselves treated as edges by `make_edges` and must not be considered backgrounds.
 ///
-/// # Arguments
+/// **Coupling note**: the size thresholds intentionally mirror the same `snap_x_tol` /
+/// `snap_y_tol` values used by `make_edges` to promote thin rects into edges.  If the
+/// edge-promotion thresholds in `make_edges` are ever changed to a different constant,
+/// this function must be updated in tandem to avoid misclassifying thin rects as
+/// background fills (or vice-versa).
+#[inline]
+fn is_qualifying_rect(r: &Rect, snap_x_tol: f32, snap_y_tol: f32) -> bool {
+    FillMode::from(r.fill_mode) != FillMode::NONE
+        && (r.bbox.2 - r.bbox.0).into_inner().abs() >= snap_x_tol
+        && (r.bbox.3 - r.bbox.1).into_inner().abs() >= snap_y_tol
+}
+
+/// Returns the RGB fill color of the largest qualifying rect that lies immediately
+/// adjacent to one side of `edge`.
 ///
-/// * `edges` - The edges to filter (modified in place).
-fn filter_white_edges(edges: &mut Vec<Edge>) {
+/// For a **horizontal** edge at `y = Y` spanning `[x1, x2]`:
+/// - `first_side = true`  → look for rects whose **bottom** (`bbox.3`) is near `Y`
+///   (the rect sits above the edge in downward-y screen coordinates).
+/// - `first_side = false` → look for rects whose **top** (`bbox.1`) is near `Y`
+///   (the rect sits below the edge).
+///
+/// For a **vertical** edge at `x = X` spanning `[y1, y2]`:
+/// - `first_side = true`  → look for rects whose **right** edge (`bbox.2`) is near `X`.
+/// - `first_side = false` → look for rects whose **left** edge (`bbox.0`) is near `X`.
+///
+/// Adjacency criteria:
+/// - Perpendicular distance ≤ `snap_perp_tol` (snap_y_tol for H, snap_x_tol for V).
+/// - Parallel overlap with the edge > `snap_par_tol` (snap_x_tol for H, snap_y_tol for V).
+///
+/// Returns `None` if no qualifying rect is found on that side.
+fn find_adjacent_rect_color(
+    rects: &[Rect],
+    edge: &Edge,
+    first_side: bool,
+    snap_x_tol: f32,
+    snap_y_tol: f32,
+) -> Option<(u8, u8, u8)> {
+    let mut best_area = 0.0f32;
+    let mut best_color: Option<(u8, u8, u8)> = None;
+
+    for r in rects {
+        if !is_qualifying_rect(r, snap_x_tol, snap_y_tol) {
+            continue;
+        }
+
+        let (perp_dist, par_overlap) = match edge.orientation {
+            Orientation::Horizontal => {
+                let y = edge.y1.into_inner();
+                let boundary = if first_side {
+                    r.bbox.3.into_inner() // bottom of rect → rect is above the edge
+                } else {
+                    r.bbox.1.into_inner() // top of rect → rect is below the edge
+                };
+                let x_overlap = r.bbox.2.into_inner().min(edge.x2.into_inner())
+                    - r.bbox.0.into_inner().max(edge.x1.into_inner());
+                ((boundary - y).abs(), x_overlap)
+            }
+            Orientation::Vertical => {
+                let x = edge.x1.into_inner();
+                let boundary = if first_side {
+                    r.bbox.2.into_inner() // right edge of rect → rect is left of the edge
+                } else {
+                    r.bbox.0.into_inner() // left edge of rect → rect is right of the edge
+                };
+                let y_overlap = r.bbox.3.into_inner().min(edge.y2.into_inner())
+                    - r.bbox.1.into_inner().max(edge.y1.into_inner());
+                ((boundary - x).abs(), y_overlap)
+            }
+        };
+
+        let snap_perp = match edge.orientation {
+            Orientation::Horizontal => snap_y_tol,
+            Orientation::Vertical => snap_x_tol,
+        };
+        let snap_par = match edge.orientation {
+            Orientation::Horizontal => snap_x_tol,
+            Orientation::Vertical => snap_y_tol,
+        };
+
+        if perp_dist > snap_perp || par_overlap <= snap_par {
+            continue;
+        }
+
+        let area =
+            (r.bbox.2 - r.bbox.0).into_inner().abs() * (r.bbox.3 - r.bbox.1).into_inner().abs();
+        if area > best_area {
+            best_area = area;
+            best_color = Some((
+                r.fill_color.red(),
+                r.fill_color.green(),
+                r.fill_color.blue(),
+            ));
+        }
+    }
+
+    best_color
+}
+
+/// Returns the RGB fill color of the largest qualifying rect that **fully contains**
+/// `edge` in the perpendicular dimension with overlap > `snap_par_tol` in the
+/// parallel dimension.
+///
+/// This detects the case where a thin artifact edge is embedded inside a large filled
+/// rect rather than sitting at its boundary (and would therefore have zero adjacent rects).
+fn find_containing_rect_color(
+    rects: &[Rect],
+    edge: &Edge,
+    snap_x_tol: f32,
+    snap_y_tol: f32,
+) -> Option<(u8, u8, u8)> {
+    let mut best_area = 0.0f32;
+    let mut best_color: Option<(u8, u8, u8)> = None;
+
+    for r in rects {
+        if !is_qualifying_rect(r, snap_x_tol, snap_y_tol) {
+            continue;
+        }
+
+        let (rx0, ry0, rx1, ry1) = (
+            r.bbox.0.into_inner(),
+            r.bbox.1.into_inner(),
+            r.bbox.2.into_inner(),
+            r.bbox.3.into_inner(),
+        );
+
+        let contained = match edge.orientation {
+            Orientation::Horizontal => {
+                let y = edge.y1.into_inner();
+                let x_overlap = rx1.min(edge.x2.into_inner()) - rx0.max(edge.x1.into_inner());
+                // Edge's y must be strictly inside the rect's y range
+                y > ry0 && y < ry1 && x_overlap > snap_x_tol
+            }
+            Orientation::Vertical => {
+                let x = edge.x1.into_inner();
+                let y_overlap = ry1.min(edge.y2.into_inner()) - ry0.max(edge.y1.into_inner());
+                x > rx0 && x < rx1 && y_overlap > snap_y_tol
+            }
+        };
+
+        if !contained {
+            continue;
+        }
+
+        let area = (rx1 - rx0) * (ry1 - ry0);
+        if area > best_area {
+            best_area = area;
+            best_color = Some((
+                r.fill_color.red(),
+                r.fill_color.green(),
+                r.fill_color.blue(),
+            ));
+        }
+    }
+
+    best_color
+}
+
+/// Filters out edges that are invisible against the page background by checking the
+/// fill colors of immediately adjacent and containing rectangles.
+///
+/// An edge is **excluded** when it is indistinguishable from its surroundings:
+///
+/// - **Two adjacent rects found** (one on each side): exclude if *both* have the same
+///   fill color as the edge.  If at least one side has a different color the edge is
+///   visible and is kept.
+/// - **One adjacent rect found**: treat the missing side as the default PDF page
+///   background (white).  Exclude only when the edge color matches *both* the adjacent
+///   rect *and* white — i.e. exclude only white-on-white.  Any non-white edge is
+///   visible from the page-white side and is kept.
+/// - **Zero adjacent rects – containing rect found**: exclude if the containing rect's
+///   fill color matches the edge color (artifact embedded in a same-colored region).
+/// - **Zero adjacent rects – no containing rect**: exclude only if the edge is white
+///   (`255, 255, 255`), the standard invisible-on-default-PDF-background case.
+fn filter_edges_invisible_against_background(
+    edges: &mut Vec<Edge>,
+    rects: &[Rect],
+    snap_x_tol: f32,
+    snap_y_tol: f32,
+) {
+    const WHITE: (u8, u8, u8) = (255, 255, 255);
+
     edges.retain(|edge| {
-        let r = edge.color.red();
-        let g = edge.color.green();
-        let b = edge.color.blue();
-        !(r == 255 && g == 255 && b == 255)
+        let color = (edge.color.red(), edge.color.green(), edge.color.blue());
+
+        let side_a = find_adjacent_rect_color(rects, edge, true, snap_x_tol, snap_y_tol);
+        let side_b = find_adjacent_rect_color(rects, edge, false, snap_x_tol, snap_y_tol);
+
+        match (side_a, side_b) {
+            // Both sides have explicit adjacent rects.
+            (Some(ca), Some(cb)) => ca != color || cb != color,
+
+            // Exactly one side has an adjacent rect.  Treat the missing side as the
+            // default PDF page background (white).  An edge is invisible — and thus
+            // excluded — only when it is the same color as BOTH the adjacent rect
+            // AND the default white background, i.e. only when the edge is white and
+            // the adjacent rect is also white.  Any non-white edge is visible from the
+            // page-white side and must be kept.
+            (Some(ca), None) | (None, Some(ca)) => ca != color || color != WHITE,
+
+            // No adjacent rects at all.  Check for a containing rect first (handles
+            // artifacts embedded inside a filled region), then fall back to the
+            // page-white rule.
+            (None, None) => match find_containing_rect_color(rects, edge, snap_x_tol, snap_y_tol) {
+                Some(c) => c != color,
+                None => color != WHITE,
+            },
+        }
     });
 }
 
@@ -1658,17 +1858,27 @@ impl TableFinder {
             .get(&Orientation::Vertical)
             .cloned()
             .unwrap_or_default();
-        if settings.exclude_white_edges {
-            filter_white_edges(&mut v_edges);
-        }
-        filter_edges_by_min_len(&mut v_edges, *settings.edge_min_length_prefilter);
         let mut h_edges = edges_all
             .get(&Orientation::Horizontal)
             .cloned()
             .unwrap_or_default();
-        if settings.exclude_white_edges {
-            filter_white_edges(&mut h_edges);
+
+        if settings.exclude_background_colored_edges {
+            let snap_x = settings.snap_x_tolerance.into_inner();
+            let snap_y = settings.snap_y_tolerance.into_inner();
+            let rects: Vec<Rect> = if let Some(page) = page {
+                let objects_opt = page.objects.borrow();
+                objects_opt
+                    .as_ref()
+                    .map_or_else(Vec::new, |objects| objects.rects.clone())
+            } else {
+                Vec::new()
+            };
+            filter_edges_invisible_against_background(&mut v_edges, &rects, snap_x, snap_y);
+            filter_edges_invisible_against_background(&mut h_edges, &rects, snap_x, snap_y);
         }
+
+        filter_edges_by_min_len(&mut v_edges, *settings.edge_min_length_prefilter);
         filter_edges_by_min_len(&mut h_edges, *settings.edge_min_length_prefilter);
 
         let edges_prefiltered = HashMap::from([
@@ -2160,153 +2370,302 @@ mod tests {
         assert_eq!(edges[0].x2, of(15.0)); // Only the long horizontal edge remains
     }
 
-    #[test]
-    fn test_filter_white_edges() {
-        use crate::edges::Edge;
-        use pdfium_render::prelude::PdfColor;
+    /// Helper: build a wide qualifying rect for tests.
+    fn make_rect(x0: f32, y0: f32, x1: f32, y1: f32, r: u8, g: u8, b: u8) -> crate::objects::Rect {
+        use pdfium_render::prelude::{PdfColor, PdfPathFillMode};
+        crate::objects::Rect {
+            bbox: (of(x0), of(y0), of(x1), of(y1)),
+            fill_color: PdfColor::new(r, g, b, 255),
+            stroke_color: PdfColor::new(0, 0, 0, 255),
+            stroke_width: 0.0,
+            is_stroked: false,
+            fill_mode: PdfPathFillMode::Winding,
+        }
+    }
 
-        let mut edges = vec![
-            Edge {
-                orientation: Orientation::Horizontal,
-                x1: of(0.0),
-                y1: of(0.0),
-                x2: of(10.0),
-                y2: of(0.0),
-                width: of(1.0),
-                color: PdfColor::new(255, 255, 255, 255), // White edge - should be filtered
-            },
-            Edge {
-                orientation: Orientation::Horizontal,
-                x1: of(0.0),
-                y1: of(10.0),
-                x2: of(10.0),
-                y2: of(10.0),
-                width: of(1.0),
-                color: PdfColor::new(0, 0, 0, 255), // Black edge - should be kept
-            },
-            Edge {
-                orientation: Orientation::Vertical,
-                x1: of(0.0),
-                y1: of(0.0),
-                x2: of(0.0),
-                y2: of(10.0),
-                width: of(1.0),
-                color: PdfColor::new(255, 255, 255, 128), // White edge with different alpha - should be filtered
-            },
-            Edge {
-                orientation: Orientation::Vertical,
-                x1: of(10.0),
-                y1: of(0.0),
-                x2: of(10.0),
-                y2: of(10.0),
-                width: of(1.0),
-                color: PdfColor::new(255, 0, 0, 255), // Red edge - should be kept
-            },
-            Edge {
-                orientation: Orientation::Vertical,
-                x1: of(20.0),
-                y1: of(0.0),
-                x2: of(20.0),
-                y2: of(10.0),
-                width: of(1.0),
-                color: PdfColor::new(254, 255, 255, 255), // Almost white but not exactly - should be kept
-            },
+    #[test]
+    fn test_invisible_edge_both_sides_same_color_excluded() {
+        // H-edge (white) between two white rects → invisible → excluded
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![
+            make_rect(0.0, 0.0, 100.0, 10.0, 255, 255, 255), // above, white
+            make_rect(0.0, 10.0, 100.0, 20.0, 255, 255, 255), // below, white
         ];
-
-        filter_white_edges(&mut edges);
-        assert_eq!(edges.len(), 3); // Only non-white edges should remain
-
-        // Check that white edges are removed
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(0.0),
+            y1: of(10.0),
+            x2: of(100.0),
+            y2: of(10.0),
+            width: of(1.0),
+            color: PdfColor::new(255, 255, 255, 255),
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
         assert!(
-            !edges.iter().any(|e| {
-                e.color.red() == 255 && e.color.green() == 255 && e.color.blue() == 255
-            })
-        );
-
-        // Check that non-white edges are kept
-        assert!(
-            edges
-                .iter()
-                .any(|e| e.color.red() == 0 && e.color.green() == 0 && e.color.blue() == 0)
-        );
-        assert!(
-            edges
-                .iter()
-                .any(|e| e.color.red() == 255 && e.color.green() == 0 && e.color.blue() == 0)
-        );
-        assert!(
-            edges
-                .iter()
-                .any(|e| e.color.red() == 254 && e.color.green() == 255 && e.color.blue() == 255)
+            edges.is_empty(),
+            "white edge between two white rects should be excluded"
         );
     }
 
     #[test]
-    fn test_filter_white_edges_empty() {
-        let mut edges: Vec<Edge> = vec![];
-        filter_white_edges(&mut edges);
-        assert_eq!(edges.len(), 0);
-    }
-
-    #[test]
-    fn test_filter_white_edges_all_white() {
-        use crate::edges::Edge;
+    fn test_visible_edge_sides_differ_kept() {
+        // H-edge (white) between a blue rect and a green rect → visible → kept
         use pdfium_render::prelude::PdfColor;
+        let rects = vec![
+            make_rect(0.0, 0.0, 100.0, 10.0, 47, 84, 150), // above, blue
+            make_rect(0.0, 10.0, 100.0, 20.0, 226, 239, 217), // below, green
+        ];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(0.0),
+            y1: of(10.0),
+            x2: of(100.0),
+            y2: of(10.0),
+            width: of(1.0),
+            color: PdfColor::new(255, 255, 255, 255),
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert_eq!(
+            edges.len(),
+            1,
+            "white edge between blue and green rects should be kept"
+        );
+    }
 
+    #[test]
+    fn test_edge_one_side_white_on_white_excluded() {
+        // White H-edge with only one adjacent white rect (other side = default page white).
+        // The edge is invisible from both sides → excluded.
+        // E.g. a white line at the top of a white-background row section.
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![make_rect(0.0, 10.0, 100.0, 30.0, 255, 255, 255)];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(0.0),
+            y1: of(10.0),
+            x2: of(100.0),
+            y2: of(10.0),
+            width: of(1.0),
+            color: PdfColor::new(255, 255, 255, 255),
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert!(
+            edges.is_empty(),
+            "white edge adjacent to white rect (other side = page white) should be excluded"
+        );
+    }
+
+    #[test]
+    fn test_edge_one_side_white_border_on_colored_rect_kept() {
+        // White H-edge with only one adjacent blue rect → kept.
+        // The edge is visible against the blue background; from the other side the page
+        // is white and the edge is also white, but from the blue side it is visible.
+        // (Visible against at least one "effective" side ← blue ≠ white.)
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![make_rect(0.0, 10.0, 100.0, 30.0, 47, 84, 150)];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(0.0),
+            y1: of(10.0),
+            x2: of(100.0),
+            y2: of(10.0),
+            width: of(1.0),
+            color: PdfColor::new(255, 255, 255, 255), // white ≠ blue adjacent
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert_eq!(
+            edges.len(),
+            1,
+            "white edge adjacent to a colored rect should be kept (visible from rect side)"
+        );
+    }
+
+    #[test]
+    fn test_edge_one_side_non_white_on_same_color_rect_kept() {
+        // Dark-red H-edge with only one adjacent dark-red rect (other side = page white).
+        // The edge is invisible from the rect side but visible from the white-page side
+        // (dark-red ≠ white) → kept.
+        // E.g. the bottom border of the last dark-red row in a table.
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![make_rect(0.0, 0.0, 100.0, 10.0, 144, 12, 63)]; // dark-red above
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(0.0),
+            y1: of(10.0),
+            x2: of(100.0),
+            y2: of(10.0),
+            width: of(1.0),
+            color: PdfColor::new(144, 12, 63, 255), // dark-red = same as adjacent rect
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert_eq!(
+            edges.len(),
+            1,
+            "non-white edge adjacent to same-color rect should be kept \
+             (visible from default-white page side)"
+        );
+    }
+
+    #[test]
+    fn test_edge_inside_same_color_rect_excluded() {
+        // H-edge (blue) with no adjacent rects but is contained inside a blue rect → excluded
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![
+            make_rect(0.0, 0.0, 100.0, 50.0, 47, 84, 150), // large blue rect containing the edge
+        ];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(10.0),
+            y1: of(25.0), // y=25 is inside the rect [0..50]
+            x2: of(90.0),
+            y2: of(25.0),
+            width: of(0.5),
+            color: PdfColor::new(47, 84, 150, 255), // same blue
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert!(
+            edges.is_empty(),
+            "blue edge inside a blue rect should be excluded"
+        );
+    }
+
+    #[test]
+    fn test_edge_inside_different_color_rect_kept() {
+        // H-edge (white) contained in a green rect → visible inside it → kept
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![make_rect(0.0, 0.0, 100.0, 50.0, 226, 239, 217)];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(10.0),
+            y1: of(25.0),
+            x2: of(90.0),
+            y2: of(25.0),
+            width: of(1.0),
+            color: PdfColor::new(255, 255, 255, 255), // white ≠ green
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert_eq!(
+            edges.len(),
+            1,
+            "white edge inside a green rect should be kept"
+        );
+    }
+
+    #[test]
+    fn test_no_context_white_edge_excluded() {
+        // No rects at all, white edge → excluded (invisible on default white page)
+        use pdfium_render::prelude::PdfColor;
+        let rects: Vec<crate::objects::Rect> = vec![];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(0.0),
+            y1: of(10.0),
+            x2: of(100.0),
+            y2: of(10.0),
+            width: of(1.0),
+            color: PdfColor::new(255, 255, 255, 255),
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert!(
+            edges.is_empty(),
+            "white edge with no context should be excluded"
+        );
+    }
+
+    #[test]
+    fn test_no_context_non_white_edge_kept() {
+        // No rects at all, black edge → kept
+        use pdfium_render::prelude::PdfColor;
+        let rects: Vec<crate::objects::Rect> = vec![];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Horizontal,
+            x1: of(0.0),
+            y1: of(10.0),
+            x2: of(100.0),
+            y2: of(10.0),
+            width: of(1.0),
+            color: PdfColor::new(0, 0, 0, 255),
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert_eq!(
+            edges.len(),
+            1,
+            "non-white edge with no context should be kept"
+        );
+    }
+
+    #[test]
+    fn test_vertical_edge_between_same_color_rects_excluded() {
+        // V-edge (red) with red rects on both left and right → excluded
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![
+            make_rect(0.0, 0.0, 10.0, 50.0, 200, 50, 50), // left, red
+            make_rect(10.0, 0.0, 20.0, 50.0, 200, 50, 50), // right, red
+        ];
+        let mut edges = vec![Edge {
+            orientation: Orientation::Vertical,
+            x1: of(10.0),
+            y1: of(0.0),
+            x2: of(10.0),
+            y2: of(50.0),
+            width: of(1.0),
+            color: PdfColor::new(200, 50, 50, 255),
+        }];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert!(
+            edges.is_empty(),
+            "red V-edge between two red rects should be excluded"
+        );
+    }
+
+    #[test]
+    fn test_mixed_table_both_white_and_colored_bg() {
+        // Simulates a page with two tables:
+        //   - Table A: white cells, dark borders → dark H-edge between two white rects → kept
+        //   - Table B: blue cells, white borders → white H-edge between two blue rects → kept
+        use pdfium_render::prelude::PdfColor;
+        let rects = vec![
+            make_rect(0.0, 0.0, 50.0, 20.0, 255, 255, 255), // Table A, white cell above
+            make_rect(0.0, 20.0, 50.0, 40.0, 255, 255, 255), // Table A, white cell below
+            make_rect(60.0, 0.0, 110.0, 20.0, 47, 84, 150), // Table B, blue cell above
+            make_rect(60.0, 20.0, 110.0, 40.0, 47, 84, 150), // Table B, blue cell below
+        ];
         let mut edges = vec![
             Edge {
+                // Table A: dark border between two white cells → kept (dark ≠ white)
                 orientation: Orientation::Horizontal,
                 x1: of(0.0),
-                y1: of(0.0),
-                x2: of(10.0),
-                y2: of(0.0),
+                y1: of(20.0),
+                x2: of(50.0),
+                y2: of(20.0),
+                width: of(1.0),
+                color: PdfColor::new(50, 50, 50, 255),
+            },
+            Edge {
+                // Table B: white border between two blue cells → kept (white ≠ blue)
+                orientation: Orientation::Horizontal,
+                x1: of(60.0),
+                y1: of(20.0),
+                x2: of(110.0),
+                y2: of(20.0),
                 width: of(1.0),
                 color: PdfColor::new(255, 255, 255, 255),
             },
-            Edge {
-                orientation: Orientation::Vertical,
-                x1: of(0.0),
-                y1: of(0.0),
-                x2: of(0.0),
-                y2: of(10.0),
-                width: of(1.0),
-                color: PdfColor::new(255, 255, 255, 128),
-            },
         ];
-
-        filter_white_edges(&mut edges);
-        assert_eq!(edges.len(), 0);
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert_eq!(
+            edges.len(),
+            2,
+            "both table borders should be kept in mixed-background page"
+        );
     }
 
     #[test]
-    fn test_filter_white_edges_no_white() {
-        use crate::edges::Edge;
-        use pdfium_render::prelude::PdfColor;
-
-        let mut edges = vec![
-            Edge {
-                orientation: Orientation::Horizontal,
-                x1: of(0.0),
-                y1: of(0.0),
-                x2: of(10.0),
-                y2: of(0.0),
-                width: of(1.0),
-                color: PdfColor::new(0, 0, 0, 255),
-            },
-            Edge {
-                orientation: Orientation::Vertical,
-                x1: of(0.0),
-                y1: of(0.0),
-                x2: of(0.0),
-                y2: of(10.0),
-                width: of(1.0),
-                color: PdfColor::new(128, 128, 128, 255),
-            },
-        ];
-
-        let original_len = edges.len();
-        filter_white_edges(&mut edges);
-        assert_eq!(edges.len(), original_len);
+    fn test_filter_invisible_edges_empty_input() {
+        let rects: Vec<crate::objects::Rect> = vec![];
+        let mut edges: Vec<Edge> = vec![];
+        filter_edges_invisible_against_background(&mut edges, &rects, 3.0, 3.0);
+        assert_eq!(edges.len(), 0);
     }
 
     #[test]
