@@ -9,15 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Add `exclude_background_colored_edges` parameter to `TfSettings` (default: `True`) to replace `exclude_white_edges` (#20). Uses a spatial visibility algorithm: for each edge, the fill colors of the rectangles directly adjacent on both sides (within `snap_tolerance`) are inspected. An edge is excluded only when it is indistinguishable from its surroundings on all effective sides (missing sides default to the standard white PDF page background). This correctly handles pages with mixed-background tables and non-white backgrounds.
+- Add `exclude_background_colored_edges` parameter to `TfSettings` (default: `True`) to replace `exclude_white_edges` (#20). Uses a spatial visibility algorithm: for each edge, the fill colors of the rectangles directly adjacent on both sides (within `snap_tolerance`) are inspected. An edge is excluded only when it is indistinguishable from its surroundings on all effective sides (missing sides default to the standard white PDF page background). This correctly handles pages with mixed-background tables and non-white backgrounds. (See tests/data/diff-bg-color-and-line-color.pdf) (#22)
 
 ### Fixed
 
-- **Cell text spacing:** A space is now inserted between two words in a table cell only when the gap between their bounding boxes (in reading direction) exceeds the word-extraction tolerance (`x_tolerance` for horizontal text, `y_tolerance` for vertical). This preserves visible gaps in languages like English (e.g. "Table 1" and "Abcd") while avoiding unwanted spaces in languages that do not use spaces between words (e.g. Chinese).
+- **Cell text spacing:** A space is now inserted between two words in a table cell only when the gap between their bounding boxes (in reading direction) exceeds the word-extraction tolerance (`x_tolerance` for horizontal text, `y_tolerance` for vertical). This preserves visible gaps in languages like English (e.g. "Table 1" and "Abcd") while avoiding unwanted spaces in languages that do not use spaces between words (e.g. Chinese). (#23)
 
 ### Changed
 
-- **Breaking:** `exclude_white_edges` has been removed and replaced by `exclude_background_colored_edges`. The new parameter is `True` by default and subsumes the old behavior on white-background pages. Rename any existing `exclude_white_edges=False` to `exclude_background_colored_edges=False`.
+- **Breaking:** `exclude_white_edges` has been removed and replaced by `exclude_background_colored_edges`. The new parameter is `True` by default and subsumes the old behavior on white-background pages. Rename any existing `exclude_white_edges=False` to `exclude_background_colored_edges=False`. (#22)
 
 ## [0.5.0] - 2026-02-25 [YANKED]
 
