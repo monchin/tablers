@@ -282,9 +282,6 @@ pub struct Table {
     /// Whether text has been extracted for cells.
     #[pyo3(get)]
     pub text_extracted: bool,
-    /// All unique intersection points that form the corners of the table's cells,
-    /// sorted by (x, y).  Each element is `(x, y)` in PDF coordinate space.
-    pub intersections: Vec<(f32, f32)>,
 }
 #[pymethods]
 impl Table {
@@ -303,13 +300,6 @@ impl Table {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
-    }
-
-    /// Returns all unique intersection points that form the corners of the table's
-    /// cells, sorted by (x, y).
-    #[getter]
-    fn intersections(&self) -> Vec<(f32, f32)> {
-        self.intersections.clone()
     }
 
     /// Get rows
@@ -473,27 +463,11 @@ impl Table {
                 bbox: *bbox,
             })
             .collect();
-        let intersections = {
-            let mut corners: HashSet<(OrderedFloat<f32>, OrderedFloat<f32>)> = HashSet::new();
-            for &(x1, y1, x2, y2) in cells_bbox {
-                corners.insert((x1, y1));
-                corners.insert((x1, y2));
-                corners.insert((x2, y1));
-                corners.insert((x2, y2));
-            }
-            let mut pts: Vec<(f32, f32)> = corners
-                .into_iter()
-                .map(|(x, y)| (x.into_inner(), y.into_inner()))
-                .collect();
-            pts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-            pts
-        };
         let mut slf = Self {
             cells,
             bbox,
             page_index: page_idx,
             text_extracted: false,
-            intersections,
         };
         if extract_text {
             match chars {

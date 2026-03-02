@@ -574,8 +574,6 @@ class Table:
     columns: list[CellGroup]
     page_index: int
     text_extracted: bool
-    intersections: list[tuple[float, float]]
-    """All unique corner points of the table's cells, sorted by (x, y)."""
 
     def to_list(self) -> list[list[TableCellValue]]:
         """
