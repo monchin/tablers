@@ -51,6 +51,7 @@ settings = TfSettings(
 | `min_words_vertical` | `int` | `3` | Minimum words required for vertical text-based edge detection |
 | `min_words_horizontal` | `int` | `1` | Minimum words required for horizontal text-based edge detection |
 | `exclude_background_colored_edges` | `bool` | `True` | Whether to exclude edges invisible against their immediate background (see below) |
+| `close_unclosed_boundaries` | `bool` | `True` | Whether to automatically detect and close tables whose outer edges are missing (see below) |
 
 **Background-colored edge filtering** (`exclude_background_colored_edges`):
 
@@ -60,6 +61,12 @@ Each edge is evaluated by examining the fill colors of the rectangles directly a
 - **One side has an adjacent rect** – the missing side is treated as the default white PDF background. Excluded only when the edge is white *and* the adjacent rect is also white; any non-white edge is kept (visible from the page side).
 - **No adjacent rects, but a containing rect** – excluded if the containing rect's color matches the edge (artifact embedded in a same-colored fill).
 - **No adjacent rects and no containing rect** – excluded only if the edge is white (invisible on the default white page background).
+
+**Unclosed boundary detection** (`close_unclosed_boundaries`):
+
+After initial cell detection, each detected table is inspected per-side (left, right, top, bottom). For a given side, the algorithm checks whether *every* outermost intersection point has a corresponding edge that continues past the table boundary by more than `intersection_x_tolerance` (for left/right sides) or `intersection_y_tolerance` (for top/bottom sides). When this condition holds for all points on a side, a virtual closing edge is synthesised at the outermost extension endpoint and the missing boundary cells are appended to the result.
+
+The check is **skipped entirely** when either strategy is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
 
 ### Explicit Edges
 
@@ -141,6 +148,7 @@ settings = TfSettings(
     min_words_vertical=3,
     min_words_horizontal=1,
     exclude_background_colored_edges=True,
+    close_unclosed_boundaries=True,
 
     # Table filtering
     include_single_cell=False,
