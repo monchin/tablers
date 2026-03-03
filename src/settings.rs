@@ -418,11 +418,15 @@ impl TfSettings {
                         settings.close_unclosed_boundaries = value.extract::<bool>().unwrap()
                     }
                     "exclude_white_edges" => {
-                        eprintln!(
-                            "DeprecationWarning: `exclude_white_edges` has been removed \
-                             and has no effect. Rename it to \
-                             `exclude_background_colored_edges`."
-                        );
+                        let py = value.py();
+                        let category = py.get_type::<pyo3::exceptions::PyDeprecationWarning>();
+                        PyErr::warn(
+                            py,
+                            &category,
+                            c"`exclude_white_edges` has been removed and has no effect. \
+                              Rename it to `exclude_background_colored_edges`.",
+                            1,
+                        )?;
                     }
                     _ => (), // Ignore unknown settings
                 }
