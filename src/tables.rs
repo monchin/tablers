@@ -4,6 +4,7 @@ use crate::pages::Page;
 use crate::settings::*;
 use crate::words::*;
 use ordered_float::OrderedFloat;
+use pdfium_render::prelude::PdfColor;
 use pyo3::prelude::*;
 use std::cmp;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -1977,6 +1978,190 @@ impl TableFinder {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Outer-frame synthesis
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Minimal Union-Find structure (path-halving + union-by-rank).
+struct UnionFind {
+    parent: Vec<usize>,
+    rank: Vec<u8>,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        Self {
+            parent: (0..n).collect(),
+            rank: vec![0; n],
+        }
+    }
+
+    fn find(&mut self, mut x: usize) -> usize {
+        while self.parent[x] != x {
+            self.parent[x] = self.parent[self.parent[x]];
+            x = self.parent[x];
+        }
+        x
+    }
+
+    fn union(&mut self, a: usize, b: usize) {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra != rb {
+            match self.rank[ra].cmp(&self.rank[rb]) {
+                std::cmp::Ordering::Less => self.parent[ra] = rb,
+                std::cmp::Ordering::Greater => self.parent[rb] = ra,
+                std::cmp::Ordering::Equal => {
+                    self.parent[ra] = rb;
+                    self.rank[rb] += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Synthesises virtual outer-boundary edges to close open table frames.
+///
+/// For each connected component of (h-edge, v-edge) pairs that share an
+/// intersection, this function examines whether the participating edges extend
+/// beyond the range of known intersection points.  When they do, virtual
+/// boundary edges are created so that the standard `edges_to_intersections` +
+/// `intersections_to_cells` pipeline can detect the full set of cells.
+///
+/// **What counts as an intersection:** a v-edge and an h-edge intersect when
+/// the v-edge's x lies within the h-edge's x span (±`x_tol`) **and** the
+/// h-edge's y lies within the v-edge's y span (±`y_tol`).  This captures
+/// both exact crossings and T-intersections (edge endpoint touching another
+/// edge).
+///
+/// **Outer-frame rule:** for each component
+/// * `x_h_min`/`x_h_max` – the x span of the h-edges in the component.
+/// * `x_int_min`/`x_int_max` – the x span of the v-edges (intersection xs).
+/// * `y_v_min`/`y_v_max` – the y span of the v-edges in the component.
+/// * `y_int_min`/`y_int_max` – the y span of the h-edges (intersection ys).
+///
+/// If `x_h_min < x_int_min - x_tol`, the h-edges extend further left than
+/// any known v-edge; a virtual v-edge is created at `x_h_min` to close the
+/// left boundary.  The other three directions are handled symmetrically.
+///
+/// Virtual h-edges span the full `[x_h_min, x_h_max]` range at the target y,
+/// and virtual v-edges span `[y_v_min, y_v_max]` at the target x.  Passing
+/// these virtual edges through `edges_to_intersections` then adds the missing
+/// corner points that allow `intersections_to_cells` to detect cells it would
+/// otherwise miss.
+///
+/// **Complexity:** O(V × H) for the intersection scan, where V and H are the
+/// number of vertical and horizontal edges respectively.  This is acceptable
+/// for typical PDF pages but could be improved with spatial indexing if
+/// profiling shows it as a bottleneck on edge-dense documents.
+///
+/// Virtual edges use `width=0` and `alpha=0` colour to distinguish them from
+/// real PDF edges; downstream consumers that filter by colour or width should
+/// be aware of this convention.
+fn compute_outer_frame_edges(
+    h_edges: &[Edge],
+    v_edges: &[Edge],
+    x_tol: OrderedFloat<f32>,
+    y_tol: OrderedFloat<f32>,
+) -> Vec<Edge> {
+    let n_h = h_edges.len();
+    let n_v = v_edges.len();
+    // Nodes 0..n_v → v-edges, nodes n_v..n_v+n_h → h-edges.
+    let mut uf = UnionFind::new(n_v + n_h);
+    let mut v_active = vec![false; n_v];
+    let mut h_active = vec![false; n_h];
+
+    for (vi, v) in v_edges.iter().enumerate() {
+        for (hi, h) in h_edges.iter().enumerate() {
+            if v.y1 <= h.y1 + y_tol
+                && v.y2 >= h.y1 - y_tol
+                && v.x1 >= h.x1 - x_tol
+                && v.x1 <= h.x2 + x_tol
+            {
+                uf.union(vi, n_v + hi);
+                v_active[vi] = true;
+                h_active[hi] = true;
+            }
+        }
+    }
+
+    // Group active edges by their connected-component root.
+    let mut comps: HashMap<usize, (Vec<usize>, Vec<usize>)> = HashMap::new();
+    for (vi, is_i_active) in v_active.iter().enumerate() {
+        if *is_i_active {
+            comps.entry(uf.find(vi)).or_default().0.push(vi);
+        }
+    }
+    for (hi, is_h_active) in h_active.iter().enumerate() {
+        if *is_h_active {
+            comps.entry(uf.find(n_v + hi)).or_default().1.push(hi);
+        }
+    }
+
+    let mut virtual_edges: Vec<Edge> = Vec::new();
+
+    for (v_idxs, h_idxs) in comps.values() {
+        if v_idxs.is_empty() || h_idxs.is_empty() {
+            continue;
+        }
+
+        // Intersection-point extent (v-edge xs, h-edge ys).
+        let x_int_min = v_idxs.iter().map(|&i| v_edges[i].x1).min().unwrap();
+        let x_int_max = v_idxs.iter().map(|&i| v_edges[i].x1).max().unwrap();
+        let y_int_min = h_idxs.iter().map(|&i| h_edges[i].y1).min().unwrap();
+        let y_int_max = h_idxs.iter().map(|&i| h_edges[i].y1).max().unwrap();
+
+        // Edge-span extent.
+        let x_h_min = h_idxs.iter().map(|&i| h_edges[i].x1).min().unwrap();
+        let x_h_max = h_idxs.iter().map(|&i| h_edges[i].x2).max().unwrap();
+        let y_v_min = v_idxs.iter().map(|&i| v_edges[i].y1).min().unwrap();
+        let y_v_max = v_idxs.iter().map(|&i| v_edges[i].y2).max().unwrap();
+
+        if x_h_min < x_int_min - x_tol {
+            virtual_edges.push(virtual_v_edge(x_h_min, y_v_min, y_v_max));
+        }
+        if x_h_max > x_int_max + x_tol {
+            virtual_edges.push(virtual_v_edge(x_h_max, y_v_min, y_v_max));
+        }
+        if y_v_min < y_int_min - y_tol {
+            virtual_edges.push(virtual_h_edge(x_h_min, y_v_min, x_h_max));
+        }
+        if y_v_max > y_int_max + y_tol {
+            virtual_edges.push(virtual_h_edge(x_h_min, y_v_max, x_h_max));
+        }
+    }
+
+    virtual_edges
+}
+
+/// Synthesised horizontal edge (width=0, transparent) for outer-frame closure.
+fn virtual_h_edge(x1: OrderedFloat<f32>, y: OrderedFloat<f32>, x2: OrderedFloat<f32>) -> Edge {
+    Edge {
+        orientation: Orientation::Horizontal,
+        x1,
+        y1: y,
+        x2,
+        y2: y,
+        width: OrderedFloat(0.0),
+        color: PdfColor::new(0, 0, 0, 0),
+    }
+}
+
+/// Synthesised vertical edge (width=0, transparent) for outer-frame closure.
+fn virtual_v_edge(x: OrderedFloat<f32>, y1: OrderedFloat<f32>, y2: OrderedFloat<f32>) -> Edge {
+    Edge {
+        orientation: Orientation::Vertical,
+        x1: x,
+        y1,
+        x2: x,
+        y2,
+        width: OrderedFloat(0.0),
+        color: PdfColor::new(0, 0, 0, 0),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Finds all table cell bounding boxes in a PDF page or from explicit edges.
 ///
 /// # Arguments
@@ -2028,6 +2213,32 @@ pub fn find_all_cells_bboxes(
             Orientation::Vertical,
             tf_settings.intersection_y_tolerance.into(),
         );
+    }
+
+    // When close_unclosed_boundaries is enabled, synthesise virtual outer-
+    // boundary edges for each connected component of (h-edge, v-edge)
+    // intersections, then re-run the full intersection → cells pipeline on the
+    // enhanced edge set.  This handles tables whose outer boundary is implied
+    // by edge extents rather than by explicit crossing edges (e.g. a table
+    // whose left/right walls are the endpoints of horizontal lines, or whose
+    // top/bottom walls are the shared endpoints of vertical lines).
+    if tf_settings.close_unclosed_boundaries
+        && h_strat != StrategyType::Text
+        && v_strat != StrategyType::Text
+    {
+        let x_tol = *tf_settings.intersection_x_tolerance;
+        let y_tol = *tf_settings.intersection_y_tolerance;
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        let virtual_edges = compute_outer_frame_edges(h_edges, v_edges, x_tol, y_tol);
+        if !virtual_edges.is_empty() {
+            for e in virtual_edges {
+                edges.entry(e.orientation).or_default().push(e);
+            }
+            let intersections = edges_to_intersections(&mut edges, x_tol, y_tol);
+            return intersections_to_cells(intersections);
+        }
     }
 
     let intersections = edges_to_intersections(
@@ -4450,5 +4661,140 @@ mod tests {
         // The intersection point must be (v.x1, h.y1) = (70, 30)
         let point = (of(70.0), of(30.0));
         assert!(intersections.contains_key(&point));
+    }
+
+    // ── UnionFind ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_union_find_singletons() {
+        let mut uf = UnionFind::new(5);
+        for i in 0..5 {
+            assert_eq!(uf.find(i), i);
+        }
+    }
+
+    #[test]
+    fn test_union_find_basic_merge() {
+        let mut uf = UnionFind::new(4);
+        uf.union(0, 1);
+        assert_eq!(uf.find(0), uf.find(1));
+        assert_ne!(uf.find(0), uf.find(2));
+    }
+
+    #[test]
+    fn test_union_find_transitive() {
+        let mut uf = UnionFind::new(4);
+        uf.union(0, 1);
+        uf.union(1, 2);
+        assert_eq!(uf.find(0), uf.find(2));
+        assert_ne!(uf.find(0), uf.find(3));
+    }
+
+    #[test]
+    fn test_union_find_all_merged() {
+        let mut uf = UnionFind::new(5);
+        for i in 0..4 {
+            uf.union(i, i + 1);
+        }
+        let root = uf.find(0);
+        for i in 1..5 {
+            assert_eq!(uf.find(i), root);
+        }
+    }
+
+    // ── compute_outer_frame_edges ────────────────────────────────────────────
+
+    #[test]
+    fn test_outer_frame_no_intersection_returns_empty() {
+        let h = vec![make_h_edge(0.0, 10.0, 40.0)];
+        let v = vec![make_v_edge(60.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_outer_frame_closed_grid_returns_empty() {
+        // 2×2 grid where all intersections coincide with edge endpoints →
+        // h-edge span equals v-edge extent and vice versa → no virtual edges.
+        let h = vec![
+            make_h_edge(0.0, 0.0, 100.0),
+            make_h_edge(0.0, 50.0, 100.0),
+            make_h_edge(0.0, 100.0, 100.0),
+        ];
+        let v = vec![
+            make_v_edge(0.0, 0.0, 100.0),
+            make_v_edge(50.0, 0.0, 100.0),
+            make_v_edge(100.0, 0.0, 100.0),
+        ];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_outer_frame_left_extension() {
+        // h-edges extend left beyond the single v-edge → virtual v-edge on left.
+        let h = vec![make_h_edge(0.0, 0.0, 50.0), make_h_edge(0.0, 50.0, 50.0)];
+        let v = vec![make_v_edge(50.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let v_edges: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Vertical)
+            .collect();
+        assert_eq!(v_edges.len(), 1);
+        assert_eq!(v_edges[0].x1, of(0.0));
+    }
+
+    #[test]
+    fn test_outer_frame_right_extension() {
+        // h-edges extend right beyond the single v-edge → virtual v-edge on right.
+        let h = vec![
+            make_h_edge(50.0, 0.0, 100.0),
+            make_h_edge(50.0, 50.0, 100.0),
+        ];
+        let v = vec![make_v_edge(50.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let v_edges: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Vertical)
+            .collect();
+        assert_eq!(v_edges.len(), 1);
+        assert_eq!(v_edges[0].x1, of(100.0));
+    }
+
+    #[test]
+    fn test_outer_frame_top_and_bottom_extension() {
+        // v-edges extend above and below the single h-edge → two virtual h-edges.
+        let h = vec![make_h_edge(0.0, 50.0, 100.0)];
+        let v = vec![make_v_edge(0.0, 0.0, 100.0), make_v_edge(100.0, 0.0, 100.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let h_edges: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Horizontal)
+            .collect();
+        assert_eq!(h_edges.len(), 2);
+        let ys: Vec<OrderedFloat<f32>> = h_edges.iter().map(|e| e.y1).collect();
+        assert!(ys.contains(&of(0.0)));
+        assert!(ys.contains(&of(100.0)));
+    }
+
+    #[test]
+    fn test_outer_frame_two_components_independent() {
+        // Two disjoint clusters: each generates its own virtual edges.
+        let h = vec![
+            make_h_edge(0.0, 0.0, 50.0),
+            make_h_edge(0.0, 50.0, 50.0),
+            make_h_edge(200.0, 0.0, 250.0),
+            make_h_edge(200.0, 50.0, 250.0),
+        ];
+        let v = vec![make_v_edge(50.0, 0.0, 50.0), make_v_edge(250.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let v_virtual: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Vertical)
+            .collect();
+        assert_eq!(v_virtual.len(), 2);
+        let xs: Vec<OrderedFloat<f32>> = v_virtual.iter().map(|e| e.x1).collect();
+        assert!(xs.contains(&of(0.0)));
+        assert!(xs.contains(&of(200.0)));
     }
 }

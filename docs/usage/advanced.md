@@ -403,6 +403,29 @@ settings = TfSettings(
 
 This works correctly for PDFs with mixed-background tables: a white edge between two differently-colored cells is kept (visible from one side), while a white artifact edge inside a white-background area is removed.
 
+### Handling Tables with Missing Outer Edges
+
+Some PDFs omit one or more outer borders of a table while still drawing internal dividers that extend beyond the table boundary. By default, Tablers automatically closes such tables using `close_unclosed_boundaries`:
+
+```python
+# Default behavior: missing outer edges are closed automatically
+settings = TfSettings(
+    close_unclosed_boundaries=True,  # Default
+)
+
+# To disable and keep only cells from existing edges
+settings = TfSettings(
+    close_unclosed_boundaries=False,
+)
+```
+
+The algorithm runs as a pre-processing step on the raw collected edges, before intersection detection or cell detection. All h-edges and v-edges that mutually intersect (within `intersection_x_tolerance` / `intersection_y_tolerance`) are grouped into connected components. For each component:
+
+- If the x-span of the h-edges extends further left or right than the x-positions of any v-edge in that component, a virtual v-edge is synthesised at the extension endpoint.
+- If the y-span of the v-edges extends further up or down than the y-positions of any h-edge in that component, a virtual h-edge is synthesised at the extension endpoint.
+
+Once all virtual edges are synthesised, the full intersection-detection and cell-detection pipeline is re-run with the enhanced edge set. The feature is **skipped entirely** when either `vertical_strategy` or `horizontal_strategy` is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
+
 ## Error Handling
 
 ```python

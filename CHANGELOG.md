@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Add `close_unclosed_boundaries` parameter to `TfSettings` (default: `True`). When enabled, a pre-processing pass groups all mutually-intersecting h-edges and v-edges into connected components. For each component, if the h-edges' x-span extends beyond the x-positions of the v-edges in that component (or vice versa for the y direction), a virtual closing edge is synthesised at the extension endpoint. The full intersection-detection and cell-detection pipeline is then re-run with the enhanced edge set. `intersection_x_tolerance` / `intersection_y_tolerance` are used as thresholds. The feature is skipped entirely when either strategy is `"text"` to avoid false positives from text-derived edges. This fixes some known bugs in other table extraction libraries ([pdfplumber#631](https://github.com/jsvine/pdfplumber/discussions/631), [pdfplumber#1296](https://github.com/jsvine/pdfplumber/issues/1296)).
+
 ## [0.6.0] - 2026-03-01
 
 ### Added

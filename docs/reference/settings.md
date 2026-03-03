@@ -51,6 +51,7 @@ settings = TfSettings(
 | `min_words_vertical` | `int` | `3` | Minimum words required for vertical text-based edge detection |
 | `min_words_horizontal` | `int` | `1` | Minimum words required for horizontal text-based edge detection |
 | `exclude_background_colored_edges` | `bool` | `True` | Whether to exclude edges invisible against their immediate background (see below) |
+| `close_unclosed_boundaries` | `bool` | `True` | Whether to automatically detect and close tables whose outer edges are missing (see below) |
 
 **Background-colored edge filtering** (`exclude_background_colored_edges`):
 
@@ -60,6 +61,17 @@ Each edge is evaluated by examining the fill colors of the rectangles directly a
 - **One side has an adjacent rect** – the missing side is treated as the default white PDF background. Excluded only when the edge is white *and* the adjacent rect is also white; any non-white edge is kept (visible from the page side).
 - **No adjacent rects, but a containing rect** – excluded if the containing rect's color matches the edge (artifact embedded in a same-colored fill).
 - **No adjacent rects and no containing rect** – excluded only if the edge is white (invisible on the default white page background).
+
+**Unclosed boundary detection** (`close_unclosed_boundaries`):
+
+After the raw edges are collected, all h-edges and v-edges that mutually intersect (within the configured tolerances) are grouped into connected components. For each component:
+
+- If the x-span of the h-edges extends further left or right than the x-positions of any v-edge in that component, a virtual v-edge is synthesised at the extension endpoint to close the left or right boundary.
+- If the y-span of the v-edges extends further up or down than the y-positions of any h-edge in that component, a virtual h-edge is synthesised at the extension endpoint to close the top or bottom boundary.
+
+Once all virtual edges are synthesised, the full intersection-detection and cell-detection pipeline is re-run with the enhanced edge set.
+
+`intersection_x_tolerance` and `intersection_y_tolerance` are used as thresholds when deciding whether an edge truly extends beyond the span. The feature is **skipped entirely** when either strategy is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
 
 ### Explicit Edges
 
@@ -141,6 +153,7 @@ settings = TfSettings(
     min_words_vertical=3,
     min_words_horizontal=1,
     exclude_background_colored_edges=True,
+    close_unclosed_boundaries=True,
 
     # Table filtering
     include_single_cell=False,

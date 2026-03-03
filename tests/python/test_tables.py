@@ -996,3 +996,157 @@ class TestDiffBgColorAndLineColorPdf:
         tables = find_tables(page, extract_text=False)
         assert len(tables) == 1, f"Expected 1 table with default settings, got {len(tables)}"
         assert len(tables[0].cells) == 12, f"Expected 12 cells, got {len(tables[0].cells)}"
+
+
+class TestOuterUnclosedTablePdf:
+    """Tests for pdfplumber#1296-table-outer-unclosed.pdf.
+
+    The PDF contains a table whose left and right outer vertical edges are missing.
+    Without close_unclosed_boundaries, the two outermost columns are not detected.
+    With close_unclosed_boundaries=True (default), virtual closing edges are added
+    and all 20 cells (4 columns × 5 rows) are recovered.
+    """
+
+    def test_close_unclosed_boundaries_enabled_recovers_all_cells(
+        self, outer_unclosed_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=True (default), all 20 cells are extracted."""
+        page = outer_unclosed_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+        assert len(tables[0].cells) == 20, (
+            f"Expected 20 cells with close_unclosed_boundaries=True, got {len(tables[0].cells)}"
+        )
+
+    def test_close_unclosed_boundaries_disabled_misses_outer_columns(
+        self, outer_unclosed_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=False, the outer columns are not detected."""
+        page = outer_unclosed_doc.get_page(0)
+        settings = TfSettings(close_unclosed_boundaries=False)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 1, f"Expected 1 table, got {len(tables)}"
+        assert len(tables[0].cells) == 10, (
+            f"Expected fewer than 20 cells without boundary closing, got {len(tables[0].cells)}"
+        )
+
+
+class TestUnclosedBottomBoundaryPdf:
+    """Tests for pdfplumber#631-unclosed-bottom-boundary.pdf.
+
+    The PDF contains two tables.  The second table's bottom outer horizontal edge
+    is missing.  Without close_unclosed_boundaries, the bottom row of that table
+    is not detected (8 cells instead of 12).  The first table is unaffected (42
+    cells in both cases).  With close_unclosed_boundaries=True (default), a virtual
+    closing edge is added and all 12 cells of the second table are recovered.
+    """
+
+    def test_close_unclosed_boundaries_enabled_recovers_all_cells(
+        self, unclosed_bottom_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=True (default), all cells are extracted."""
+        page = unclosed_bottom_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        assert len(tables) == 2, f"Expected 2 tables, got {len(tables)}"
+        assert len(tables[0].cells) == 42, (
+            f"Expected 42 cells in table 0, got {len(tables[0].cells)}"
+        )
+        assert len(tables[1].cells) == 12, (
+            f"Expected 12 cells in table 1, got {len(tables[1].cells)}"
+        )
+
+    def test_close_unclosed_boundaries_disabled_misses_bottom_row(
+        self, unclosed_bottom_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=False, the bottom row of table 1 is not detected."""
+        page = unclosed_bottom_doc.get_page(0)
+        settings = TfSettings(close_unclosed_boundaries=False)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 2, f"Expected 2 tables, got {len(tables)}"
+        assert len(tables[0].cells) == 42, (
+            f"Expected 42 cells in table 0 (unaffected), got {len(tables[0].cells)}"
+        )
+        assert len(tables[1].cells) == 8, (
+            f"Expected 8 cells in table 1 (bottom row missing), got {len(tables[1].cells)}"
+        )
+
+
+class TestTablesUnclosedBoundariesPdf:
+    """Tests for tables-unclosed-boundaries.pdf.
+
+    The PDF contains 3 tables whose outer boundaries are implied by edge extents
+    rather than explicit crossing lines.  This exercises the connectivity-based
+    outer-frame synthesis introduced to handle two challenging scenarios:
+
+    1. No extending edges – vertical lines start exactly at the horizontal
+       boundary (no edge sticks out beyond the table frame).
+    2. Partial horizontal lines – different horizontal lines cover different
+       x-ranges, creating a staircase-like structure.
+
+    Expected cell counts:
+    - Table 0 (top):    6 cells
+    - Table 1 (middle): 9 cells
+    - Table 2 (bottom): 5 cells
+
+    Without close_unclosed_boundaries none of the tables are detected because
+    the standard intersection-finding pass produces no valid closed cells.
+    With close_unclosed_boundaries=True (default) all 3 tables are recovered.
+    """
+
+    def test_close_unclosed_boundaries_enabled_recovers_all_tables(
+        self, tables_unclosed_boundaries_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=True (default), all 3 tables are extracted."""
+        page = tables_unclosed_boundaries_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        assert len(tables) == 3, f"Expected 3 tables, got {len(tables)}"
+
+    def test_close_unclosed_boundaries_enabled_recovers_all_cells(
+        self, tables_unclosed_boundaries_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=True (default), all cells in each table are extracted."""
+        page = tables_unclosed_boundaries_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        assert len(tables) == 3, f"Expected 3 tables, got {len(tables)}"
+        assert len(tables[0].cells) == 6, (
+            f"Expected 6 cells in top table, got {len(tables[0].cells)}"
+        )
+        assert len(tables[1].cells) == 9, (
+            f"Expected 9 cells in middle table, got {len(tables[1].cells)}"
+        )
+        assert len(tables[2].cells) == 5, (
+            f"Expected 5 cells in bottom table, got {len(tables[2].cells)}"
+        )
+
+    def test_close_unclosed_boundaries_disabled_misses_tables(
+        self, tables_unclosed_boundaries_doc: Document
+    ) -> None:
+        """With close_unclosed_boundaries=False, none of the tables are detected."""
+        page = tables_unclosed_boundaries_doc.get_page(0)
+        settings = TfSettings(close_unclosed_boundaries=False)
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 0, f"Expected 0 tables without boundary closing, got {len(tables)}"
+
+    def test_text_strategy_skips_outer_frame_synthesis(
+        self, tables_unclosed_boundaries_doc: Document
+    ) -> None:
+        """Outer-frame synthesis is skipped when either strategy is 'text'.
+
+        With horizontal_strategy='text', the virtual-edge code path is
+        intentionally disabled to avoid false positives from text-derived
+        edges, so the unclosed tables should not be recovered.
+        """
+        page = tables_unclosed_boundaries_doc.get_page(0)
+        settings = TfSettings(horizontal_strategy="text")
+        tables = find_tables(page, extract_text=False, tf_settings=settings)
+
+        assert len(tables) == 0, (
+            f"Expected 0 tables with text strategy (outer-frame skipped), got {len(tables)}"
+        )
