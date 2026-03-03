@@ -196,6 +196,23 @@ def unclosed_bottom_doc(
 
 
 @pytest.fixture
+def tables_unclosed_boundaries_pdf_path() -> Path:
+    """Return path to the tables-unclosed-boundaries.pdf file."""
+    return TEST_DATA_DIR / "tables-unclosed-boundaries.pdf"
+
+
+@pytest.fixture
+def tables_unclosed_boundaries_doc(
+    tables_unclosed_boundaries_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for tables-unclosed-boundaries.pdf."""
+    doc = Document(path=tables_unclosed_boundaries_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
 def edge_test_pdf_bytes(edge_test_pdf_path: Path) -> bytes:
     """Return the content of edge-test.pdf as bytes."""
     return edge_test_pdf_path.read_bytes()

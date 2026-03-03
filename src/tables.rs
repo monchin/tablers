@@ -4,6 +4,7 @@ use crate::pages::Page;
 use crate::settings::*;
 use crate::words::*;
 use ordered_float::OrderedFloat;
+use pdfium_render::prelude::PdfColor;
 use pyo3::prelude::*;
 use std::cmp;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -1977,261 +1978,189 @@ impl TableFinder {
     }
 }
 
-/// Detects missing boundary cells caused by unclosed table edges and returns them.
+// ─────────────────────────────────────────────────────────────────────────────
+// Outer-frame synthesis
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Minimal Union-Find structure (path-halving + union-by-rank).
+struct UnionFind {
+    parent: Vec<usize>,
+    rank: Vec<u8>,
+}
+
+impl UnionFind {
+    fn new(n: usize) -> Self {
+        Self {
+            parent: (0..n).collect(),
+            rank: vec![0; n],
+        }
+    }
+
+    fn find(&mut self, mut x: usize) -> usize {
+        while self.parent[x] != x {
+            self.parent[x] = self.parent[self.parent[x]];
+            x = self.parent[x];
+        }
+        x
+    }
+
+    fn union(&mut self, a: usize, b: usize) {
+        let ra = self.find(a);
+        let rb = self.find(b);
+        if ra != rb {
+            match self.rank[ra].cmp(&self.rank[rb]) {
+                std::cmp::Ordering::Less => self.parent[ra] = rb,
+                std::cmp::Ordering::Greater => self.parent[rb] = ra,
+                std::cmp::Ordering::Equal => {
+                    self.parent[ra] = rb;
+                    self.rank[rb] += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Synthesises virtual outer-boundary edges to close open table frames.
 ///
-/// For each of the four sides of the detected table, the function checks whether
-/// *every* outermost intersection point has a corresponding edge that extends past
-/// the table boundary by more than the given tolerance.  If so, a virtual closing
-/// edge is synthesised at the outermost extension endpoint and the missing boundary
-/// cells are returned.
+/// For each connected component of (h-edge, v-edge) pairs that share an
+/// intersection, this function examines whether the participating edges extend
+/// beyond the range of known intersection points.  When they do, virtual
+/// boundary edges are created so that the standard `edges_to_intersections` +
+/// `intersections_to_cells` pipeline can detect the full set of cells.
 ///
-/// Inner cells from the first-pass detection are never recomputed – only the new
-/// boundary cells (at most one extra column/row per side, plus up to four corner
-/// cells when two adjacent sides are both unclosed) are returned.
+/// **What counts as an intersection:** a v-edge and an h-edge intersect when
+/// the v-edge's x lies within the h-edge's x span (±`x_tol`) **and** the
+/// h-edge's y lies within the v-edge's y span (±`y_tol`).  This captures
+/// both exact crossings and T-intersections (edge endpoint touching another
+/// edge).
 ///
-/// All four checks are **skipped entirely** when either `h_strategy` or
-/// `v_strategy` is `Text`.  In mixed-strategy configurations (one `Text`, one
-/// `Lines`), text-derived edges can extend across table boundaries in ways that
-/// produce false-positive missing columns or rows on any of the four sides.
-/// The checks are only reliable when both strategies produce real PDF lines.
+/// **Outer-frame rule:** for each component
+/// * `x_h_min`/`x_h_max` – the x span of the h-edges in the component.
+/// * `x_int_min`/`x_int_max` – the x span of the v-edges (intersection xs).
+/// * `y_v_min`/`y_v_max` – the y span of the v-edges in the component.
+/// * `y_int_min`/`y_int_max` – the y span of the h-edges (intersection ys).
 ///
-/// # Arguments
+/// If `x_h_min < x_int_min - x_tol`, the h-edges extend further left than
+/// any known v-edge; a virtual v-edge is created at `x_h_min` to close the
+/// left boundary.  The other three directions are handled symmetrically.
 ///
-/// * `table_cells` - Bounding boxes of cells already detected for this table.
-/// * `h_edges`     - All horizontal edges on the page (post-merge).
-/// * `v_edges`     - All vertical edges on the page (post-merge).
-/// * `x_tol`       - X-axis tolerance (`intersection_x_tolerance` from settings).
-/// * `y_tol`       - Y-axis tolerance (`intersection_y_tolerance` from settings).
-/// * `h_strategy`  - Active horizontal strategy.
-/// * `v_strategy`  - Active vertical strategy.
+/// Virtual h-edges span the full `[x_h_min, x_h_max]` range at the target y,
+/// and virtual v-edges span `[y_v_min, y_v_max]` at the target x.  Passing
+/// these virtual edges through `edges_to_intersections` then adds the missing
+/// corner points that allow `intersections_to_cells` to detect cells it would
+/// otherwise miss.
 ///
-/// # Returns
+/// **Complexity:** O(V × H) for the intersection scan, where V and H are the
+/// number of vertical and horizontal edges respectively.  This is acceptable
+/// for typical PDF pages but could be improved with spatial indexing if
+/// profiling shows it as a bottleneck on edge-dense documents.
 ///
-/// A (possibly empty) vector of new cell bounding boxes to append.
-fn collect_unclosed_boundary_cells(
-    table_cells: &[BboxKey],
+/// Virtual edges use `width=0` and `alpha=0` colour to distinguish them from
+/// real PDF edges; downstream consumers that filter by colour or width should
+/// be aware of this convention.
+fn compute_outer_frame_edges(
     h_edges: &[Edge],
     v_edges: &[Edge],
     x_tol: OrderedFloat<f32>,
     y_tol: OrderedFloat<f32>,
-    h_strategy: StrategyType,
-    v_strategy: StrategyType,
-) -> Vec<BboxKey> {
-    if table_cells.is_empty() {
-        return Vec::new();
-    }
+) -> Vec<Edge> {
+    let n_h = h_edges.len();
+    let n_v = v_edges.len();
+    // Nodes 0..n_v → v-edges, nodes n_v..n_v+n_h → h-edges.
+    let mut uf = UnionFind::new(n_v + n_h);
+    let mut v_active = vec![false; n_v];
+    let mut h_active = vec![false; n_h];
 
-    // When either strategy is Text, the corresponding edges are derived from text
-    // positions rather than real PDF lines.  Text-derived edges can extend across
-    // table boundaries in ways that trigger false-positive missing columns/rows on
-    // every side, so we skip all four checks in that case.
-    if h_strategy == StrategyType::Text || v_strategy == StrategyType::Text {
-        return Vec::new();
-    }
-
-    let min_x = table_cells.iter().map(|c| c.0).min().unwrap();
-    let max_x = table_cells.iter().map(|c| c.2).max().unwrap();
-    let min_y = table_cells.iter().map(|c| c.1).min().unwrap();
-    let max_y = table_cells.iter().map(|c| c.3).max().unwrap();
-
-    // Each `*_extension` is `Some((new_boundary_coord, sorted_cross_axis_coords))`
-    // when every outermost intersection on that side has an extending edge, or
-    // `None` when the side is already closed (or no extension is found).
-    //
-    // `min_x` / `max_x` / `min_y` / `max_y` are computed from the full set of
-    // table cells, so the boundary_ys / boundary_xs collections derived from them
-    // are always non-empty (the cell that contributed the extremum is always found).
-
-    // ── Left side ──────────────────────────────────────────────────────────────
-    // For each boundary y, find the leftmost x1 of any h-edge that crosses
-    // min_x.  Then take the rightmost of those leftmost values as new_x so that
-    // every row's edge reaches the new virtual boundary.
-    let left_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
-        let boundary_ys: Vec<OrderedFloat<f32>> = table_cells
-            .iter()
-            .filter(|c| c.0 == min_x)
-            .flat_map(|c| [c.1, c.3])
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-
-        let extending: Vec<OrderedFloat<f32>> = boundary_ys
-            .iter()
-            .filter_map(|&y| {
-                h_edges
-                    .iter()
-                    .filter(|h| {
-                        h.y1 >= y - y_tol
-                            && h.y1 <= y + y_tol
-                            && h.x1 < min_x - x_tol
-                            && h.x2 >= min_x - x_tol
-                    })
-                    .map(|h| h.x1)
-                    .min()
-            })
-            .collect();
-
-        if extending.len() == boundary_ys.len() {
-            // Rightmost of the per-row leftmost values: the new virtual edge
-            // is as close to the table as possible while still reachable by all rows.
-            let new_x = extending.iter().cloned().max().unwrap();
-            Some((new_x, boundary_ys))
-        } else {
-            None
-        }
-    };
-
-    // ── Right side ─────────────────────────────────────────────────────────────
-    // Symmetric to left: for each boundary y, find the rightmost x2 of any
-    // h-edge crossing max_x, then take the leftmost of those as new_x.
-    let right_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
-        let boundary_ys: Vec<OrderedFloat<f32>> = table_cells
-            .iter()
-            .filter(|c| c.2 == max_x)
-            .flat_map(|c| [c.1, c.3])
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-
-        let extending: Vec<OrderedFloat<f32>> = boundary_ys
-            .iter()
-            .filter_map(|&y| {
-                h_edges
-                    .iter()
-                    .filter(|h| {
-                        h.y1 >= y - y_tol
-                            && h.y1 <= y + y_tol
-                            && h.x2 > max_x + x_tol
-                            && h.x1 <= max_x + x_tol
-                    })
-                    .map(|h| h.x2)
-                    .max()
-            })
-            .collect();
-
-        if extending.len() == boundary_ys.len() {
-            let new_x = extending.iter().cloned().min().unwrap();
-            Some((new_x, boundary_ys))
-        } else {
-            None
-        }
-    };
-
-    // ── Top side ───────────────────────────────────────────────────────────────
-    // For each boundary x, find the topmost y1 of any v-edge crossing min_y,
-    // then take the bottommost of those as new_y.
-    let top_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
-        let boundary_xs: Vec<OrderedFloat<f32>> = table_cells
-            .iter()
-            .filter(|c| c.1 == min_y)
-            .flat_map(|c| [c.0, c.2])
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-
-        let extending: Vec<OrderedFloat<f32>> = boundary_xs
-            .iter()
-            .filter_map(|&x| {
-                v_edges
-                    .iter()
-                    .filter(|v| {
-                        v.x1 >= x - x_tol
-                            && v.x1 <= x + x_tol
-                            && v.y1 < min_y - y_tol
-                            && v.y2 >= min_y - y_tol
-                    })
-                    .map(|v| v.y1)
-                    .min()
-            })
-            .collect();
-
-        if extending.len() == boundary_xs.len() {
-            let new_y = extending.iter().cloned().max().unwrap();
-            Some((new_y, boundary_xs))
-        } else {
-            None
-        }
-    };
-
-    // ── Bottom side ────────────────────────────────────────────────────────────
-    // For each boundary x, find the bottommost y2 of any v-edge crossing max_y,
-    // then take the topmost of those as new_y.
-    let bottom_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
-        let boundary_xs: Vec<OrderedFloat<f32>> = table_cells
-            .iter()
-            .filter(|c| c.3 == max_y)
-            .flat_map(|c| [c.0, c.2])
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-
-        let extending: Vec<OrderedFloat<f32>> = boundary_xs
-            .iter()
-            .filter_map(|&x| {
-                v_edges
-                    .iter()
-                    .filter(|v| {
-                        v.x1 >= x - x_tol
-                            && v.x1 <= x + x_tol
-                            && v.y2 > max_y + y_tol
-                            && v.y1 <= max_y + y_tol
-                    })
-                    .map(|v| v.y2)
-                    .max()
-            })
-            .collect();
-
-        if extending.len() == boundary_xs.len() {
-            let new_y = extending.iter().cloned().min().unwrap();
-            Some((new_y, boundary_xs))
-        } else {
-            None
-        }
-    };
-
-    let mut new_cells: Vec<BboxKey> = Vec::new();
-
-    // ── Side cells ─────────────────────────────────────────────────────────────
-    if let Some((new_x, ref ys)) = left_extension {
-        for i in 0..ys.len() - 1 {
-            new_cells.push((new_x, ys[i], min_x, ys[i + 1]));
-        }
-    }
-    if let Some((new_x, ref ys)) = right_extension {
-        for i in 0..ys.len() - 1 {
-            new_cells.push((max_x, ys[i], new_x, ys[i + 1]));
-        }
-    }
-    if let Some((new_y, ref xs)) = top_extension {
-        for i in 0..xs.len() - 1 {
-            new_cells.push((xs[i], new_y, xs[i + 1], min_y));
-        }
-    }
-    if let Some((new_y, ref xs)) = bottom_extension {
-        for i in 0..xs.len() - 1 {
-            new_cells.push((xs[i], max_y, xs[i + 1], new_y));
+    for (vi, v) in v_edges.iter().enumerate() {
+        for (hi, h) in h_edges.iter().enumerate() {
+            if v.y1 <= h.y1 + y_tol
+                && v.y2 >= h.y1 - y_tol
+                && v.x1 >= h.x1 - x_tol
+                && v.x1 <= h.x2 + x_tol
+            {
+                uf.union(vi, n_v + hi);
+                v_active[vi] = true;
+                h_active[hi] = true;
+            }
         }
     }
 
-    // ── Corner cells (adjacent unclosed sides) ─────────────────────────────────
-    // When two adjacent sides are both unclosed, the intersection of their two
-    // virtual closing edges forms a corner cell that neither side pass generates.
-    if let (Some((new_left_x, _)), Some((new_top_y, _))) = (&left_extension, &top_extension) {
-        new_cells.push((*new_left_x, *new_top_y, min_x, min_y));
+    // Group active edges by their connected-component root.
+    let mut comps: HashMap<usize, (Vec<usize>, Vec<usize>)> = HashMap::new();
+    for (vi, is_i_active) in v_active.iter().enumerate() {
+        if *is_i_active {
+            comps.entry(uf.find(vi)).or_default().0.push(vi);
+        }
     }
-    if let (Some((new_right_x, _)), Some((new_top_y, _))) = (&right_extension, &top_extension) {
-        new_cells.push((max_x, *new_top_y, *new_right_x, min_y));
-    }
-    if let (Some((new_left_x, _)), Some((new_bottom_y, _))) = (&left_extension, &bottom_extension) {
-        new_cells.push((*new_left_x, max_y, min_x, *new_bottom_y));
-    }
-    if let (Some((new_right_x, _)), Some((new_bottom_y, _))) = (&right_extension, &bottom_extension)
-    {
-        new_cells.push((max_x, max_y, *new_right_x, *new_bottom_y));
+    for (hi, is_h_active) in h_active.iter().enumerate() {
+        if *is_h_active {
+            comps.entry(uf.find(n_v + hi)).or_default().1.push(hi);
+        }
     }
 
-    new_cells
+    let mut virtual_edges: Vec<Edge> = Vec::new();
+
+    for (v_idxs, h_idxs) in comps.values() {
+        if v_idxs.is_empty() || h_idxs.is_empty() {
+            continue;
+        }
+
+        // Intersection-point extent (v-edge xs, h-edge ys).
+        let x_int_min = v_idxs.iter().map(|&i| v_edges[i].x1).min().unwrap();
+        let x_int_max = v_idxs.iter().map(|&i| v_edges[i].x1).max().unwrap();
+        let y_int_min = h_idxs.iter().map(|&i| h_edges[i].y1).min().unwrap();
+        let y_int_max = h_idxs.iter().map(|&i| h_edges[i].y1).max().unwrap();
+
+        // Edge-span extent.
+        let x_h_min = h_idxs.iter().map(|&i| h_edges[i].x1).min().unwrap();
+        let x_h_max = h_idxs.iter().map(|&i| h_edges[i].x2).max().unwrap();
+        let y_v_min = v_idxs.iter().map(|&i| v_edges[i].y1).min().unwrap();
+        let y_v_max = v_idxs.iter().map(|&i| v_edges[i].y2).max().unwrap();
+
+        if x_h_min < x_int_min - x_tol {
+            virtual_edges.push(virtual_v_edge(x_h_min, y_v_min, y_v_max));
+        }
+        if x_h_max > x_int_max + x_tol {
+            virtual_edges.push(virtual_v_edge(x_h_max, y_v_min, y_v_max));
+        }
+        if y_v_min < y_int_min - y_tol {
+            virtual_edges.push(virtual_h_edge(x_h_min, y_v_min, x_h_max));
+        }
+        if y_v_max > y_int_max + y_tol {
+            virtual_edges.push(virtual_h_edge(x_h_min, y_v_max, x_h_max));
+        }
+    }
+
+    virtual_edges
 }
+
+/// Synthesised horizontal edge (width=0, transparent) for outer-frame closure.
+fn virtual_h_edge(x1: OrderedFloat<f32>, y: OrderedFloat<f32>, x2: OrderedFloat<f32>) -> Edge {
+    Edge {
+        orientation: Orientation::Horizontal,
+        x1,
+        y1: y,
+        x2,
+        y2: y,
+        width: OrderedFloat(0.0),
+        color: PdfColor::new(0, 0, 0, 0),
+    }
+}
+
+/// Synthesised vertical edge (width=0, transparent) for outer-frame closure.
+fn virtual_v_edge(x: OrderedFloat<f32>, y1: OrderedFloat<f32>, y2: OrderedFloat<f32>) -> Edge {
+    Edge {
+        orientation: Orientation::Vertical,
+        x1: x,
+        y1,
+        x2: x,
+        y2,
+        width: OrderedFloat(0.0),
+        color: PdfColor::new(0, 0, 0, 0),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// Finds all table cell bounding boxes in a PDF page or from explicit edges.
 ///
@@ -2286,43 +2215,38 @@ pub fn find_all_cells_bboxes(
         );
     }
 
+    // When close_unclosed_boundaries is enabled, synthesise virtual outer-
+    // boundary edges for each connected component of (h-edge, v-edge)
+    // intersections, then re-run the full intersection → cells pipeline on the
+    // enhanced edge set.  This handles tables whose outer boundary is implied
+    // by edge extents rather than by explicit crossing edges (e.g. a table
+    // whose left/right walls are the endpoints of horizontal lines, or whose
+    // top/bottom walls are the shared endpoints of vertical lines).
+    if tf_settings.close_unclosed_boundaries
+        && h_strat != StrategyType::Text
+        && v_strat != StrategyType::Text
+    {
+        let x_tol = *tf_settings.intersection_x_tolerance;
+        let y_tol = *tf_settings.intersection_y_tolerance;
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        let virtual_edges = compute_outer_frame_edges(h_edges, v_edges, x_tol, y_tol);
+        if !virtual_edges.is_empty() {
+            for e in virtual_edges {
+                edges.entry(e.orientation).or_default().push(e);
+            }
+            let intersections = edges_to_intersections(&mut edges, x_tol, y_tol);
+            return intersections_to_cells(intersections);
+        }
+    }
+
     let intersections = edges_to_intersections(
         &mut edges.clone(),
         *table_finder.settings.intersection_x_tolerance,
         *table_finder.settings.intersection_y_tolerance,
     );
-    let mut cells = intersections_to_cells(intersections);
-
-    if tf_settings.close_unclosed_boundaries && !cells.is_empty() {
-        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
-        let v_edges = edges.get(&Orientation::Vertical).unwrap();
-        let x_tol = *tf_settings.intersection_x_tolerance;
-        let y_tol = *tf_settings.intersection_y_tolerance;
-
-        // Group detected cells by table so that each table's boundary is checked
-        // independently – prevents a shared extension coordinate from synthesising
-        // a cell that bridges the gap between two separate tables.
-        // Note: cells_to_tables is called again by find_tables_from_cells on the
-        // final cell list.  The duplication is intentional: the grouping here is
-        // needed before extra cells are appended, and changing the public API to
-        // return pre-grouped cells would be a larger refactor.
-        let tables = cells_to_tables(&cells);
-        let mut extra: Vec<BboxKey> = Vec::new();
-        for table_cells in &tables {
-            extra.extend(collect_unclosed_boundary_cells(
-                table_cells,
-                h_edges,
-                v_edges,
-                x_tol,
-                y_tol,
-                h_strat,
-                v_strat,
-            ));
-        }
-        cells.extend(extra);
-    }
-
-    cells
+    intersections_to_cells(intersections)
 }
 
 /// Creates Table objects from cell bounding boxes.
@@ -4737,5 +4661,140 @@ mod tests {
         // The intersection point must be (v.x1, h.y1) = (70, 30)
         let point = (of(70.0), of(30.0));
         assert!(intersections.contains_key(&point));
+    }
+
+    // ── UnionFind ────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_union_find_singletons() {
+        let mut uf = UnionFind::new(5);
+        for i in 0..5 {
+            assert_eq!(uf.find(i), i);
+        }
+    }
+
+    #[test]
+    fn test_union_find_basic_merge() {
+        let mut uf = UnionFind::new(4);
+        uf.union(0, 1);
+        assert_eq!(uf.find(0), uf.find(1));
+        assert_ne!(uf.find(0), uf.find(2));
+    }
+
+    #[test]
+    fn test_union_find_transitive() {
+        let mut uf = UnionFind::new(4);
+        uf.union(0, 1);
+        uf.union(1, 2);
+        assert_eq!(uf.find(0), uf.find(2));
+        assert_ne!(uf.find(0), uf.find(3));
+    }
+
+    #[test]
+    fn test_union_find_all_merged() {
+        let mut uf = UnionFind::new(5);
+        for i in 0..4 {
+            uf.union(i, i + 1);
+        }
+        let root = uf.find(0);
+        for i in 1..5 {
+            assert_eq!(uf.find(i), root);
+        }
+    }
+
+    // ── compute_outer_frame_edges ────────────────────────────────────────────
+
+    #[test]
+    fn test_outer_frame_no_intersection_returns_empty() {
+        let h = vec![make_h_edge(0.0, 10.0, 40.0)];
+        let v = vec![make_v_edge(60.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_outer_frame_closed_grid_returns_empty() {
+        // 2×2 grid where all intersections coincide with edge endpoints →
+        // h-edge span equals v-edge extent and vice versa → no virtual edges.
+        let h = vec![
+            make_h_edge(0.0, 0.0, 100.0),
+            make_h_edge(0.0, 50.0, 100.0),
+            make_h_edge(0.0, 100.0, 100.0),
+        ];
+        let v = vec![
+            make_v_edge(0.0, 0.0, 100.0),
+            make_v_edge(50.0, 0.0, 100.0),
+            make_v_edge(100.0, 0.0, 100.0),
+        ];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_outer_frame_left_extension() {
+        // h-edges extend left beyond the single v-edge → virtual v-edge on left.
+        let h = vec![make_h_edge(0.0, 0.0, 50.0), make_h_edge(0.0, 50.0, 50.0)];
+        let v = vec![make_v_edge(50.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let v_edges: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Vertical)
+            .collect();
+        assert_eq!(v_edges.len(), 1);
+        assert_eq!(v_edges[0].x1, of(0.0));
+    }
+
+    #[test]
+    fn test_outer_frame_right_extension() {
+        // h-edges extend right beyond the single v-edge → virtual v-edge on right.
+        let h = vec![
+            make_h_edge(50.0, 0.0, 100.0),
+            make_h_edge(50.0, 50.0, 100.0),
+        ];
+        let v = vec![make_v_edge(50.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let v_edges: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Vertical)
+            .collect();
+        assert_eq!(v_edges.len(), 1);
+        assert_eq!(v_edges[0].x1, of(100.0));
+    }
+
+    #[test]
+    fn test_outer_frame_top_and_bottom_extension() {
+        // v-edges extend above and below the single h-edge → two virtual h-edges.
+        let h = vec![make_h_edge(0.0, 50.0, 100.0)];
+        let v = vec![make_v_edge(0.0, 0.0, 100.0), make_v_edge(100.0, 0.0, 100.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let h_edges: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Horizontal)
+            .collect();
+        assert_eq!(h_edges.len(), 2);
+        let ys: Vec<OrderedFloat<f32>> = h_edges.iter().map(|e| e.y1).collect();
+        assert!(ys.contains(&of(0.0)));
+        assert!(ys.contains(&of(100.0)));
+    }
+
+    #[test]
+    fn test_outer_frame_two_components_independent() {
+        // Two disjoint clusters: each generates its own virtual edges.
+        let h = vec![
+            make_h_edge(0.0, 0.0, 50.0),
+            make_h_edge(0.0, 50.0, 50.0),
+            make_h_edge(200.0, 0.0, 250.0),
+            make_h_edge(200.0, 50.0, 250.0),
+        ];
+        let v = vec![make_v_edge(50.0, 0.0, 50.0), make_v_edge(250.0, 0.0, 50.0)];
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let v_virtual: Vec<_> = result
+            .iter()
+            .filter(|e| e.orientation == Orientation::Vertical)
+            .collect();
+        assert_eq!(v_virtual.len(), 2);
+        let xs: Vec<OrderedFloat<f32>> = v_virtual.iter().map(|e| e.x1).collect();
+        assert!(xs.contains(&of(0.0)));
+        assert!(xs.contains(&of(200.0)));
     }
 }
