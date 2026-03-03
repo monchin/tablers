@@ -64,9 +64,14 @@ Each edge is evaluated by examining the fill colors of the rectangles directly a
 
 **Unclosed boundary detection** (`close_unclosed_boundaries`):
 
-After initial cell detection, each detected table is inspected per-side (left, right, top, bottom). For a given side, the algorithm checks whether *every* outermost intersection point has a corresponding edge that continues past the table boundary by more than `intersection_x_tolerance` (for left/right sides) or `intersection_y_tolerance` (for top/bottom sides). When this condition holds for all points on a side, a virtual closing edge is synthesised at the outermost extension endpoint and the missing boundary cells are appended to the result.
+After the raw edges are collected, all h-edges and v-edges that mutually intersect (within the configured tolerances) are grouped into connected components. For each component:
 
-The check is **skipped entirely** when either strategy is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
+- If the x-span of the h-edges extends further left or right than the x-positions of any v-edge in that component, a virtual v-edge is synthesised at the extension endpoint to close the left or right boundary.
+- If the y-span of the v-edges extends further up or down than the y-positions of any h-edge in that component, a virtual h-edge is synthesised at the extension endpoint to close the top or bottom boundary.
+
+Once all virtual edges are synthesised, the full intersection-detection and cell-detection pipeline is re-run with the enhanced edge set.
+
+`intersection_x_tolerance` and `intersection_y_tolerance` are used as thresholds when deciding whether an edge truly extends beyond the span. The feature is **skipped entirely** when either strategy is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
 
 ### Explicit Edges
 

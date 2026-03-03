@@ -207,16 +207,20 @@ pub struct TfSettings {
     /// - *No adjacent rects and no containing rect*: excluded only if the edge is white
     ///   (invisible on the default white page background).
     pub exclude_background_colored_edges: bool,
-    /// Whether to automatically detect and close tables with missing outer edges.
+    /// Whether to automatically synthesise missing outer boundary edges for open table frames.
     ///
-    /// When enabled, after initial cell detection, each detected table is inspected to
-    /// determine whether its outermost horizontal or vertical edges extend beyond the
-    /// table boundary.  If every intersection on a given side has a corresponding edge
-    /// that continues past that boundary, a virtual closing edge is synthesised at the
-    /// outermost endpoint and the missing boundary cells are added to the result.
+    /// When enabled, a pre-processing pass groups all mutually-intersecting h-edges and
+    /// v-edges into connected components (using Union-Find on the intersection graph).
+    /// For each component, if the x-span of the h-edges extends beyond the x-positions
+    /// of the v-edges in that component, a virtual v-edge is synthesised at the
+    /// extension endpoint (closing the left or right boundary).  Symmetrically, if the
+    /// y-span of the v-edges exceeds the y-positions of the h-edges, virtual h-edges
+    /// are added (closing the top or bottom boundary).  The full intersection-detection
+    /// and cell-detection pipeline is then re-run with the enhanced edge set.
     ///
     /// Uses `intersection_x_tolerance` / `intersection_y_tolerance` as the threshold
-    /// for deciding whether an edge truly extends beyond the boundary.
+    /// for deciding whether an edge truly extends beyond the component span.
+    /// The feature is skipped entirely when either strategy is `Text`.
     pub close_unclosed_boundaries: bool,
 }
 impl Default for TfSettings {

@@ -419,9 +419,12 @@ settings = TfSettings(
 )
 ```
 
-The algorithm works per-table and per-side (left, right, top, bottom). For each side it checks whether *every* outermost intersection point has a corresponding edge that continues past the table boundary. When all points on a side satisfy this condition, a virtual closing edge is synthesised at the outermost extension endpoint and the missing boundary cells are added to the result.
+The algorithm runs as a pre-processing step on the raw collected edges, before intersection detection or cell detection. All h-edges and v-edges that mutually intersect (within `intersection_x_tolerance` / `intersection_y_tolerance`) are grouped into connected components. For each component:
 
-The check uses `intersection_x_tolerance` and `intersection_y_tolerance` as thresholds when deciding whether an edge truly extends beyond the boundary. The feature is **skipped entirely** when either `vertical_strategy` or `horizontal_strategy` is `"text"`, because text-derived edges can produce false-positive missing columns or rows.
+- If the x-span of the h-edges extends further left or right than the x-positions of any v-edge in that component, a virtual v-edge is synthesised at the extension endpoint.
+- If the y-span of the v-edges extends further up or down than the y-positions of any h-edge in that component, a virtual h-edge is synthesised at the extension endpoint.
+
+Once all virtual edges are synthesised, the full intersection-detection and cell-detection pipeline is re-run with the enhanced edge set. The feature is **skipped entirely** when either `vertical_strategy` or `horizontal_strategy` is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
 
 ## Error Handling
 
