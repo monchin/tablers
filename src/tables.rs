@@ -1986,7 +1986,8 @@ impl TableFinder {
 /// cells are returned.
 ///
 /// Inner cells from the first-pass detection are never recomputed – only the new
-/// boundary cells (at most one extra column/row per side) are returned.
+/// boundary cells (at most one extra column/row per side, plus up to four corner
+/// cells when two adjacent sides are both unclosed) are returned.
 ///
 /// All four checks are **skipped entirely** when either `h_strategy` or
 /// `v_strategy` is `Text`.  In mixed-strategy configurations (one `Text`, one
@@ -1999,8 +2000,8 @@ impl TableFinder {
 /// * `table_cells` - Bounding boxes of cells already detected for this table.
 /// * `h_edges`     - All horizontal edges on the page (post-merge).
 /// * `v_edges`     - All vertical edges on the page (post-merge).
-/// * `x_tol`       - X-axis tolerance (reuses `intersection_x_tolerance`).
-/// * `y_tol`       - Y-axis tolerance (reuses `intersection_y_tolerance`).
+/// * `x_tol`       - X-axis tolerance (`intersection_x_tolerance` from settings).
+/// * `y_tol`       - Y-axis tolerance (`intersection_y_tolerance` from settings).
 /// * `h_strategy`  - Active horizontal strategy.
 /// * `v_strategy`  - Active vertical strategy.
 ///
@@ -2011,22 +2012,14 @@ fn collect_unclosed_boundary_cells(
     table_cells: &[BboxKey],
     h_edges: &[Edge],
     v_edges: &[Edge],
-    x_tol: f32,
-    y_tol: f32,
+    x_tol: OrderedFloat<f32>,
+    y_tol: OrderedFloat<f32>,
     h_strategy: StrategyType,
     v_strategy: StrategyType,
 ) -> Vec<BboxKey> {
     if table_cells.is_empty() {
         return Vec::new();
     }
-
-    let x_tol = OrderedFloat(x_tol);
-    let y_tol = OrderedFloat(y_tol);
-
-    let min_x = table_cells.iter().map(|c| c.0).min().unwrap();
-    let max_x = table_cells.iter().map(|c| c.2).max().unwrap();
-    let min_y = table_cells.iter().map(|c| c.1).min().unwrap();
-    let max_y = table_cells.iter().map(|c| c.3).max().unwrap();
 
     // When either strategy is Text, the corresponding edges are derived from text
     // positions rather than real PDF lines.  Text-derived edges can extend across
@@ -2036,151 +2029,205 @@ fn collect_unclosed_boundary_cells(
         return Vec::new();
     }
 
-    let mut new_cells: Vec<BboxKey> = Vec::new();
+    let min_x = table_cells.iter().map(|c| c.0).min().unwrap();
+    let max_x = table_cells.iter().map(|c| c.2).max().unwrap();
+    let min_y = table_cells.iter().map(|c| c.1).min().unwrap();
+    let max_y = table_cells.iter().map(|c| c.3).max().unwrap();
+
+    // Each `*_extension` is `Some((new_boundary_coord, sorted_cross_axis_coords))`
+    // when every outermost intersection on that side has an extending edge, or
+    // `None` when the side is already closed (or no extension is found).
+    //
+    // `min_x` / `max_x` / `min_y` / `max_y` are computed from the full set of
+    // table cells, so the boundary_ys / boundary_xs collections derived from them
+    // are always non-empty (the cell that contributed the extremum is always found).
 
     // ── Left side ──────────────────────────────────────────────────────────────
-    // Collect all y-coordinates that appear as corners of left-boundary cells.
-    // For each such y, look for a horizontal edge that crosses the left boundary
-    // and continues further left (h.x1 < min_x - x_tol).
-    {
-        let boundary_ys: BTreeSet<OrderedFloat<f32>> = table_cells
+    // For each boundary y, find the leftmost x1 of any h-edge that crosses
+    // min_x.  Then take the rightmost of those leftmost values as new_x so that
+    // every row's edge reaches the new virtual boundary.
+    let left_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
+        let boundary_ys: Vec<OrderedFloat<f32>> = table_cells
             .iter()
             .filter(|c| c.0 == min_x)
             .flat_map(|c| [c.1, c.3])
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect();
 
-        if !boundary_ys.is_empty() {
-            // For every boundary y, find the rightmost (closest) left extension.
-            // Using max() ensures that all h-edges in the new column reach new_x.
-            let extending: Vec<OrderedFloat<f32>> = boundary_ys
-                .iter()
-                .filter_map(|&y| {
-                    h_edges
-                        .iter()
-                        .filter(|h| {
-                            h.y1 >= y - y_tol
-                                && h.y1 <= y + y_tol
-                                && h.x1 < min_x - x_tol
-                                && h.x2 >= min_x - x_tol
-                        })
-                        .map(|h| h.x1)
-                        .min()
-                })
-                .collect();
+        let extending: Vec<OrderedFloat<f32>> = boundary_ys
+            .iter()
+            .filter_map(|&y| {
+                h_edges
+                    .iter()
+                    .filter(|h| {
+                        h.y1 >= y - y_tol
+                            && h.y1 <= y + y_tol
+                            && h.x1 < min_x - x_tol
+                            && h.x2 >= min_x - x_tol
+                    })
+                    .map(|h| h.x1)
+                    .min()
+            })
+            .collect();
 
-            if extending.len() == boundary_ys.len() {
-                let new_x = extending.iter().cloned().max().unwrap();
-                let ys: Vec<OrderedFloat<f32>> = boundary_ys.into_iter().collect();
-                for i in 0..ys.len() - 1 {
-                    new_cells.push((new_x, ys[i], min_x, ys[i + 1]));
-                }
-            }
+        if extending.len() == boundary_ys.len() {
+            // Rightmost of the per-row leftmost values: the new virtual edge
+            // is as close to the table as possible while still reachable by all rows.
+            let new_x = extending.iter().cloned().max().unwrap();
+            Some((new_x, boundary_ys))
+        } else {
+            None
         }
-    }
+    };
 
     // ── Right side ─────────────────────────────────────────────────────────────
-    {
-        let boundary_ys: BTreeSet<OrderedFloat<f32>> = table_cells
+    // Symmetric to left: for each boundary y, find the rightmost x2 of any
+    // h-edge crossing max_x, then take the leftmost of those as new_x.
+    let right_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
+        let boundary_ys: Vec<OrderedFloat<f32>> = table_cells
             .iter()
             .filter(|c| c.2 == max_x)
             .flat_map(|c| [c.1, c.3])
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect();
 
-        if !boundary_ys.is_empty() {
-            let extending: Vec<OrderedFloat<f32>> = boundary_ys
-                .iter()
-                .filter_map(|&y| {
-                    h_edges
-                        .iter()
-                        .filter(|h| {
-                            h.y1 >= y - y_tol
-                                && h.y1 <= y + y_tol
-                                && h.x2 > max_x + x_tol
-                                && h.x1 <= max_x + x_tol
-                        })
-                        .map(|h| h.x2)
-                        .max()
-                })
-                .collect();
+        let extending: Vec<OrderedFloat<f32>> = boundary_ys
+            .iter()
+            .filter_map(|&y| {
+                h_edges
+                    .iter()
+                    .filter(|h| {
+                        h.y1 >= y - y_tol
+                            && h.y1 <= y + y_tol
+                            && h.x2 > max_x + x_tol
+                            && h.x1 <= max_x + x_tol
+                    })
+                    .map(|h| h.x2)
+                    .max()
+            })
+            .collect();
 
-            if extending.len() == boundary_ys.len() {
-                let new_x = extending.iter().cloned().min().unwrap();
-                let ys: Vec<OrderedFloat<f32>> = boundary_ys.into_iter().collect();
-                for i in 0..ys.len() - 1 {
-                    new_cells.push((max_x, ys[i], new_x, ys[i + 1]));
-                }
-            }
+        if extending.len() == boundary_ys.len() {
+            let new_x = extending.iter().cloned().min().unwrap();
+            Some((new_x, boundary_ys))
+        } else {
+            None
         }
-    }
+    };
 
     // ── Top side ───────────────────────────────────────────────────────────────
-    {
-        let boundary_xs: BTreeSet<OrderedFloat<f32>> = table_cells
+    // For each boundary x, find the topmost y1 of any v-edge crossing min_y,
+    // then take the bottommost of those as new_y.
+    let top_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
+        let boundary_xs: Vec<OrderedFloat<f32>> = table_cells
             .iter()
             .filter(|c| c.1 == min_y)
             .flat_map(|c| [c.0, c.2])
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect();
 
-        if !boundary_xs.is_empty() {
-            let extending: Vec<OrderedFloat<f32>> = boundary_xs
-                .iter()
-                .filter_map(|&x| {
-                    v_edges
-                        .iter()
-                        .filter(|v| {
-                            v.x1 >= x - x_tol
-                                && v.x1 <= x + x_tol
-                                && v.y1 < min_y - y_tol
-                                && v.y2 >= min_y - y_tol
-                        })
-                        .map(|v| v.y1)
-                        .min()
-                })
-                .collect();
+        let extending: Vec<OrderedFloat<f32>> = boundary_xs
+            .iter()
+            .filter_map(|&x| {
+                v_edges
+                    .iter()
+                    .filter(|v| {
+                        v.x1 >= x - x_tol
+                            && v.x1 <= x + x_tol
+                            && v.y1 < min_y - y_tol
+                            && v.y2 >= min_y - y_tol
+                    })
+                    .map(|v| v.y1)
+                    .min()
+            })
+            .collect();
 
-            if extending.len() == boundary_xs.len() {
-                let new_y = extending.iter().cloned().max().unwrap();
-                let xs: Vec<OrderedFloat<f32>> = boundary_xs.into_iter().collect();
-                for i in 0..xs.len() - 1 {
-                    new_cells.push((xs[i], new_y, xs[i + 1], min_y));
-                }
-            }
+        if extending.len() == boundary_xs.len() {
+            let new_y = extending.iter().cloned().max().unwrap();
+            Some((new_y, boundary_xs))
+        } else {
+            None
         }
-    }
+    };
 
     // ── Bottom side ────────────────────────────────────────────────────────────
-    {
-        let boundary_xs: BTreeSet<OrderedFloat<f32>> = table_cells
+    // For each boundary x, find the bottommost y2 of any v-edge crossing max_y,
+    // then take the topmost of those as new_y.
+    let bottom_extension: Option<(OrderedFloat<f32>, Vec<OrderedFloat<f32>>)> = {
+        let boundary_xs: Vec<OrderedFloat<f32>> = table_cells
             .iter()
             .filter(|c| c.3 == max_y)
             .flat_map(|c| [c.0, c.2])
+            .collect::<BTreeSet<_>>()
+            .into_iter()
             .collect();
 
-        if !boundary_xs.is_empty() {
-            let extending: Vec<OrderedFloat<f32>> = boundary_xs
-                .iter()
-                .filter_map(|&x| {
-                    v_edges
-                        .iter()
-                        .filter(|v| {
-                            v.x1 >= x - x_tol
-                                && v.x1 <= x + x_tol
-                                && v.y2 > max_y + y_tol
-                                && v.y1 <= max_y + y_tol
-                        })
-                        .map(|v| v.y2)
-                        .max()
-                })
-                .collect();
+        let extending: Vec<OrderedFloat<f32>> = boundary_xs
+            .iter()
+            .filter_map(|&x| {
+                v_edges
+                    .iter()
+                    .filter(|v| {
+                        v.x1 >= x - x_tol
+                            && v.x1 <= x + x_tol
+                            && v.y2 > max_y + y_tol
+                            && v.y1 <= max_y + y_tol
+                    })
+                    .map(|v| v.y2)
+                    .max()
+            })
+            .collect();
 
-            if extending.len() == boundary_xs.len() {
-                let new_y = extending.iter().cloned().min().unwrap();
-                let xs: Vec<OrderedFloat<f32>> = boundary_xs.into_iter().collect();
-                for i in 0..xs.len() - 1 {
-                    new_cells.push((xs[i], max_y, xs[i + 1], new_y));
-                }
-            }
+        if extending.len() == boundary_xs.len() {
+            let new_y = extending.iter().cloned().min().unwrap();
+            Some((new_y, boundary_xs))
+        } else {
+            None
         }
+    };
+
+    let mut new_cells: Vec<BboxKey> = Vec::new();
+
+    // ── Side cells ─────────────────────────────────────────────────────────────
+    if let Some((new_x, ref ys)) = left_extension {
+        for i in 0..ys.len() - 1 {
+            new_cells.push((new_x, ys[i], min_x, ys[i + 1]));
+        }
+    }
+    if let Some((new_x, ref ys)) = right_extension {
+        for i in 0..ys.len() - 1 {
+            new_cells.push((max_x, ys[i], new_x, ys[i + 1]));
+        }
+    }
+    if let Some((new_y, ref xs)) = top_extension {
+        for i in 0..xs.len() - 1 {
+            new_cells.push((xs[i], new_y, xs[i + 1], min_y));
+        }
+    }
+    if let Some((new_y, ref xs)) = bottom_extension {
+        for i in 0..xs.len() - 1 {
+            new_cells.push((xs[i], max_y, xs[i + 1], new_y));
+        }
+    }
+
+    // ── Corner cells (adjacent unclosed sides) ─────────────────────────────────
+    // When two adjacent sides are both unclosed, the intersection of their two
+    // virtual closing edges forms a corner cell that neither side pass generates.
+    if let (Some((new_left_x, _)), Some((new_top_y, _))) = (&left_extension, &top_extension) {
+        new_cells.push((*new_left_x, *new_top_y, min_x, min_y));
+    }
+    if let (Some((new_right_x, _)), Some((new_top_y, _))) = (&right_extension, &top_extension) {
+        new_cells.push((max_x, *new_top_y, *new_right_x, min_y));
+    }
+    if let (Some((new_left_x, _)), Some((new_bottom_y, _))) = (&left_extension, &bottom_extension) {
+        new_cells.push((*new_left_x, max_y, min_x, *new_bottom_y));
+    }
+    if let (Some((new_right_x, _)), Some((new_bottom_y, _))) = (&right_extension, &bottom_extension)
+    {
+        new_cells.push((max_x, max_y, *new_right_x, *new_bottom_y));
     }
 
     new_cells
@@ -2249,11 +2296,16 @@ pub fn find_all_cells_bboxes(
     if tf_settings.close_unclosed_boundaries && !cells.is_empty() {
         let h_edges = edges.get(&Orientation::Horizontal).unwrap();
         let v_edges = edges.get(&Orientation::Vertical).unwrap();
-        let x_tol = tf_settings.intersection_x_tolerance.into_inner();
-        let y_tol = tf_settings.intersection_y_tolerance.into_inner();
+        let x_tol = *tf_settings.intersection_x_tolerance;
+        let y_tol = *tf_settings.intersection_y_tolerance;
 
         // Group detected cells by table so that each table's boundary is checked
-        // independently – prevents a shared extension x from merging two tables.
+        // independently – prevents a shared extension coordinate from synthesising
+        // a cell that bridges the gap between two separate tables.
+        // Note: cells_to_tables is called again by find_tables_from_cells on the
+        // final cell list.  The duplication is intentional: the grouping here is
+        // needed before extra cells are appended, and changing the public API to
+        // return pre-grouped cells would be a larger refactor.
         let tables = cells_to_tables(&cells);
         let mut extra: Vec<BboxKey> = Vec::new();
         for table_cells in &tables {

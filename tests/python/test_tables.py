@@ -1036,10 +1036,11 @@ class TestOuterUnclosedTablePdf:
 class TestUnclosedBottomBoundaryPdf:
     """Tests for pdfplumber#631-unclosed-bottom-boundary.pdf.
 
-    The PDF contains two tables where the bottom outer horizontal edge is missing.
-    Without close_unclosed_boundaries, the bottom row of each table is not detected.
-    With close_unclosed_boundaries=True (default), virtual closing edges are added
-    and all cells are recovered: 42 cells in the first table, 12 in the second.
+    The PDF contains two tables.  The second table's bottom outer horizontal edge
+    is missing.  Without close_unclosed_boundaries, the bottom row of that table
+    is not detected (8 cells instead of 12).  The first table is unaffected (42
+    cells in both cases).  With close_unclosed_boundaries=True (default), a virtual
+    closing edge is added and all 12 cells of the second table are recovered.
     """
 
     def test_close_unclosed_boundaries_enabled_recovers_all_cells(
@@ -1060,12 +1061,15 @@ class TestUnclosedBottomBoundaryPdf:
     def test_close_unclosed_boundaries_disabled_misses_bottom_row(
         self, unclosed_bottom_doc: Document
     ) -> None:
-        """With close_unclosed_boundaries=False, the bottom rows are not detected."""
+        """With close_unclosed_boundaries=False, the bottom row of table 1 is not detected."""
         page = unclosed_bottom_doc.get_page(0)
         settings = TfSettings(close_unclosed_boundaries=False)
         tables = find_tables(page, extract_text=False, tf_settings=settings)
 
-        total_cells = sum(len(t.cells) for t in tables)
-        assert total_cells < 42 + 12, (
-            f"Expected fewer cells without boundary closing, got {total_cells}"
+        assert len(tables) == 2, f"Expected 2 tables, got {len(tables)}"
+        assert len(tables[0].cells) == 42, (
+            f"Expected 42 cells in table 0 (unaffected), got {len(tables[0].cells)}"
+        )
+        assert len(tables[1].cells) == 8, (
+            f"Expected 8 cells in table 1 (bottom row missing), got {len(tables[1].cells)}"
         )
