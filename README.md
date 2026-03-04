@@ -42,12 +42,18 @@
 This project draws significant inspiration from the table extraction modules of [pdfplumber](https://github.com/jsvine/pdfplumber) and [PyMuPDF](https://github.com/pymupdf/PyMuPDF). Compared to `pdfplumber` and `PyMuPDF`, `tablers` has the following advantages:
 
 - **High Performance**: Utilizes Rust for high-performance PDF processing
+- **Higher Accuracy**: Tablers optimizes some table detection algorithms to address table extraction problems that other libraries have not fully solved, including:
+    - Mixed strategies where one is text and the other is lines ([#8](https://github.com/monchin/tablers/issues/8))
+    - Tables whose edges are actually narrow closepath polylines ([#13](https://github.com/monchin/tablers/issues/13))
+    - Extracting table content when the bottom border is absent ([pdfplumber discussion #631](https://github.com/jsvine/pdfplumber/discussions/631))
+    - Table recognition when outer lines are missing ([pdfplumber issue #1296](https://github.com/jsvine/pdfplumber/issues/1296))
+    - Excluding tables formed by invisible edges ([pdfplumber issue #1357](https://github.com/jsvine/pdfplumber/issues/1357))
 - **More Configurable**: Supports customizable table filter settings (`min_rows`, `min_columns`, `include_single_cell`, e.g., see [this issue](https://github.com/pymupdf/PyMuPDF/issues/3987))
 - **Clean Python Dependencies**: No external python dependencies required
 
 ## Benchmark
 
-Benchmarked on the [ICDAR 2013](https://www.tamirhassan.com/html/dataset.html) dataset, evaluating both extraction speed and accuracy across tablers, pymupdf, pdfplumber, and camelot:
+Benchmarked on the [ICDAR 2013 Table Competition](https://www.tamirhassan.com/html/competition.html) dataset, evaluating both extraction speed and accuracy across tablers, PyMuPDF, pdfplumber, and camelot. All libraries use their **default configuration** for table extraction. PyMuPDF excludes tables that have only one row or only one column (see [PyMuPDF#3987](https://github.com/pymupdf/PyMuPDF/issues/3987)), and this behaviour is not configurable; among the compared libraries, only **tablers** allows configuring minimum row/column counts. For a fair comparison, the benchmark therefore includes both **tablers (default)** and **tablers (min 2×2)** — the latter with `min_rows=2` and `min_columns=2` so that single-row/single-column tables are filtered out in the same way as in PyMuPDF. For more on the libraries and settings, see the [Libraries compared](https://github.com/monchin/tablers-benchmark#libraries-compared) section in [tablers-benchmark](https://github.com/monchin/tablers-benchmark).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/monchin/tablers-benchmark/master/table_extraction_benchmark.png" alt="Table Extraction Benchmark">

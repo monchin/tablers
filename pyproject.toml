@@ -94,6 +94,7 @@ exclude = [".github/**/*.md", ".agents/**/*.md"]
 
 [tool.rumdl.per-file-ignores]
 # ignore indent issues for this file for better display in mkdocs
+"README.md" = ["MD007"]
 "docs/getting_started/installation.md" = ["MD007"]
 # ignore MD046 (fenced code blocks) for admonition content
 "docs/usage/index.md" = ["MD046"]
