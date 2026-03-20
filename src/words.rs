@@ -117,13 +117,26 @@ impl WordExtractor {
     ///
     /// # Arguments
     ///
-    /// * `ordered_chars` - The characters to merge (must be non-empty).
+    /// * `ordered_chars` - The characters to merge (empty yields an empty word with a zero bbox).
     ///
     /// # Returns
     ///
     /// A Word containing the merged text and combined bounding box.
     pub fn merge_chars(&self, ordered_chars: &[Char]) -> Word {
-        let (x1, y1, x2, y2) = get_objects_bbox(ordered_chars).unwrap();
+        if ordered_chars.is_empty() {
+            return Word {
+                text: String::new(),
+                bbox: (
+                    OrderedFloat(0.0),
+                    OrderedFloat(0.0),
+                    OrderedFloat(0.0),
+                    OrderedFloat(0.0),
+                ),
+                rotation_degrees: OrderedFloat(0.0),
+            };
+        }
+        let (x1, y1, x2, y2) =
+            get_objects_bbox(ordered_chars).unwrap_or_else(|| ordered_chars[0].bbox);
         let first_char = &ordered_chars[0];
 
         let rotation = first_char.rotation_degrees;
@@ -262,7 +275,7 @@ impl WordExtractor {
                     words.push(std::mem::take(&mut current_word));
                 }
             } else if let Some(ch0) = text.chars().next()
-                && text.len() == 1
+                && text.chars().nth(1).is_none()
                 && self.split_at_punctuation.contains(&ch0)
             {
                 if !current_word.is_empty() {
@@ -322,30 +335,70 @@ impl WordExtractor {
                         && rotation_degrees < OrderedFloat(360.001f32))
                 {
                     if self.text_read_in_clockwise {
-                        sc.sort_by(|a, b| a.bbox.0.partial_cmp(&b.bbox.0).unwrap());
+                        sc.sort_by(|a, b| {
+                            a.bbox
+                                .0
+                                .partial_cmp(&b.bbox.0)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        });
                     } else {
-                        sc.sort_by(|a, b| b.bbox.0.partial_cmp(&a.bbox.0).unwrap());
+                        sc.sort_by(|a, b| {
+                            b.bbox
+                                .0
+                                .partial_cmp(&a.bbox.0)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        });
                     }
                 } else if rotation_degrees >= OrderedFloat(45.0f32)
                     && rotation_degrees < OrderedFloat(135.0f32)
                 {
                     if self.text_read_in_clockwise {
-                        sc.sort_by(|a, b| a.bbox.1.partial_cmp(&b.bbox.1).unwrap());
+                        sc.sort_by(|a, b| {
+                            a.bbox
+                                .1
+                                .partial_cmp(&b.bbox.1)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        });
                     } else {
-                        sc.sort_by(|a, b| b.bbox.1.partial_cmp(&a.bbox.1).unwrap());
+                        sc.sort_by(|a, b| {
+                            b.bbox
+                                .1
+                                .partial_cmp(&a.bbox.1)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        });
                     }
                 } else if rotation_degrees >= OrderedFloat(135.0f32)
                     && rotation_degrees < OrderedFloat(225.0f32)
                 {
                     if self.text_read_in_clockwise {
-                        sc.sort_by(|a, b| b.bbox.0.partial_cmp(&a.bbox.0).unwrap());
+                        sc.sort_by(|a, b| {
+                            b.bbox
+                                .0
+                                .partial_cmp(&a.bbox.0)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        });
                     } else {
-                        sc.sort_by(|a, b| a.bbox.0.partial_cmp(&b.bbox.0).unwrap());
+                        sc.sort_by(|a, b| {
+                            a.bbox
+                                .0
+                                .partial_cmp(&b.bbox.0)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        });
                     }
                 } else if self.text_read_in_clockwise {
-                    sc.sort_by(|a, b| b.bbox.1.partial_cmp(&a.bbox.1).unwrap());
+                    sc.sort_by(|a, b| {
+                        b.bbox
+                            .1
+                            .partial_cmp(&a.bbox.1)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
                 } else {
-                    sc.sort_by(|a, b| a.bbox.1.partial_cmp(&b.bbox.1).unwrap());
+                    sc.sort_by(|a, b| {
+                        a.bbox
+                            .1
+                            .partial_cmp(&b.bbox.1)
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    });
                 }
                 result.extend(sc);
             }
@@ -381,6 +434,9 @@ impl WordExtractor {
         for char_group in char_groups {
             let word_groups = self.iter_chars_to_words(char_group);
             for word_chars in word_groups {
+                if word_chars.is_empty() {
+                    continue;
+                }
                 let word = self.merge_chars(&word_chars);
                 result.push((word, word_chars));
             }
@@ -473,9 +529,15 @@ mod tests {
         assert_eq!(horizontal_rtl[1].text, "baaabaaA/AAA");
     }
 
-    /// Regression: Pdfium may return `unicode_string() == None` for some glyphs. Word grouping and
-    /// merge must not panic. The fixture page has no tables; it only supplies chars that trigger
-    /// the bug (see `tests/data/#28-char-with-no-unicode-info.pdf`).
+    /// Regression: Pdfium may omit `unicode_string()` for some glyphs while still exposing UTF-16
+    /// `unicode_value()` (supplementary-plane pairs, etc.; see PDFium `public/fpdf_text.h` on main).
+    /// Word grouping must not panic. The
+    /// fixture page has no tables (see `tests/data/#28-char-with-no-unicode-info.pdf`).
+    ///
+    /// Issue #28 formula with every Unicode whitespace scalar removed (space, `\r`, `\n`, etc.).
+    /// Pdfium order; each position matches the non-ws content of successive `Char.unicode_char`.
+    const EXPECTED_ISSUE_28_NON_WS: &str = "𝜃𝑘𝑖=𝜃𝑘∙𝑒𝜂𝑘𝑖";
+
     #[test]
     fn test_extract_words_char_with_no_unicode_info_pdf() {
         let project_root = env!("CARGO_MANIFEST_DIR");
@@ -492,12 +554,28 @@ mod tests {
         let objects = pdf_page.objects.borrow();
         let chars = &objects.as_ref().unwrap().chars;
 
-        let none_count = chars.iter().filter(|c| c.unicode_char.is_none()).count();
-        assert!(
-            none_count > 0,
-            "Fixture #28-char-with-no-unicode-info.pdf must include at least one char with unicode_char None \
-             (Pdfium unicode_string missing); got {none_count} such chars"
+        let expected: Vec<char> = EXPECTED_ISSUE_28_NON_WS.chars().collect();
+        assert_eq!(expected.len(), 11);
+        let got: Vec<char> = chars
+            .iter()
+            .filter_map(|c| c.unicode_char.as_deref())
+            .flat_map(|s| s.chars())
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert_eq!(
+            got.len(),
+            expected.len(),
+            "expected {} non-whitespace scalars, got {}; got={got:?}",
+            expected.len(),
+            got.len()
         );
+        for (i, (g, e)) in got.iter().zip(expected.iter()).enumerate() {
+            assert_eq!(
+                *g, *e,
+                "non-whitespace scalar #{i}: expected U+{:04X} {:?}, got U+{:04X} {:?}",
+                *e as u32, e, *g as u32, g
+            );
+        }
 
         let settings = WordsExtractSettings::default();
         let extractor = WordExtractor::new(&settings);

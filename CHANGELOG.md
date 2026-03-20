@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`Char.unicode_char`:** Built from Pdfium `unicode_value()` as UTF-16 code units with surrogate-pair merging (semantics per [PDFium `public/fpdf_text.h` (main)](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_text.h), e.g. `FPDFText_GetText` / `FPDFText_GetBoundedText`), instead of relying on `unicode_string()` alone. Supplementary-plane characters and glyphs with missing Unicode strings but valid code units are represented as one logical character; pairs use a merged bounding box.
+
 ## [0.7.1] - 2026-03-20
 
 ### Fixed

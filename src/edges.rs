@@ -157,7 +157,7 @@ pub fn words_to_edges_v(words: &[Word], word_threshold: usize) -> Vec<Edge> {
     }
 
     let mut sorted_rects: Vec<BboxKey> = condensed_bboxes.into_iter().collect();
-    sorted_rects.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    sorted_rects.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
 
     // 计算边界值
     let max_x2 = sorted_rects
@@ -296,7 +296,11 @@ fn join_edge_group(
     };
     let mut sorted_edges: Vec<Edge> = edges
         .into_iter()
-        .sorted_by(|a, b| get_min_prop(a).partial_cmp(&get_min_prop(b)).unwrap())
+        .sorted_by(|a, b| {
+            get_min_prop(a)
+                .partial_cmp(&get_min_prop(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
         .collect();
     let mut result = vec![sorted_edges[0].clone()];
     for edge in sorted_edges.iter_mut().skip(1) {

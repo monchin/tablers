@@ -3,7 +3,13 @@ use ordered_float::OrderedFloat;
 use pdfium_render::prelude::PdfPage as PdfiumPage;
 use pdfium_render::prelude::{PdfPathFillMode, *};
 use std::cell::RefCell;
+use std::char::decode_utf16;
 use std::cmp;
+
+#[inline]
+fn merge_two_bboxes(a: BboxKey, b: BboxKey) -> BboxKey {
+    (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))
+}
 
 /// Represents a PDF page with extracted objects.
 ///
@@ -154,34 +160,96 @@ impl Page {
     fn process_chars(&self, objects: &mut Objects) {
         let text = self.inner.text().unwrap();
 
+        // Text stream indices follow UTF-16 code units per PDFium public/fpdf_text.h (main), e.g.
+        // FPDFText_GetText (UCS-2 values per index) and FPDFText_GetBoundedText (UTF-16 values).
+        // Supplementary-plane chars use two units—merge surrogates below.
+        let mut units: Vec<(Result<u16, std::num::TryFromIntError>, BboxKey, f32)> = Vec::new();
         for character in text.chars().iter() {
-            let char_rect = character.loose_bounds().unwrap();
-            let (x1, y1) = (char_rect.left(), char_rect.top());
-            let (x2, y2) = (char_rect.right(), char_rect.bottom());
+            let u = u16::try_from(character.unicode_value());
+            units.push((
+                u,
+                self.bbox_for_text_char(&character),
+                character.get_rotation_clockwise_degrees(),
+            ));
+        }
 
-            let (y1, y2) = (
-                self.get_v_coord_with_bottom_origin(y1.value),
-                self.get_v_coord_with_bottom_origin(y2.value),
-            );
-            let bbox = (
-                OrderedFloat::from(x1.value),
-                cmp::min(y1, y2),
-                OrderedFloat::from(x2.value),
-                cmp::max(y1, y2),
-            );
-            let rotation_degrees = character.get_rotation_clockwise_degrees();
+        let mut i = 0usize;
+        while i < units.len() {
+            let unit = match units[i].0 {
+                Ok(u) => u,
+                Err(_) => {
+                    let (_, bbox, rotation_degrees) = &units[i];
+                    objects.chars.push(Char {
+                        unicode_char: None,
+                        bbox: *bbox,
+                        rotation_degrees: OrderedFloat::from(*rotation_degrees),
+                        upright: *rotation_degrees == 0.0 || *rotation_degrees == 180.0,
+                    });
+                    i += 1;
+                    continue;
+                }
+            };
+
+            let (scalar, consumed) = if (0xD800..=0xDBFF).contains(&unit) {
+                match units
+                    .get(i + 1)
+                    .and_then(|(u, _, _)| u.as_ref().ok().copied())
+                {
+                    Some(lo) if (0xDC00..=0xDFFF).contains(&lo) => {
+                        let c = decode_utf16([unit, lo].into_iter())
+                            .next()
+                            .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
+                            .unwrap_or(char::REPLACEMENT_CHARACTER);
+                        (c, 2usize)
+                    }
+                    _ => (char::REPLACEMENT_CHARACTER, 1usize),
+                }
+            } else if (0xDC00..=0xDFFF).contains(&unit) {
+                (char::REPLACEMENT_CHARACTER, 1usize)
+            } else {
+                (
+                    char::from_u32(u32::from(unit)).unwrap_or(char::REPLACEMENT_CHARACTER),
+                    1usize,
+                )
+            };
+
+            let bbox = if consumed == 1 {
+                units[i].1
+            } else {
+                merge_two_bboxes(units[i].1, units[i + 1].1)
+            };
+            let rotation_degrees = units[i].2;
 
             objects.chars.push(Char {
-                unicode_char: character.unicode_string(),
+                unicode_char: Some(scalar.to_string()),
                 bbox,
                 rotation_degrees: OrderedFloat::from(rotation_degrees),
                 upright: rotation_degrees == 0.0 || rotation_degrees == 180.0,
-            })
+            });
+
+            i += consumed;
         }
         // if page_rotation_degrees == PdfPageRenderRotation::None {
         //     // for some pdf pages, their rotation is 0 degrees, but the characters are rotated
         //     self.deal_with_page_not_rotated_but_most_chars_rotated(objects);
         // }
+    }
+
+    fn bbox_for_text_char(&self, character: &PdfPageTextChar) -> BboxKey {
+        let char_rect = character.loose_bounds().unwrap();
+        let (x1, y1) = (char_rect.left(), char_rect.top());
+        let (x2, y2) = (char_rect.right(), char_rect.bottom());
+
+        let (y1, y2) = (
+            self.get_v_coord_with_bottom_origin(y1.value),
+            self.get_v_coord_with_bottom_origin(y2.value),
+        );
+        (
+            OrderedFloat::from(x1.value),
+            cmp::min(y1, y2),
+            OrderedFloat::from(x2.value),
+            cmp::max(y1, y2),
+        )
     }
 
     /// Processes a path object and extracts lines or rectangles.

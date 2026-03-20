@@ -1638,7 +1638,7 @@ fn intersections_to_cells(
 
         if p1.1 == p2.1 {
             let set1 = edges_to_set(inter1.get(&Orientation::Horizontal).unwrap());
-            let set2 = edges_to_set(inter1.get(&Orientation::Horizontal).unwrap());
+            let set2 = edges_to_set(inter2.get(&Orientation::Horizontal).unwrap());
             if !set1.is_disjoint(&set2) {
                 return true;
             }

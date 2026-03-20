@@ -507,11 +507,13 @@ Represents a line segment extracted from a PDF page.
 
 Represents a text character extracted from a PDF page.
 
+Text indexing and UCS-2 / UTF-16 handling follow PDFium [`public/fpdf_text.h` (main)](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_text.h) (e.g. `FPDFText_GetText`, `FPDFText_GetBoundedText`). `unicode_char` merges UTF-16 surrogate pairs where applicable.
+
 **Attributes:**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `unicode_char` | `Optional[str]` | Unicode character |
+| `unicode_char` | `Optional[str]` | Unicode character (logical scalar; UTF-16 units merged per PDFium text APIs) |
 | `bbox` | `tuple[float, float, float, float]` | Bounding box |
 | `rotation_degrees` | `float` | Clockwise rotation in degrees |
 | `upright` | `bool` | Whether the character is upright |

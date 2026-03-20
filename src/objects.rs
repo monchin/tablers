@@ -204,10 +204,15 @@ impl Line {
 /// Represents a text character extracted from a PDF page.
 ///
 /// Each character includes its Unicode value, position, and rotation information.
+/// `unicode_char` is derived from Pdfium’s UTF-16 `unicode_value()` with surrogate-pair merging
+/// (one logical scalar per glyph where possible). See PDFium
+/// [`public/fpdf_text.h` (main)](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_text.h)
+/// for the UCS-2 / UTF-16 text APIs (`FPDFText_GetText`, `FPDFText_GetBoundedText`, etc.).
 #[pyclass]
 #[derive(Debug, Clone)]
 pub struct Char {
-    /// The Unicode string representation of the character.
+    /// The Unicode string for this logical character (UTF-16 code units merged per
+    /// PDFium `public/fpdf_text.h` on main when applicable).
     #[pyo3(get)]
     pub unicode_char: Option<String>,
     /// The bounding box of the character.

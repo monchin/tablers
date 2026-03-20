@@ -408,11 +408,13 @@ class Char:
     Represents a text character extracted from a PDF page.
 
     Each character includes its Unicode value, position, and rotation information.
+    UTF-16 / UCS-2 text semantics follow PDFium public/fpdf_text.h (main branch);
+    see https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_text.h
 
     Attributes
     ----------
     unicode_char : str or None
-        The Unicode string representation of the character.
+        The Unicode string for this logical character (UTF-16 code units merged when applicable).
     bbox : BBox
         The bounding box of the character (x1, y1, x2, y2).
     rotation_degrees : float
