@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-03-20
+
 ### Changed
 
 - **`Char.unicode_char`:** Built from Pdfium `unicode_value()` as UTF-16 code units with surrogate-pair merging (semantics per [PDFium `public/fpdf_text.h` (main)](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_text.h), e.g. `FPDFText_GetText` / `FPDFText_GetBoundedText`), instead of relying on `unicode_string()` alone. Supplementary-plane characters and glyphs with missing Unicode strings but valid code units are represented as one logical character; pairs use a merged bounding box.
@@ -166,7 +168,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - lines / lines_strict / text strategies for extracting tables in a pdf page
 
-[Unreleased]: https://github.com/monchin/tablers/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/monchin/tablers/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/monchin/tablers/releases/tag/v0.7.2
 [0.7.1]: https://github.com/monchin/tablers/releases/tag/v0.7.1
 [0.7.0]: https://github.com/monchin/tablers/releases/tag/v0.7.0
 [0.6.0]: https://github.com/monchin/tablers/releases/tag/v0.6.0
