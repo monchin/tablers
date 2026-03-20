@@ -136,11 +136,11 @@ impl WordExtractor {
 
         let text: String = chars_iter
             .map(|c| {
-                let unicode_char = c.unicode_char.as_ref().unwrap();
+                let unicode_char = c.unicode_char.as_deref().unwrap_or("\u{FFFD}");
                 self.expansions
-                    .get(unicode_char.as_str())
+                    .get(unicode_char)
                     .map(|s| s.to_string())
-                    .unwrap_or_else(|| unicode_char.clone())
+                    .unwrap_or_else(|| unicode_char.to_string())
             })
             .collect();
 
@@ -254,16 +254,16 @@ impl WordExtractor {
         let mut current_word: Vec<Char> = Vec::new();
 
         for char in ordered_chars {
-            let text = &char.unicode_char.as_ref().unwrap();
-
+            let text = char.unicode_char.as_deref().unwrap_or("");
+            // Missing unicode maps to ""; `chars().all` is true on empty, so we skip like whitespace
+            // when `keep_blank_chars` is false.
             if !self.keep_blank_chars && text.chars().all(|c| c.is_whitespace()) {
                 if !current_word.is_empty() {
                     words.push(std::mem::take(&mut current_word));
                 }
-            } else if text.len() == 1
-                && self
-                    .split_at_punctuation
-                    .contains(&text.chars().next().unwrap())
+            } else if let Some(ch0) = text.chars().next()
+                && text.len() == 1
+                && self.split_at_punctuation.contains(&ch0)
             {
                 if !current_word.is_empty() {
                     words.push(std::mem::take(&mut current_word));
@@ -471,5 +471,43 @@ mod tests {
             .filter(|w| (w.rotation_degrees - 0.0).abs() < 0.001)
             .collect();
         assert_eq!(horizontal_rtl[1].text, "baaabaaA/AAA");
+    }
+
+    /// Regression: Pdfium may return `unicode_string() == None` for some glyphs. Word grouping and
+    /// merge must not panic. The fixture page has no tables; it only supplies chars that trigger
+    /// the bug (see `tests/data/#28-char-with-no-unicode-info.pdf`).
+    #[test]
+    fn test_extract_words_char_with_no_unicode_info_pdf() {
+        let project_root = env!("CARGO_MANIFEST_DIR");
+        let pdfium = load_pdfium();
+
+        let pdf_path = format!(
+            "{}/tests/data/#28-char-with-no-unicode-info.pdf",
+            project_root
+        );
+        let doc = pdfium.load_pdf_from_file(&pdf_path, None).unwrap();
+        let page = doc.pages().get(0).unwrap();
+        let pdf_page = Page::new(unsafe { std::mem::transmute(page) }, 0);
+
+        let objects = pdf_page.objects.borrow();
+        let chars = &objects.as_ref().unwrap().chars;
+
+        let none_count = chars.iter().filter(|c| c.unicode_char.is_none()).count();
+        assert!(
+            none_count > 0,
+            "Fixture #28-char-with-no-unicode-info.pdf must include at least one char with unicode_char None \
+             (Pdfium unicode_string missing); got {none_count} such chars"
+        );
+
+        let settings = WordsExtractSettings::default();
+        let extractor = WordExtractor::new(&settings);
+        let _ = extractor.extract_words(chars);
+
+        let settings_keep_blanks = WordsExtractSettings {
+            keep_blank_chars: true,
+            ..Default::default()
+        };
+        let extractor_kb = WordExtractor::new(&settings_keep_blanks);
+        let _ = extractor_kb.extract_words(chars);
     }
 }

@@ -1150,3 +1150,27 @@ class TestTablesUnclosedBoundariesPdf:
         assert len(tables) == 0, (
             f"Expected 0 tables with text strategy (outer-frame skipped), got {len(tables)}"
         )
+
+
+class TestCharWithNoUnicodeInfoPdf:
+    """Regression: glyphs with no Pdfium ``unicode_string`` must not crash the library.
+
+    The fixture page intentionally has **no tables**; it exists only to exercise word extraction
+    (via ``horizontal_strategy="text"``) and ``find_tables(..., extract_text=True)`` without
+    panicking. Also covered by Rust ``test_extract_words_char_with_no_unicode_info_pdf``.
+
+    Requires the native extension to match the current Rust sources (e.g. ``maturin develop``).
+    """
+
+    def test_find_tables_lines_strict_and_text_extract_text(
+        self, char_no_unicode_doc: Document
+    ) -> None:
+        """Smoke test: strict lines + text strategy and cell text extraction must not panic."""
+        page = char_no_unicode_doc.get_page(0)
+        settings = TfSettings(vertical_strategy="lines_strict", horizontal_strategy="text")
+        tables = find_tables(page, extract_text=True, tf_settings=settings)
+        assert isinstance(tables, list)
+        assert len(tables) == 0, (
+            "Fixture #28-char-with-no-unicode-info.pdf is table-free; if tables appear, "
+            "replace or narrow the fixture"
+        )
