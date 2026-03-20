@@ -196,6 +196,23 @@ def unclosed_bottom_doc(
 
 
 @pytest.fixture
+def char_no_unicode_pdf_path() -> Path:
+    """Return path to #28 (table-free PDF; glyphs may lack Pdfium unicode_string)."""
+    return TEST_DATA_DIR / "#28-char-with-no-unicode-info.pdf"
+
+
+@pytest.fixture
+def char_no_unicode_doc(
+    char_no_unicode_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open #28 for crash-free regression tests (no tables on page)."""
+    doc = Document(path=char_no_unicode_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
 def tables_unclosed_boundaries_pdf_path() -> Path:
     """Return path to the tables-unclosed-boundaries.pdf file."""
     return TEST_DATA_DIR / "tables-unclosed-boundaries.pdf"

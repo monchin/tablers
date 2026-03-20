@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Word extraction panic:** When Pdfium returns no Unicode string for a glyph (`Char.unicode_char` is `None`), word grouping and merging no longer panic. Missing glyphs are skipped like blank characters when `keep_blank_chars` is false, or contribute U+FFFD when merged into word text. Punctuation splitting no longer calls `unwrap()` on an empty string. Regression fixture `tests/data/#28-char-with-no-unicode-info.pdf` is a table-free page used only to ensure these paths do not crash.
+
 ## [0.7.0] - 2026-03-03
 
 ### Added

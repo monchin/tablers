@@ -75,3 +75,8 @@ docs/_build/
 
 # pdm
 .pdm-python
+
+# Local AI / editor tooling (not versioned). `.agents/` skills are tracked — do not ignore.
+.cursor/
+.claude/
+.agent/
