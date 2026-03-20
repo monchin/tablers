@@ -80,3 +80,4 @@ docs/_build/
 .cursor/
 .claude/
 .agent/
+.agents/
