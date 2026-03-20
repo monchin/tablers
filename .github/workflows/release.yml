@@ -104,9 +104,12 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      id-token: write  # required for Trusted Publishing
+      contents: write # GitHub Release
+      id-token: write # required for Trusted Publishing
 
     steps:
+      - uses: actions/checkout@v6
+
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -116,6 +119,27 @@ jobs:
         run: |
           mkdir final_dist
           find dist -type f -name "*.whl" -exec cp {} final_dist/ \;
+
+      - name: Extract changelog for tag
+        run: |
+          python3 << 'PY'
+          import os, re, sys
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tag[1:] if tag.startswith("v") else tag
+          with open("CHANGELOG.md", encoding="utf-8") as f:
+              text = f.read()
+          pat = rf"(?ms)^## \[{re.escape(version)}\].*?(?=^## \[|\Z)"
+          m = re.search(pat, text)
+          if not m:
+              print(
+                  f"No changelog section found for [{version}] (tag {tag})",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          with open("release_notes.md", "w", encoding="utf-8") as out:
+              out.write(m.group(0).strip() + "\n")
+          PY
 
       - uses: astral-sh/setup-uv@v7
 
@@ -129,3 +153,10 @@ jobs:
             --no-build \
             --repository pypi \
             --dest final_dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          body_path: release_notes.md
+          files: final_dist/*
