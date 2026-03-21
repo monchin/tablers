@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-03-21
+
 ### Changed
 
-- **`make_edges` (narrow polylines):** A polyline is promoted to a horizontal/vertical edge only when `fill_mode` is not `NONE` and the bbox is narrow (same snap tolerances as before). Geometric closure (`first == last`) is no longer considered; filled paths may omit the closing vertex per PDF path-painting rules (ISO 32000). Stroke-only / unfilled polylines are no longer promoted from this branch.
+- **`make_edges` (narrow polylines):** A polyline is promoted to a horizontal/vertical edge only when `fill_mode` is not `NONE` and the bbox is narrow (same snap tolerances as before). Geometric closure (`first == last`) is no longer considered; filled paths may omit the closing vertex per PDF path-painting rules (ISO 32000). Stroke-only / unfilled polylines are no longer promoted from this branch. (#31)
 
 ## [0.7.2] - 2026-03-20
 
@@ -21,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Word extraction panic:** When Pdfium returns no Unicode string for a glyph (`Char.unicode_char` is `None`), word grouping and merging no longer panic. Missing glyphs are skipped like blank characters when `keep_blank_chars` is false, or contribute U+FFFD when merged into word text. Punctuation splitting no longer calls `unwrap()` on an empty string. Regression fixture `tests/data/#28-char-with-no-unicode-info.pdf` is a table-free page used only to ensure these paths do not crash.
+- **Word extraction panic:** When Pdfium returns no Unicode string for a glyph (`Char.unicode_char` is `None`), word grouping and merging no longer panic. Missing glyphs are skipped like blank characters when `keep_blank_chars` is false, or contribute U+FFFD when merged into word text. Punctuation splitting no longer calls `unwrap()` on an empty string. Regression fixture `tests/data/#28-char-with-no-unicode-info.pdf` is a table-free page used only to ensure these paths do not crash. (#29)
 
 ## [0.7.0] - 2026-03-03
 
@@ -172,7 +174,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - lines / lines_strict / text strategies for extracting tables in a pdf page
 
-[Unreleased]: https://github.com/monchin/tablers/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/monchin/tablers/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/monchin/tablers/releases/tag/v0.7.3
 [0.7.2]: https://github.com/monchin/tablers/releases/tag/v0.7.2
 [0.7.1]: https://github.com/monchin/tablers/releases/tag/v0.7.1
 [0.7.0]: https://github.com/monchin/tablers/releases/tag/v0.7.0
