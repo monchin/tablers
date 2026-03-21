@@ -1152,6 +1152,28 @@ class TestTablesUnclosedBoundariesPdf:
         )
 
 
+class TestNarrowUnclosedPolylineAsEdgePdf:
+    """Tests for #30-narrow-unclosed-polyline-as-edge.pdf.
+
+    Regression for horizontal borders drawn as filled open polylines (implicit close on fill per
+    ISO 32000 path-painting operators). Without promoting those segments to edges, the middle
+    table splits into two components; with the fix, exactly one table is found spanning the grid.
+    """
+
+    def test_find_tables_single_table_expected_x_span(
+        self, narrow_unclosed_polyline_doc: Document
+    ) -> None:
+        """One table; bounding box x-range matches the full drawn grid (~88–525 pt on page 0)."""
+        page = narrow_unclosed_polyline_doc.get_page(0)
+        tables = find_tables(page, extract_text=False)
+
+        assert len(tables) == 1, f"Expected exactly 1 table, got {len(tables)}"
+
+        x1, _y1, x2, _y2 = tables[0].bbox
+        assert x1 == pytest.approx(87.63, abs=1.5)
+        assert x2 == pytest.approx(524.55, abs=1.5)
+
+
 class TestCharWithNoUnicodeInfoPdf:
     """Regression: glyphs with no Pdfium ``unicode_string`` must not crash the library.
 

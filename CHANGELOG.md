@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **`make_edges` (narrow polylines):** A polyline is promoted to a horizontal/vertical edge only when `fill_mode` is not `NONE` and the bbox is narrow (same snap tolerances as before). Geometric closure (`first == last`) is no longer considered; filled paths may omit the closing vertex per PDF path-painting rules (ISO 32000). Stroke-only / unfilled polylines are no longer promoted from this branch.
+
 ## [0.7.2] - 2026-03-20
 
 ### Changed
