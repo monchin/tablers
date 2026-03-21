@@ -155,7 +155,7 @@ impl BitAnd<StrategyType> for StrategyType {
 /// Controls how edges are detected, snapped, joined, and how intersections
 /// are identified when finding tables in a PDF page.
 #[derive(Debug, Clone)]
-#[pyclass]
+#[pyclass(from_py_object)]
 pub struct TfSettings {
     /// Strategy for detecting vertical edges.
     pub vertical_strategy: StrategyType,
@@ -839,7 +839,7 @@ pub enum SplitPunctuation {
 /// Controls how characters are grouped into words, including
 /// tolerance values and text direction handling.
 #[derive(Debug, Clone)]
-#[pyclass]
+#[pyclass(from_py_object)]
 pub struct WordsExtractSettings {
     /// X-axis tolerance for grouping characters into words.
     pub x_tolerance: NonNegativeF32,

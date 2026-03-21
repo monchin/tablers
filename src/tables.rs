@@ -72,7 +72,7 @@ impl<'tab> CellGroup<'tab> {
 }
 
 /// An owned version of CellGroup for Python interop.
-#[pyclass(name = "CellGroup")]
+#[pyclass(name = "CellGroup", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyCellGroup {
     /// The cells in this group, with `None` for empty positions.
@@ -187,7 +187,7 @@ fn get_axis_value(cell: &BboxKey, axis: usize) -> OrderedFloat<f32> {
 /// Represents a single cell in a table.
 ///
 /// Each cell has a bounding box and optional text content.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct TableCell {
     /// The text content of the cell.
@@ -226,7 +226,7 @@ pub struct TableCellValue {
 }
 
 /// Python-exposed TableCellValue for to_list().
-#[pyclass(name = "TableCellValue")]
+#[pyclass(name = "TableCellValue", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyTableCellValue {
     #[pyo3(get)]

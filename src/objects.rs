@@ -3,7 +3,7 @@ use pdfium_render::prelude::{PdfColor, PdfPathFillMode, PdfPathSegmentType};
 use pyo3::prelude::*;
 
 /// PDF path fill rule: mirrors pdfium-render's PdfPathFillMode for Python exposure.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -29,7 +29,7 @@ impl From<PdfPathFillMode> for FillMode {
 /// Container for all extracted objects from a PDF page.
 ///
 /// This struct holds all rectangles, lines, and characters found in a page.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct Objects {
     /// All rectangles found in the page.
@@ -61,7 +61,7 @@ pub type BboxKey = (
 /// Represents a rectangle extracted from a PDF page.
 ///
 /// Rectangles are typically used as table cell borders or backgrounds.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct Rect {
     /// The bounding box of the rectangle.
@@ -125,7 +125,7 @@ impl Rect {
 /// Represents a line segment extracted from a PDF page.
 ///
 /// Lines can be straight or curved and are used for table borders.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct Line {
     /// The type of line (straight or curve).
@@ -208,7 +208,7 @@ impl Line {
 /// (one logical scalar per glyph where possible). See PDFium
 /// [`public/fpdf_text.h` (main)](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_text.h)
 /// for the UCS-2 / UTF-16 text APIs (`FPDFText_GetText`, `FPDFText_GetBoundedText`, etc.).
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Char {
     /// The Unicode string for this logical character (UTF-16 code units merged per

@@ -413,7 +413,7 @@ pub(crate) fn merge_edges(
 ///
 /// An edge can be either horizontal or vertical and includes
 /// position, width, and color information.
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Edge {
     /// The orientation of the edge (horizontal or vertical).
