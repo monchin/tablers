@@ -632,9 +632,13 @@ pub(crate) fn make_edges(
                     })
                 }
             } else if line.line_type == LineType::Polyline
-            // Only close narrow paths could be regarded as edges 
-                && line.points.first().unwrap() == line.points.last().unwrap()
+                && line.fill_mode != PdfPathFillMode::None
             {
+                // Only filled polylines: pdfium sets `fill_mode` when the path is painted with
+                // a fill operator (`f`, `f*`, or combined fill+stroke). Per PDF (ISO 32000-1 /
+                // ISO 32000-2, path-painting operators), open subpaths are implicitly closed
+                // before filling, so the vertex list need not repeat the start point. Narrow
+                // strips are detected via bbox vs. snap_*_tolerance below (not by first==last).
                 let pts = &line.points;
                 let x_min = pts.iter().map(|p| p.0).min().unwrap();
                 let x_max = pts.iter().map(|p| p.0).max().unwrap();
@@ -1149,6 +1153,10 @@ mod tests {
 
     /// Helper to create a polyline Line object.
     fn make_polyline(points: Vec<(f32, f32)>) -> Line {
+        make_polyline_with_fill(points, PdfPathFillMode::Winding)
+    }
+
+    fn make_polyline_with_fill(points: Vec<(f32, f32)>, fill_mode: PdfPathFillMode) -> Line {
         Line {
             line_type: LineType::Polyline,
             points: points
@@ -1159,7 +1167,7 @@ mod tests {
             fill_color: PdfColor::new(0, 0, 0, 255),
             width: OrderedFloat(1.0),
             is_stroked: false,
-            fill_mode: PdfPathFillMode::Winding,
+            fill_mode,
         }
     }
 
@@ -1261,6 +1269,70 @@ mod tests {
     }
 
     #[test]
+    fn test_open_filled_polyline_implicit_close_thin_horizontal_edge() {
+        // Filled polyline, point list omits closing vertex (eu-003-style: top → right → bottom).
+        let polyline = make_polyline_with_fill(
+            vec![
+                (364.62, 263.64),
+                (444.30, 263.64),
+                (444.30, 264.06),
+                (364.62, 264.06),
+            ],
+            PdfPathFillMode::Winding,
+        );
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        let h_edges = edges.get(&Orientation::Horizontal).unwrap();
+        let v_edges = edges.get(&Orientation::Vertical).unwrap();
+
+        assert_eq!(h_edges.len(), 1);
+        assert_eq!(v_edges.len(), 0);
+        let edge = &h_edges[0];
+        assert_eq!(edge.x1, of(364.62));
+        assert_eq!(edge.x2, of(444.30));
+        assert_eq!(edge.y1, of(263.64));
+        assert_eq!(edge.y2, of(263.64));
+    }
+
+    #[test]
+    fn test_open_polyline_without_fill_not_promoted_to_edge() {
+        let polyline = make_polyline_with_fill(
+            vec![(0.0, 0.0), (10.0, 0.0), (10.0, 1.0), (0.0, 1.0)],
+            PdfPathFillMode::None,
+        );
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        assert_eq!(
+            edges.get(&Orientation::Horizontal).unwrap().len(),
+            0,
+            "Open polyline with no fill should not become an edge"
+        );
+        assert_eq!(edges.get(&Orientation::Vertical).unwrap().len(), 0);
+    }
+
+    #[test]
     fn test_wide_polyline_not_detected_as_edge() {
         // A closed polyline that is too wide (spread > snap_tolerance=3.0)
         // should NOT be detected as an edge.
@@ -1298,14 +1370,16 @@ mod tests {
     }
 
     #[test]
-    fn test_non_closed_polyline_ignored() {
-        // Only closed polylines (first == last) are considered as potential edges.
-        // A narrow but non-closed polyline should NOT be detected.
-        let polyline = make_polyline(vec![
-            (100.0, 10.0),
-            (100.5, 50.0),
-            (100.0, 90.0), // last != first (y differs), not a closed path
-        ]);
+    fn test_polyline_without_fill_ignored() {
+        // Polyline → edge requires fill_mode != None; stroke-only / no-fill paths are skipped.
+        let polyline = make_polyline_with_fill(
+            vec![
+                (100.0, 10.0),
+                (100.5, 50.0),
+                (100.0, 90.0), // last != first (y differs)
+            ],
+            PdfPathFillMode::None,
+        );
         let objects = Objects {
             lines: vec![polyline],
             rects: vec![],
@@ -1325,9 +1399,33 @@ mod tests {
         assert_eq!(
             v_edges.len(),
             0,
-            "Non-closed polyline should not be detected as edge"
+            "Polyline with no fill should not be detected as edge"
         );
         assert_eq!(h_edges.len(), 0);
+    }
+
+    #[test]
+    fn test_closed_polyline_without_fill_not_promoted_to_edge() {
+        // Geometrically closed narrow polyline but fill_mode None (e.g. stroke-only): ignored.
+        let polyline = make_polyline_with_fill(
+            vec![(100.0, 10.0), (100.5, 50.0), (100.0, 90.0), (100.0, 10.0)],
+            PdfPathFillMode::None,
+        );
+        let objects = Objects {
+            lines: vec![polyline],
+            rects: vec![],
+            chars: vec![],
+        };
+
+        let settings = Rc::new(TfSettings {
+            vertical_strategy: StrategyType::LinesStrict,
+            horizontal_strategy: StrategyType::LinesStrict,
+            ..Default::default()
+        });
+
+        let edges = make_edges(&objects, settings);
+        assert_eq!(edges.get(&Orientation::Vertical).unwrap().len(), 0);
+        assert_eq!(edges.get(&Orientation::Horizontal).unwrap().len(), 0);
     }
 
     #[test]
@@ -1397,7 +1495,7 @@ mod tests {
 
     #[test]
     fn test_multiple_narrow_polylines_all_detected() {
-        // Multiple closed narrow polylines should each be detected as edges.
+        // Multiple narrow filled polylines (default fill_mode) should each become an edge.
         let v_polyline1 = make_polyline(vec![
             (50.0, 0.0),
             (50.5, 50.0),

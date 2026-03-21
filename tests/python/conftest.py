@@ -213,6 +213,23 @@ def char_no_unicode_doc(
 
 
 @pytest.fixture
+def narrow_unclosed_polyline_pdf_path() -> Path:
+    """Return path to #30-narrow-unclosed-polyline-as-edge.pdf (filled open polyline borders)."""
+    return TEST_DATA_DIR / "#30-narrow-unclosed-polyline-as-edge.pdf"
+
+
+@pytest.fixture
+def narrow_unclosed_polyline_doc(
+    narrow_unclosed_polyline_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open and return a Document for #30-narrow-unclosed-polyline-as-edge.pdf."""
+    doc = Document(path=narrow_unclosed_polyline_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
 def tables_unclosed_boundaries_pdf_path() -> Path:
     """Return path to the tables-unclosed-boundaries.pdf file."""
     return TEST_DATA_DIR / "tables-unclosed-boundaries.pdf"
