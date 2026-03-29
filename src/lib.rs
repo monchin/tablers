@@ -45,8 +45,6 @@ mod tables;
 mod test_utils;
 mod words;
 
-type PyBbox = (f32, f32, f32, f32);
-
 /// A wrapper around the Pdfium library runtime.
 ///
 /// This struct holds the Pdfium instance and provides methods to interact with PDF documents.
@@ -519,12 +517,11 @@ impl PyPageIterator {
 
     /// Returns the next page in the iteration.
     ///
-    /// # Returns
-    ///
-    /// The next `Pyo3Page` or `None` if iteration is complete.
-    fn __next__(&mut self) -> PyResult<Option<Pyo3Page>> {
+    /// Follows the Python [iterator protocol](https://docs.python.org/3/library/stdtypes.html#iterator.__next__):
+    /// returns the next `Pyo3Page`, or raises `StopIteration` when exhausted.
+    fn __next__(&mut self) -> PyResult<Pyo3Page> {
         if self.current_idx >= self.page_count {
-            return Ok(None);
+            return Err(pyo3::exceptions::PyStopIteration::new_err(()));
         }
 
         let inner = self.doc_inner.borrow();
@@ -535,10 +532,10 @@ impl PyPageIterator {
         let page_idx = self.current_idx;
         self.current_idx += 1;
 
-        Ok(Some(Pyo3Page {
+        Ok(Pyo3Page {
             doc_inner: Rc::clone(&self.doc_inner),
             inner: Page::new(doc.pages().get(page_idx as PdfPageIndex).unwrap(), page_idx),
-        }))
+        })
     }
 }
 
@@ -959,6 +956,10 @@ fn tablers(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_class::<Edge>()?;
     m.add_class::<TableCell>()?;
     m.add_class::<Table>()?;
+    m.add_class::<Objects>()?;
+    m.add_class::<Rect>()?;
+    m.add_class::<Line>()?;
+    m.add_class::<Char>()?;
     m.add_class::<PyCellGroup>()?;
     m.add_class::<PyTableCellValue>()?;
     m.add_class::<crate::objects::FillMode>()?;

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Type stubs (`tablers.pyi`) are now auto-generated using [rylai](https://github.com/monchin/rylai) instead of being manually maintained. Run `pdm stub` to regenerate.
+
 ## [0.7.3] - 2026-03-21
 
 ### Changed

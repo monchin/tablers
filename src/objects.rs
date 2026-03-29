@@ -45,6 +45,9 @@ pub struct Objects {
 
 /// A 2D point represented as (x, y) coordinates.
 pub type Point = (OrderedFloat<f32>, OrderedFloat<f32>);
+pub(crate) type PyBbox = (f32, f32, f32, f32);
+pub(crate) type PyPoint = (f32, f32);
+pub(crate) type PyColor = (u8, u8, u8, u8);
 
 /// A bounding box key represented as (x1, y1, x2, y2) coordinates.
 ///
@@ -84,7 +87,7 @@ pub struct Rect {
 impl Rect {
     /// Returns the bounding box as a tuple (x1, y1, x2, y2).
     #[getter]
-    fn bbox(&self) -> (f32, f32, f32, f32) {
+    fn bbox(&self) -> PyBbox {
         (
             self.bbox.0.into_inner(),
             self.bbox.1.into_inner(),
@@ -95,7 +98,7 @@ impl Rect {
 
     /// Returns the fill color as an RGBA tuple.
     #[getter]
-    fn fill_color(&self) -> (u8, u8, u8, u8) {
+    fn fill_color(&self) -> PyColor {
         (
             self.fill_color.red(),
             self.fill_color.green(),
@@ -106,7 +109,7 @@ impl Rect {
 
     /// Returns the stroke color as an RGBA tuple.
     #[getter]
-    fn stroke_color(&self) -> (u8, u8, u8, u8) {
+    fn stroke_color(&self) -> PyColor {
         (
             self.stroke_color.red(),
             self.stroke_color.green(),
@@ -159,7 +162,7 @@ impl Line {
 
     /// Returns the line points as a list of (x, y) tuples.
     #[getter]
-    fn points(&self) -> Vec<(f32, f32)> {
+    fn points(&self) -> Vec<PyPoint> {
         self.points
             .iter()
             .map(|p| (p.0.into_inner(), p.1.into_inner()))
@@ -168,7 +171,7 @@ impl Line {
 
     /// Returns the stroke color as an RGBA tuple.
     #[getter]
-    fn stroke_color(&self) -> (u8, u8, u8, u8) {
+    fn stroke_color(&self) -> PyColor {
         (
             self.stroke_color.red(),
             self.stroke_color.green(),
@@ -179,7 +182,7 @@ impl Line {
 
     /// Returns the fill color as an RGBA tuple.
     #[getter]
-    fn fill_color(&self) -> (u8, u8, u8, u8) {
+    fn fill_color(&self) -> PyColor {
         (
             self.fill_color.red(),
             self.fill_color.green(),
@@ -227,7 +230,7 @@ pub struct Char {
 impl Char {
     /// Returns the bounding box as a tuple (x1, y1, x2, y2).
     #[getter]
-    fn bbox(&self) -> (f32, f32, f32, f32) {
+    fn bbox(&self) -> PyBbox {
         (
             self.bbox.0.into_inner(),
             self.bbox.1.into_inner(),

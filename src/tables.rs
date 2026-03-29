@@ -85,7 +85,7 @@ pub struct PyCellGroup {
 #[pymethods]
 impl PyCellGroup {
     #[getter]
-    fn bbox(&self) -> (f32, f32, f32, f32) {
+    fn bbox(&self) -> PyBbox {
         (
             self.bbox.0.into_inner(),
             self.bbox.1.into_inner(),
@@ -206,7 +206,7 @@ impl TableCell {
 
     /// Returns the bounding box as a tuple (x1, y1, x2, y2).
     #[getter]
-    fn bbox(&self) -> (f32, f32, f32, f32) {
+    fn bbox(&self) -> PyBbox {
         (
             self.bbox.0.into_inner(),
             self.bbox.1.into_inner(),
@@ -294,7 +294,7 @@ impl Table {
 
     /// Returns the bounding box as a tuple (x1, y1, x2, y2).
     #[getter]
-    fn bbox(&self) -> (f32, f32, f32, f32) {
+    fn bbox(&self) -> PyBbox {
         (
             self.bbox.0.into_inner(),
             self.bbox.1.into_inner(),
