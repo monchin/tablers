@@ -65,6 +65,25 @@ maturin develop --uv
 pdm test
 ```
 
+## Development Notes
+
+### Generating Type Stub Files
+
+During development, if you need to generate or update `.pyi` type stub files for better IDE support and type checking, you can run:
+
+```bash
+pdm stub
+```
+
+This command requires that you have already installed `uv` and `pdm` as part of the build prerequisites. The generated stub files will provide comprehensive type hints for the Tablers API.
+
+**Important Notes:**
+
+- `.pyi` files are added to `.gitignore` and should **not** be manually edited or committed
+- Type stub files are automatically generated during CI and release workflows
+- Any manual changes to `.pyi` files will be overwritten when `pdm stub` is run
+- **Before committing code**, run `pdm stub` to ensure the generated `.pyi` files are up-to-date for pre-commit hooks to pass successfully
+
 ## Verify Installation
 
 After installation, you can verify it was successful:

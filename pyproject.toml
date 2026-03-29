@@ -46,6 +46,7 @@ test = [
 [tool.maturin]
 python-source = "python"
 compatibility = "manylinux_2_28"
+include = ["python/tablers/*.pyi"]
 
 [tool.pdm.scripts]
 # need cargo, ruff, ty and rumdl
