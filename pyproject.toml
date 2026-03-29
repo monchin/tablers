@@ -46,6 +46,7 @@ test = [
 [tool.maturin]
 python-source = "python"
 compatibility = "manylinux_2_28"
+include = ["python/tablers/*.pyi"]
 
 [tool.pdm.scripts]
 # need cargo, ruff, ty and rumdl
@@ -56,10 +57,15 @@ pre_build = "python scripts/pre-build.py"
 post_build = "python scripts/post-build.py"
 # `uv tool install mkdocs --with mkdocs-material --with mkdocs-include-markdown-plugin` before using `docs`
 docs = "mkdocs serve"
+stub = "uvx rylai -o python/tablers/"
 
 [tool.ruff]
 line-length = 100
 include = ["python/**.py", "python/**.pyi", "scripts/**", "tests/**.py"]
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 100
 
 [tool.ruff.lint]
 # See list of rules at: https://docs.astral.sh/ruff/rules/
@@ -73,8 +79,6 @@ select = [
     "UP",  # pyupgrade
 ]
 
-[tool.ruff.lint.pycodestyle]
-max-doc-length = 100
 
 [tool.ty.rules]
 possibly-missing-attribute = "error"

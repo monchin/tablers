@@ -21,7 +21,7 @@ with Document("path/to/your/document.pdf") as doc:
     page = doc.get_page(0)
     im = PageImage(page)
     im.debug_tablefinder()
-    im.show() # or `im.save("output.png")` to save the image to a file
+    im.show()  # or `im.save("output.png")` to save the image to a file
 ```
 
 Color arguments (e.g. ``fill``, ``stroke``) accept either RGBA tuples or strings

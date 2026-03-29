@@ -464,7 +464,7 @@ impl Edge {
         x2: f32,
         y2: f32,
         width: f32,
-        color: (u8, u8, u8, u8),
+        color: PyColor,
     ) -> PyResult<Self> {
         let orientation = match orientation {
             "h" => Orientation::Horizontal,
@@ -518,7 +518,7 @@ impl Edge {
 
     /// Returns the color as an RGBA tuple.
     #[getter]
-    fn color(&self) -> (u8, u8, u8, u8) {
+    fn color(&self) -> PyColor {
         (
             self.color.red(),
             self.color.green(),
@@ -554,8 +554,12 @@ impl Edge {
     }
 
     /// Checks equality based on coordinates.
-    fn __eq__(&self, other: &Self) -> bool {
-        self.x1 == other.x1 && self.y1 == other.y1 && self.x2 == other.x2 && self.y2 == other.y2
+    fn __eq__(&self, other: &Bound<'_, PyAny>) -> bool {
+        if let Ok(other) = other.extract::<Edge>() {
+            self.x1 == other.x1 && self.y1 == other.y1 && self.x2 == other.x2 && self.y2 == other.y2
+        } else {
+            false
+        }
     }
 }
 
@@ -1152,11 +1156,11 @@ mod tests {
     // ============================================================
 
     /// Helper to create a polyline Line object.
-    fn make_polyline(points: Vec<(f32, f32)>) -> Line {
+    fn make_polyline(points: Vec<PyPoint>) -> Line {
         make_polyline_with_fill(points, PdfPathFillMode::Winding)
     }
 
-    fn make_polyline_with_fill(points: Vec<(f32, f32)>, fill_mode: PdfPathFillMode) -> Line {
+    fn make_polyline_with_fill(points: Vec<PyPoint>, fill_mode: PdfPathFillMode) -> Line {
         Line {
             line_type: LineType::Polyline,
             points: points
@@ -1172,7 +1176,7 @@ mod tests {
     }
 
     /// Helper to create a curve Line object.
-    fn make_curve(points: Vec<(f32, f32)>) -> Line {
+    fn make_curve(points: Vec<PyPoint>) -> Line {
         Line {
             line_type: LineType::Curve,
             points: points

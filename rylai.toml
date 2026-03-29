@@ -1,0 +1,71 @@
+format = [
+    "pdm run ruff format",
+    "pdm run ruff check --select I --fix",
+    "pdm run ruff check --select F401 --fix",
+]
+
+[type_map]
+"PyBbox" = "BBox"
+"PyColor" = "Color"
+"PyPoint" = "Point"
+
+[[add_content]]
+file = "tablers.pyi"
+location = "head"
+content = '''
+# ruff: noqa: E501
+'''
+
+[[add_content]]
+file = "tablers.pyi"
+location = "after-import-typing"
+content = '''
+import sys
+if sys.version_info < (3, 11):
+    from typing_extensions import Unpack
+else:
+    from typing import Unpack
+from .typing import (
+    BBox,
+    Color,
+    Point,
+    TfSettingItems,
+    WordsExtractSettingsItems,
+)
+'''
+
+[[override]]
+item = "tablers::Edge::__init__"
+param_types = {"orientation" = 't.Literal["h", "v"]'}
+
+[[override]]
+item = "tablers::TfSettings::py_new"
+param_types = {"kwargs" = "Unpack[TfSettingItems]"}
+
+[[override]]
+item = "tablers::WordsExtractSettings::py_new"
+param_types = {"kwargs" = "Unpack[WordsExtractSettingsItems]"}
+
+
+[[override]]
+item = "find_all_cells_bboxes"
+param_types = {"kwargs" = "Unpack[TfSettingItems]"}
+
+[[override]]
+item = "find_tables_from_cells"
+param_types = {"kwargs" = "Unpack[TfSettingItems]"}
+
+[[override]]
+item = "find_tables"
+param_types = {"kwargs" = "Unpack[TfSettingItems]"}
+
+[[override]]
+item = "get_edges"
+param_types = {"kwargs" = "Unpack[TfSettingItems]"}
+return_type = 'dict[t.Literal["v", "h"], list[Edge]]'
+
+[[override]]
+item = "get_intersections_from_edges"
+param_types = {"kwargs" = "Unpack[TfSettingItems]"}
+return_type = 'dict[Point, dict[t.Literal["v", "h"], list[Edge]]]'
+

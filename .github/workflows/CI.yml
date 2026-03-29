@@ -43,6 +43,9 @@ jobs:
       - name: Install dependencies
         run: pdm sync
 
+      - name: Generate .pyi stub files
+        run: pdm run stub
+
       - name: Check Rust format
         run: cargo fmt --check
 
