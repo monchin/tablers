@@ -1,7 +1,7 @@
 format = [
-    "pdm run ruff format",
-    "pdm run ruff check --select I --fix",
-    "pdm run ruff check --select F401 --fix",
+    "uvx ruff format",
+    "uvx ruff check --select I --fix",
+    "uvx ruff check --select F401 --fix",
 ]
 
 [type_map]
