@@ -196,7 +196,7 @@ impl Page {
                     .and_then(|(u, _, _)| u.as_ref().ok().copied())
                 {
                     Some(lo) if (0xDC00..=0xDFFF).contains(&lo) => {
-                        let c = decode_utf16([unit, lo].into_iter())
+                        let c = decode_utf16([unit, lo])
                             .next()
                             .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
                             .unwrap_or(char::REPLACEMENT_CHARACTER);
