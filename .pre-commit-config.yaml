@@ -17,14 +17,14 @@ repos:
   - id: ruff-format
 
 - repo: https://github.com/allganize/ty-pre-commit
-  rev: v0.0.32
+  rev: v0.0.34
   hooks:
   # Run the type checker.
   - id: ty-check
     exclude: .*test.*.py$
 
 - repo: https://github.com/rvben/rumdl-pre-commit
-  rev: v0.1.82
+  rev: v0.1.87
   hooks:
     - id: rumdl-fmt  # Auto-format (fixes what it can)
 
