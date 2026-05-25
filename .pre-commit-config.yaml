@@ -8,7 +8,7 @@ repos:
     name: check yaml files
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.13
+  rev: v0.15.14
   hooks:
   - id: ruff-check
     args: [--fix]
@@ -17,14 +17,14 @@ repos:
   - id: ruff-format
 
 - repo: https://github.com/allganize/ty-pre-commit
-  rev: v0.0.37
+  rev: v0.0.39
   hooks:
   # Run the type checker.
   - id: ty-check
     exclude: .*test.*.py$
 
 - repo: https://github.com/rvben/rumdl-pre-commit
-  rev: v0.1.93
+  rev: v0.2.0
   hooks:
     - id: rumdl-fmt  # Auto-format (fixes what it can)
 
