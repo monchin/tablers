@@ -23,6 +23,19 @@ Notes
 -----
 The library automatically loads the appropriate Pdfium library
 based on the operating system (Windows, Linux, or macOS).
+
+**Thread Safety**: This library is NOT thread-safe. A global
+``PDFIUM_RT`` is created at import time and is bound to the
+importing thread. All ``Document`` operations must run on that
+same thread. Using ``Document`` from a different thread will
+raise a ``PanicException``. In multi-threaded environments,
+import and use this library within the same worker thread, or
+use ``multiprocessing`` instead of ``threading``.
+
+Although `pdfium-render <https://github.com/ajrcarey/pdfium-render#multi-threading>`_
+offers a ``thread_safe`` compile-time feature (mutex-based locking),
+enabling it would introduce performance overhead in single-threaded
+use, so tablers does not enable it.
 """
 
 from __future__ import annotations
@@ -357,6 +370,11 @@ class Document:
     -----
     Either `path` or `bytes` must be provided, but not both.
     Always close the document when done to release resources.
+
+    **Thread Safety**: This class is NOT thread-safe. All
+    operations must be performed on the same thread that
+    imported the ``tablers`` module. Using it from a different
+    thread will raise a ``PanicException``.
     """
 
     _stream: bytes | None  # type hint only; instance value set in __init__

@@ -426,6 +426,92 @@ The algorithm runs as a pre-processing step on the raw collected edges, before i
 
 Once all virtual edges are synthesised, the full intersection-detection and cell-detection pipeline is re-run with the enhanced edge set. The feature is **skipped entirely** when either `vertical_strategy` or `horizontal_strategy` is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
 
+## Thread Safety
+
+**`tablers` is not thread-safe.** The library creates a global `PDFIUM_RT` runtime at import time, which is bound to the importing thread. All `Document` operations must be performed on the same thread that imported `tablers`. Using `Document` from a different thread will raise a `PanicException`:
+
+```
+PanicException: assertion `left == right` failed: tablers::PdfiumRuntime is unsendable, but sent to another thread
+```
+
+### Why Not Thread-Safe?
+
+tablers is built on [pdfium-render](https://github.com/ajrcarey/pdfium-render), which in turn wraps Pdfium. Pdfium itself is [explicitly not thread-safe](https://github.com/ajrcarey/pdfium-render#multi-threading) — the Pdfium authors recommend parallel processing over multi-threading. Although pdfium-render offers a `thread_safe` compile-time feature that locks access to Pdfium behind a mutex, enabling it would introduce performance overhead (mutex acquisition even in single-threaded use) and requires an explicit compile-time feature declaration. For these reasons, tablers does not enable thread safety and recommends `multiprocessing` for parallel workloads.
+
+### Multi-Threaded Environments
+
+In multi-threaded environments (e.g., FastAPI, Celery), make sure to import and use `tablers` within the same worker thread:
+
+```python
+# ❌ Wrong: import on main thread, use on worker thread
+import threading
+from tablers import Document
+
+def worker():
+    with Document("example.pdf") as doc:  # PanicException!
+        pass
+
+threading.Thread(target=worker).start()
+```
+
+```python
+# ✅ Correct: import and use on the same worker thread
+import threading
+
+def worker():
+    from tablers import Document, find_tables  # Import inside the worker thread
+    with Document("example.pdf") as doc:
+        for page in doc.pages():
+            tables = find_tables(page, extract_text=True)
+
+threading.Thread(target=worker).start()
+```
+
+### Multiprocessing
+
+For parallel processing, use `multiprocessing` instead of `threading`. Each process gets its own Python interpreter and global runtime, so `tablers` works correctly in each child process:
+
+```python
+from multiprocessing import Pool
+
+def process_page_range(args):
+    """Each worker opens the document once and processes a contiguous range of pages."""
+    pdf_path, start, end = args
+    from tablers import Document, find_tables
+    results = []
+    with Document(pdf_path) as doc:
+        for page_num in range(start, end):
+            page = doc.get_page(page_num)
+            tables = find_tables(page, extract_text=True)
+            # Table / TableCellValue objects cannot be pickled across processes,
+            # so convert to plain Python types before returning.
+            results.append([
+                [[cell.text for cell in row] for row in t.to_list()]
+                for t in tables
+            ])
+    return results
+
+if __name__ == "__main__":
+    import os
+    from tablers import Document
+
+    pdf_path = "example.pdf"
+    num_workers = os.cpu_count() or 4
+
+    with Document(pdf_path) as doc:
+        page_count = doc.page_count
+
+    # Split pages into contiguous chunks, one per worker
+    chunk_size = max(1, (page_count + num_workers - 1) // num_workers)
+    ranges = [
+        (pdf_path, i, min(i + chunk_size, page_count))
+        for i in range(0, page_count, chunk_size)
+    ]
+
+    with Pool(num_workers) as pool:
+        results = pool.map(process_page_range, ranges)
+```
+
 ## Error Handling
 
 ```python
