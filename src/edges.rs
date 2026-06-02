@@ -413,7 +413,7 @@ pub(crate) fn merge_edges(
 ///
 /// An edge can be either horizontal or vertical and includes
 /// position, width, and color information.
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Edge {
     /// The orientation of the edge (horizontal or vertical).
@@ -560,6 +560,36 @@ impl Edge {
         } else {
             false
         }
+    }
+
+    /// Pickle support: serialize to plain Python types.
+    ///
+    /// Returns `(cls, (orientation, x1, y1, x2, y2, width, color))`
+    /// so pickle calls the existing `#[new]` constructor on unpickle.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("Edge")?;
+        let orientation_str: &str = match self.orientation {
+            Orientation::Horizontal => "h",
+            Orientation::Vertical => "v",
+        };
+        let color = color_to_py(&self.color);
+        // Return (cls, args_tuple) — pickle calls cls(*args_tuple)
+        Ok((
+            cls,
+            (
+                orientation_str,
+                self.x1.into_inner(),
+                self.y1.into_inner(),
+                self.x2.into_inner(),
+                self.y2.into_inner(),
+                self.width.into_inner(),
+                color,
+            ),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
     }
 }
 

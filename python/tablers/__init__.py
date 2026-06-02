@@ -36,6 +36,14 @@ Although `pdfium-render <https://github.com/ajrcarey/pdfium-render#multi-threadi
 offers a ``thread_safe`` compile-time feature (mutex-based locking),
 enabling it would introduce performance overhead in single-threaded
 use, so tablers does not enable it.
+
+**Pickle Support**: All pure-data objects (``Table``, ``TableCell``,
+``Edge``, ``TfSettings``, ``WordsExtractSettings``, ``Objects``,
+``Rect``, ``Line``, ``Char``, ``CellGroup``,
+``TableCellValue``) support the Python pickle protocol and can be
+passed between processes via ``multiprocessing``. The Pdfium-bound
+types (``PdfiumRuntime``, ``Document``, ``Pyo3Page``) are not
+picklable.
 """
 
 from __future__ import annotations

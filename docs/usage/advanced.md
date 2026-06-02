@@ -430,7 +430,7 @@ Once all virtual edges are synthesised, the full intersection-detection and cell
 
 **`tablers` is not thread-safe.** The library creates a global `PDFIUM_RT` runtime at import time, which is bound to the importing thread. All `Document` operations must be performed on the same thread that imported `tablers`. Using `Document` from a different thread will raise a `PanicException`:
 
-```
+```text
 PanicException: assertion `left == right` failed: tablers::PdfiumRuntime is unsendable, but sent to another thread
 ```
 
@@ -471,6 +471,8 @@ threading.Thread(target=worker).start()
 
 For parallel processing, use `multiprocessing` instead of `threading`. Each process gets its own Python interpreter and global runtime, so `tablers` works correctly in each child process:
 
+All pure-data objects (`Table`, `TableCell`, `Edge`, `TfSettings`, etc.) support the Python pickle protocol and can be returned directly from worker processes:
+
 ```python
 from multiprocessing import Pool
 
@@ -483,12 +485,10 @@ def process_page_range(args):
         for page_num in range(start, end):
             page = doc.get_page(page_num)
             tables = find_tables(page, extract_text=True)
-            # Table / TableCellValue objects cannot be pickled across processes,
-            # so convert to plain Python types before returning.
-            results.append([
-                [[cell.text for cell in row] for row in t.to_list()]
-                for t in tables
-            ])
+            # Table objects are picklable — return them directly!
+            # Note: Document and Page objects are NOT picklable and must
+            # stay in the process that created them.
+            results.append(tables)
     return results
 
 if __name__ == "__main__":
@@ -511,6 +511,18 @@ if __name__ == "__main__":
     with Pool(num_workers) as pool:
         results = pool.map(process_page_range, ranges)
 ```
+
+#### Picklable Types
+
+The following types support pickle and can be freely passed between processes:
+
+- `Table`, `TableCell`, `CellGroup`, `TableCellValue`
+- `Edge`, `Objects`, `Rect`, `Line`, `Char`, `FillMode`
+- `TfSettings`, `WordsExtractSettings`
+
+The following types are **not** picklable because they hold native Pdfium resources and should stay in the process that created them:
+
+- `PdfiumRuntime`, `Document`, `Pyo3Page`, `PageIterator`
 
 ## Error Handling
 

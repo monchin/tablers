@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Pickle support:** All pure-data types (`Table`, `TableCell`, `CellGroup`, `TableCellValue`, `Edge`, `Objects`, `Rect`, `Line`, `Char`, `FillMode`, `TfSettings`, `WordsExtractSettings`) now implement `__reduce__` and can be serialized/deserialized via the Python `pickle` protocol. This enables passing extracted tables directly between processes with `multiprocessing` without manual conversion to plain Python types.
+
 ### Changed
 
 - Type stubs (`tablers.pyi`) are now auto-generated using [rylai](https://github.com/monchin/rylai) instead of being manually maintained. Run `pdm stub` to regenerate.
