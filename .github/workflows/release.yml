@@ -63,9 +63,13 @@ jobs:
   # --------------------------------------------------
   # Linux (manylinux)
   # - Build in Docker container to ensure glibc 2.28 compatibility
-  # - Docker build ensures proper symbol versions
+  # - Matrix: x86_64 and aarch64
   # --------------------------------------------------
   build-linux:
+    strategy:
+      matrix:
+        target: [x86_64, aarch64]
+
     runs-on: ubuntu-latest
 
     steps:
@@ -83,6 +87,12 @@ jobs:
       - name: Generate .pyi stub files
         run: uvx rylai -o python/tablers
 
+      # Set build target env vars for pre-build hook
+      - name: Set build target
+        run: |
+          echo "BUILD_TARGET=Linux" >> $GITHUB_ENV
+          echo "BUILD_ARCH=${{ matrix.target }}" >> $GITHUB_ENV
+
       # Run pre-build hook
       - name: Run pre-build hook
         run: python scripts/pre-build.py
@@ -92,7 +102,7 @@ jobs:
       - name: Build manylinux_2_28 wheel
         uses: PyO3/maturin-action@v1
         with:
-          target: x86_64
+          target: ${{ matrix.target }}
           manylinux: 2_28
           args: --release --out dist
           rust-toolchain: stable
@@ -104,7 +114,7 @@ jobs:
       # Upload artifacts
       - uses: actions/upload-artifact@v7
         with:
-          name: wheels-ubuntu-latest
+          name: wheels-linux-${{ matrix.target }}
           path: dist/*.whl
 
   # --------------------------------------------------
