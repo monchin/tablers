@@ -72,7 +72,7 @@ impl<'tab> CellGroup<'tab> {
 }
 
 /// An owned version of CellGroup for Python interop.
-#[pyclass(name = "CellGroup", from_py_object)]
+#[pyclass(module = "tablers.tablers", name = "CellGroup", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyCellGroup {
     /// The cells in this group, with `None` for empty positions.
@@ -92,6 +92,44 @@ impl PyCellGroup {
             self.bbox.2.into_inner(),
             self.bbox.3.into_inner(),
         )
+    }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("CellGroup")?;
+        let cells_state: Vec<Option<(String, PyBbox)>> = self
+            .cells
+            .iter()
+            .map(|c| {
+                c.as_ref()
+                    .map(|cell| (cell.text.clone(), bbox_to_py(&cell.bbox)))
+            })
+            .collect();
+        let bbox = bbox_to_py(&self.bbox);
+        Ok((cls.getattr("_from_pickle")?, (cells_state, bbox))
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    /// Reconstruct from pickled state.
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(cells_state: Vec<Option<(String, PyBbox)>>, bbox: PyBbox) -> Self {
+        let cells: Vec<Option<TableCell>> = cells_state
+            .into_iter()
+            .map(|c| {
+                c.map(|(text, b)| TableCell {
+                    text,
+                    bbox: bbox_from_py(&b),
+                })
+            })
+            .collect();
+        PyCellGroup {
+            cells,
+            bbox: bbox_from_py(&bbox),
+        }
     }
 }
 
@@ -187,7 +225,7 @@ fn get_axis_value(cell: &BboxKey, axis: usize) -> OrderedFloat<f32> {
 /// Represents a single cell in a table.
 ///
 /// Each cell has a bounding box and optional text content.
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct TableCell {
     /// The text content of the cell.
@@ -214,6 +252,27 @@ impl TableCell {
             self.bbox.3.into_inner(),
         )
     }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("TableCell")?;
+        let bbox = bbox_to_py(&self.bbox);
+        Ok((cls.getattr("_from_pickle")?, (self.text.clone(), bbox))
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    /// Reconstruct from pickled state.
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(text: String, bbox: PyBbox) -> Self {
+        TableCell {
+            text,
+            bbox: bbox_from_py(&bbox),
+        }
+    }
 }
 
 /// Value of one grid slot: either text (top-left of a cell) or merge info.
@@ -226,7 +285,7 @@ pub struct TableCellValue {
 }
 
 /// Python-exposed TableCellValue for to_list().
-#[pyclass(name = "TableCellValue", from_py_object)]
+#[pyclass(module = "tablers.tablers", name = "TableCellValue", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct PyTableCellValue {
     #[pyo3(get)]
@@ -253,6 +312,30 @@ impl PyTableCellValue {
     fn __repr__(&self) -> String {
         py_table_cell_value_repr(&self.text, self.merged_left, self.merged_top)
     }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("TableCellValue")?;
+        Ok((
+            cls.getattr("_from_pickle")?,
+            (self.text.clone(), self.merged_left, self.merged_top),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    /// Reconstruct from pickled state.
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(text: Option<String>, merged_left: bool, merged_top: bool) -> Self {
+        PyTableCellValue {
+            text,
+            merged_left,
+            merged_top,
+        }
+    }
 }
 
 /// Returns true if point (x, y) is inside bbox (x1 <= x < x2, y1 <= y < y2).
@@ -271,7 +354,7 @@ fn float_eq(a: OrderedFloat<f32>, b: OrderedFloat<f32>) -> bool {
 /// Represents a table extracted from a PDF page.
 ///
 /// A table consists of cells organized in a grid structure.
-#[pyclass]
+#[pyclass(module = "tablers.tablers")]
 pub struct Table {
     /// All cells in the table.
     pub cells: Vec<TableCell>,
@@ -389,6 +472,50 @@ impl Table {
                     .collect()
             })
             .map_err(pyo3::exceptions::PyValueError::new_err)
+    }
+
+    /// Pickle support: serialize all fields as plain Python types.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("Table")?;
+        // Serialize cells as (text, bbox) tuples
+        let cells_state: Vec<(String, PyBbox)> = self
+            .cells
+            .iter()
+            .map(|c| (c.text.clone(), bbox_to_py(&c.bbox)))
+            .collect();
+        let bbox = bbox_to_py(&self.bbox);
+        Ok((
+            cls.getattr("_from_pickle")?,
+            (cells_state, bbox, self.page_index, self.text_extracted),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    /// Reconstruct a Table from pickled state.
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(
+        cells_state: Vec<(String, PyBbox)>,
+        bbox: PyBbox,
+        page_index: usize,
+        text_extracted: bool,
+    ) -> Self {
+        let cells: Vec<TableCell> = cells_state
+            .into_iter()
+            .map(|(text, b)| TableCell {
+                text,
+                bbox: bbox_from_py(&b),
+            })
+            .collect();
+        Table {
+            cells,
+            bbox: bbox_from_py(&bbox),
+            page_index,
+            text_extracted,
+        }
     }
 }
 

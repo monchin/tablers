@@ -2,8 +2,22 @@ use ordered_float::OrderedFloat;
 use pdfium_render::prelude::{PdfColor, PdfPathFillMode, PdfPathSegmentType};
 use pyo3::prelude::*;
 
+/// Parses a fill mode string back to PdfPathFillMode, returning an error for unrecognized values.
+/// Used by pickle deserialization to detect corrupted data instead of silently defaulting.
+fn parse_fill_mode(name: &str) -> PyResult<PdfPathFillMode> {
+    match name {
+        "NONE" => Ok(PdfPathFillMode::None),
+        "WINDING" => Ok(PdfPathFillMode::Winding),
+        "EVEN_ODD" => Ok(PdfPathFillMode::EvenOdd),
+        _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "Invalid FillMode: {}",
+            name
+        ))),
+    }
+}
+
 /// PDF path fill rule: mirrors pdfium-render's PdfPathFillMode for Python exposure.
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -26,10 +40,41 @@ impl From<PdfPathFillMode> for FillMode {
     }
 }
 
+#[pymethods]
+impl FillMode {
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("FillMode")?;
+        let name = match self {
+            FillMode::NONE => "NONE",
+            FillMode::WINDING => "WINDING",
+            FillMode::EVEN_ODD => "EVEN_ODD",
+        };
+        Ok((cls.getattr("_from_pickle")?, (name.to_string(),))
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(name: &str) -> PyResult<Self> {
+        match name {
+            "NONE" => Ok(FillMode::NONE),
+            "WINDING" => Ok(FillMode::WINDING),
+            "EVEN_ODD" => Ok(FillMode::EVEN_ODD),
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid FillMode: {}",
+                name
+            ))),
+        }
+    }
+}
+
 /// Container for all extracted objects from a PDF page.
 ///
 /// This struct holds all rectangles, lines, and characters found in a page.
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 #[derive(Clone)]
 pub struct Objects {
     /// All rectangles found in the page.
@@ -41,6 +86,31 @@ pub struct Objects {
     /// All text characters found in the page.
     #[pyo3(get)]
     pub chars: Vec<Char>,
+}
+
+#[pymethods]
+impl Objects {
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("Objects")?;
+        Ok((
+            cls.getattr("_from_pickle")?,
+            (self.rects.clone(), self.lines.clone(), self.chars.clone()),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(rects: Vec<Rect>, lines: Vec<Line>, chars: Vec<Char>) -> Self {
+        Objects {
+            rects,
+            lines,
+            chars,
+        }
+    }
 }
 
 /// A 2D point represented as (x, y) coordinates.
@@ -61,10 +131,36 @@ pub type BboxKey = (
     OrderedFloat<f32>,
     OrderedFloat<f32>,
 );
+
+/// Converts a `BboxKey` to a plain Python-compatible tuple.
+pub(crate) fn bbox_to_py(bbox: &BboxKey) -> PyBbox {
+    (
+        bbox.0.into_inner(),
+        bbox.1.into_inner(),
+        bbox.2.into_inner(),
+        bbox.3.into_inner(),
+    )
+}
+
+/// Converts a plain Python tuple back to a `BboxKey`.
+pub(crate) fn bbox_from_py(b: &PyBbox) -> BboxKey {
+    (
+        OrderedFloat(b.0),
+        OrderedFloat(b.1),
+        OrderedFloat(b.2),
+        OrderedFloat(b.3),
+    )
+}
+
+/// Converts a `PdfColor` to a plain Python-compatible RGBA tuple.
+pub(crate) fn color_to_py(color: &PdfColor) -> PyColor {
+    (color.red(), color.green(), color.blue(), color.alpha())
+}
+
 /// Represents a rectangle extracted from a PDF page.
 ///
 /// Rectangles are typically used as table cell borders or backgrounds.
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 #[derive(Clone)]
 pub struct Rect {
     /// The bounding box of the rectangle.
@@ -123,12 +219,66 @@ impl Rect {
     fn fill_mode(&self) -> FillMode {
         self.fill_mode.into()
     }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("Rect")?;
+        let bbox = bbox_to_py(&self.bbox);
+        let fill_color = color_to_py(&self.fill_color);
+        let stroke_color = color_to_py(&self.stroke_color);
+        let fill_mode_name = match self.fill_mode {
+            PdfPathFillMode::None => "NONE",
+            PdfPathFillMode::Winding => "WINDING",
+            PdfPathFillMode::EvenOdd => "EVEN_ODD",
+        };
+        Ok((
+            cls.getattr("_from_pickle")?,
+            (
+                bbox,
+                fill_color,
+                stroke_color,
+                self.stroke_width,
+                self.is_stroked,
+                fill_mode_name.to_string(),
+            ),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(
+        bbox: PyBbox,
+        fill_color: PyColor,
+        stroke_color: PyColor,
+        stroke_width: f32,
+        is_stroked: bool,
+        fill_mode: String,
+    ) -> PyResult<Self> {
+        let fill_mode = parse_fill_mode(&fill_mode)?;
+        Ok(Rect {
+            bbox: bbox_from_py(&bbox),
+            fill_color: PdfColor::new(fill_color.0, fill_color.1, fill_color.2, fill_color.3),
+            stroke_color: PdfColor::new(
+                stroke_color.0,
+                stroke_color.1,
+                stroke_color.2,
+                stroke_color.3,
+            ),
+            stroke_width,
+            is_stroked,
+            fill_mode,
+        })
+    }
 }
 
 /// Represents a line segment extracted from a PDF page.
 ///
 /// Lines can be straight or curved and are used for table borders.
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 #[derive(Clone)]
 pub struct Line {
     /// The type of line (straight or curve).
@@ -202,16 +352,90 @@ impl Line {
     fn fill_mode(&self) -> FillMode {
         self.fill_mode.into()
     }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("Line")?;
+        let line_type_str = match self.line_type {
+            LineType::Straight => "straight",
+            LineType::Polyline => "polyline",
+            LineType::Curve => "curve",
+        };
+        let points: Vec<PyPoint> = self
+            .points
+            .iter()
+            .map(|p| (p.0.into_inner(), p.1.into_inner()))
+            .collect();
+        let stroke_color = color_to_py(&self.stroke_color);
+        let fill_color = color_to_py(&self.fill_color);
+        let fill_mode_name = match self.fill_mode {
+            PdfPathFillMode::None => "NONE",
+            PdfPathFillMode::Winding => "WINDING",
+            PdfPathFillMode::EvenOdd => "EVEN_ODD",
+        };
+        Ok((
+            cls.getattr("_from_pickle")?,
+            (
+                line_type_str.to_string(),
+                points,
+                stroke_color,
+                fill_color,
+                self.width.into_inner(),
+                self.is_stroked,
+                fill_mode_name.to_string(),
+            ),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(
+        line_type: String,
+        points: Vec<PyPoint>,
+        stroke_color: PyColor,
+        fill_color: PyColor,
+        width: f32,
+        is_stroked: bool,
+        fill_mode: String,
+    ) -> PyResult<Self> {
+        let line_type = match line_type.as_str() {
+            "polyline" => LineType::Polyline,
+            "curve" => LineType::Curve,
+            _ => LineType::Straight,
+        };
+        let fill_mode = parse_fill_mode(&fill_mode)?;
+        Ok(Line {
+            line_type,
+            points: points
+                .into_iter()
+                .map(|(x, y)| (OrderedFloat(x), OrderedFloat(y)))
+                .collect(),
+            stroke_color: PdfColor::new(
+                stroke_color.0,
+                stroke_color.1,
+                stroke_color.2,
+                stroke_color.3,
+            ),
+            fill_color: PdfColor::new(fill_color.0, fill_color.1, fill_color.2, fill_color.3),
+            width: OrderedFloat(width),
+            is_stroked,
+            fill_mode,
+        })
+    }
 }
 
 /// Represents a text character extracted from a PDF page.
 ///
 /// Each character includes its Unicode value, position, and rotation information.
-/// `unicode_char` is derived from Pdfium’s UTF-16 `unicode_value()` with surrogate-pair merging
+/// `unicode_char` is derived from Pdfium's UTF-16 `unicode_value()` with surrogate-pair merging
 /// (one logical scalar per glyph where possible). See PDFium
 /// [`public/fpdf_text.h` (main)](https://pdfium.googlesource.com/pdfium/+/refs/heads/main/public/fpdf_text.h)
 /// for the UCS-2 / UTF-16 text APIs (`FPDFText_GetText`, `FPDFText_GetBoundedText`, etc.).
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 #[derive(Debug, Clone)]
 pub struct Char {
     /// The Unicode string for this logical character (UTF-16 code units merged per
@@ -243,6 +467,41 @@ impl Char {
     #[getter]
     fn rotation_degrees(&self) -> f32 {
         self.rotation_degrees.into_inner()
+    }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("Char")?;
+        let bbox = bbox_to_py(&self.bbox);
+        Ok((
+            cls.getattr("_from_pickle")?,
+            (
+                self.unicode_char.clone(),
+                bbox,
+                self.rotation_degrees.into_inner(),
+                self.upright,
+            ),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(
+        unicode_char: Option<String>,
+        bbox: PyBbox,
+        rotation_degrees: f32,
+        upright: bool,
+    ) -> Self {
+        Char {
+            unicode_char,
+            bbox: bbox_from_py(&bbox),
+            rotation_degrees: OrderedFloat(rotation_degrees),
+            upright,
+        }
     }
 }
 

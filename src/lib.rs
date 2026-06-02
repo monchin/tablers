@@ -49,7 +49,7 @@ mod words;
 ///
 /// This struct holds the Pdfium instance and provides methods to interact with PDF documents.
 /// It is unsendable because the underlying Pdfium library is not thread-safe.
-#[pyclass(unsendable)]
+#[pyclass(module = "tablers.tablers", unsendable)]
 pub struct PdfiumRuntime {
     inner: Rc<Pdfium>,
 }
@@ -263,7 +263,7 @@ struct DocumentInner {
 ///
 /// This struct provides methods to access pages and metadata of a PDF document.
 /// The document can be closed explicitly, after which all operations will fail.
-#[pyclass(unsendable)]
+#[pyclass(module = "tablers.tablers", unsendable)]
 pub struct Pyo3Doc {
     inner: Rc<RefCell<DocumentInner>>,
 }
@@ -501,7 +501,7 @@ impl Pyo3Doc {
 /// Iterator for traversing pages in a PDF document.
 ///
 /// This iterator is memory-efficient for large PDFs as it loads pages on demand.
-#[pyclass(unsendable, name = "PageIterator")]
+#[pyclass(module = "tablers.tablers", unsendable, name = "PageIterator")]
 pub struct PyPageIterator {
     doc_inner: Rc<RefCell<DocumentInner>>,
     current_idx: usize,
@@ -543,7 +543,7 @@ impl PyPageIterator {
 ///
 /// Provides access to page properties like dimensions and rotation,
 /// as well as methods to extract objects and text from the page.
-#[pyclass(unsendable, name = "Pyo3Page")]
+#[pyclass(module = "tablers.tablers", unsendable, name = "Pyo3Page")]
 pub struct Pyo3Page {
     doc_inner: Rc<RefCell<DocumentInner>>,
     inner: Page,

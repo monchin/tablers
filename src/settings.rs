@@ -155,7 +155,7 @@ impl BitAnd<StrategyType> for StrategyType {
 /// Controls how edges are detected, snapped, joined, and how intersections
 /// are identified when finding tables in a PDF page.
 #[derive(Debug, Clone)]
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 pub struct TfSettings {
     /// Strategy for detecting vertical edges.
     pub vertical_strategy: StrategyType,
@@ -273,6 +273,21 @@ impl TfSettings {
             "text" => StrategyType::Text,
             "explicit" => StrategyType::Explicit,
             _ => panic!("Invalid strategy: {}", strategy_str),
+        }
+    }
+
+    /// Same as `strategy_str_to_enum` but returns a `PyResult` instead of panicking.
+    /// Used by pickle deserialization to handle potentially corrupted data gracefully.
+    fn strategy_str_to_enum_checked(strategy_str: &str) -> PyResult<StrategyType> {
+        match strategy_str {
+            "lines" => Ok(StrategyType::Lines),
+            "lines_strict" => Ok(StrategyType::LinesStrict),
+            "text" => Ok(StrategyType::Text),
+            "explicit" => Ok(StrategyType::Explicit),
+            _ => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "Invalid strategy: {}",
+                strategy_str
+            ))),
         }
     }
 
@@ -823,6 +838,150 @@ impl TfSettings {
             false
         }
     }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("TfSettings")?;
+        let text_settings_state = (
+            self.text_settings.x_tolerance.into_inner(),
+            self.text_settings.y_tolerance.into_inner(),
+            self.text_settings.keep_blank_chars,
+            self.text_settings.use_text_flow,
+            self.text_settings.text_read_in_clockwise,
+            self.text_settings.split_punctuation_to_str(),
+            self.text_settings.expand_ligatures,
+            self.text_settings.need_strip,
+        );
+        // Split into two sub-tuples to stay within into_pyobject's tuple limit
+        let part1 = (
+            Self::strategy_enum_to_str(self.vertical_strategy).to_string(),
+            Self::strategy_enum_to_str(self.horizontal_strategy).to_string(),
+            self.snap_x_tolerance.into_inner(),
+            self.snap_y_tolerance.into_inner(),
+            self.join_x_tolerance.into_inner(),
+            self.join_y_tolerance.into_inner(),
+            self.edge_min_length.into_inner(),
+            self.edge_min_length_prefilter.into_inner(),
+            self.min_words_vertical,
+            self.min_words_horizontal,
+            self.intersection_x_tolerance.into_inner(),
+            self.intersection_y_tolerance.into_inner(),
+        );
+        let part2 = (
+            self.include_single_cell,
+            self.min_rows,
+            self.min_columns,
+            text_settings_state,
+            self.explicit_h_edges.clone(),
+            self.explicit_v_edges.clone(),
+            self.exclude_background_colored_edges,
+            self.close_unclosed_boundaries,
+        );
+        Ok((cls.getattr("_from_pickle")?, (part1, part2))
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::type_complexity)]
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(
+        part1: (
+            String,
+            String,
+            f32,
+            f32,
+            f32,
+            f32,
+            f32,
+            f32,
+            usize,
+            usize,
+            f32,
+            f32,
+        ),
+        part2: (
+            bool,
+            Option<usize>,
+            Option<usize>,
+            (f32, f32, bool, bool, bool, Option<String>, bool, bool),
+            Option<Vec<Edge>>,
+            Option<Vec<Edge>>,
+            bool,
+            bool,
+        ),
+    ) -> PyResult<Self> {
+        let (
+            vertical_strategy,
+            horizontal_strategy,
+            snap_x_tolerance,
+            snap_y_tolerance,
+            join_x_tolerance,
+            join_y_tolerance,
+            edge_min_length,
+            edge_min_length_prefilter,
+            min_words_vertical,
+            min_words_horizontal,
+            intersection_x_tolerance,
+            intersection_y_tolerance,
+        ) = part1;
+        let (
+            include_single_cell,
+            min_rows,
+            min_columns,
+            text_settings_state,
+            explicit_h_edges,
+            explicit_v_edges,
+            exclude_background_colored_edges,
+            close_unclosed_boundaries,
+        ) = part2;
+        let ts = text_settings_state;
+        Ok(TfSettings {
+            vertical_strategy: Self::strategy_str_to_enum_checked(&vertical_strategy)?,
+            horizontal_strategy: Self::strategy_str_to_enum_checked(&horizontal_strategy)?,
+            snap_x_tolerance: NonNegativeF32::new(snap_x_tolerance, "snap_x_tolerance")?,
+            snap_y_tolerance: NonNegativeF32::new(snap_y_tolerance, "snap_y_tolerance")?,
+            join_x_tolerance: NonNegativeF32::new(join_x_tolerance, "join_x_tolerance")?,
+            join_y_tolerance: NonNegativeF32::new(join_y_tolerance, "join_y_tolerance")?,
+            edge_min_length: NonNegativeF32::new(edge_min_length, "edge_min_length")?,
+            edge_min_length_prefilter: NonNegativeF32::new(
+                edge_min_length_prefilter,
+                "edge_min_length_prefilter",
+            )?,
+            min_words_vertical,
+            min_words_horizontal,
+            intersection_x_tolerance: NonNegativeF32::new(
+                intersection_x_tolerance,
+                "intersection_x_tolerance",
+            )?,
+            intersection_y_tolerance: NonNegativeF32::new(
+                intersection_y_tolerance,
+                "intersection_y_tolerance",
+            )?,
+            include_single_cell,
+            min_rows,
+            min_columns,
+            text_settings: WordsExtractSettings {
+                x_tolerance: NonNegativeF32::new(ts.0, "x_tolerance")?,
+                y_tolerance: NonNegativeF32::new(ts.1, "y_tolerance")?,
+                keep_blank_chars: ts.2,
+                use_text_flow: ts.3,
+                text_read_in_clockwise: ts.4,
+                split_at_punctuation: WordsExtractSettings::str_to_split_punctuation(
+                    ts.5.as_deref(),
+                ),
+                expand_ligatures: ts.6,
+                need_strip: ts.7,
+            },
+            explicit_h_edges,
+            explicit_v_edges,
+            exclude_background_colored_edges,
+            close_unclosed_boundaries,
+        })
+    }
 }
 
 /// Specifies how to split words at punctuation characters.
@@ -839,7 +998,7 @@ pub enum SplitPunctuation {
 /// Controls how characters are grouped into words, including
 /// tolerance values and text direction handling.
 #[derive(Debug, Clone)]
-#[pyclass(from_py_object)]
+#[pyclass(module = "tablers.tablers", from_py_object)]
 pub struct WordsExtractSettings {
     /// X-axis tolerance for grouping characters into words.
     pub x_tolerance: NonNegativeF32,
@@ -1064,6 +1223,54 @@ impl WordsExtractSettings {
         } else {
             false
         }
+    }
+
+    /// Pickle support.
+    fn __reduce__<'py>(&self, py: Python<'py>) -> PyResult<Py<PyAny>> {
+        let module = py.import("tablers.tablers")?;
+        let cls = module.getattr("WordsExtractSettings")?;
+        let split = self.split_punctuation_to_str();
+        Ok((
+            cls.getattr("_from_pickle")?,
+            (
+                self.x_tolerance.into_inner(),
+                self.y_tolerance.into_inner(),
+                self.keep_blank_chars,
+                self.use_text_flow,
+                self.text_read_in_clockwise,
+                split,
+                self.expand_ligatures,
+                self.need_strip,
+            ),
+        )
+            .into_pyobject(py)?
+            .into_any()
+            .unbind())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[staticmethod]
+    #[pyo3(name = "_from_pickle")]
+    fn py_from_pickle(
+        x_tolerance: f32,
+        y_tolerance: f32,
+        keep_blank_chars: bool,
+        use_text_flow: bool,
+        text_read_in_clockwise: bool,
+        split_at_punctuation: Option<String>,
+        expand_ligatures: bool,
+        need_strip: bool,
+    ) -> PyResult<Self> {
+        Ok(WordsExtractSettings {
+            x_tolerance: NonNegativeF32::new(x_tolerance, "x_tolerance")?,
+            y_tolerance: NonNegativeF32::new(y_tolerance, "y_tolerance")?,
+            keep_blank_chars,
+            use_text_flow,
+            text_read_in_clockwise,
+            split_at_punctuation: Self::str_to_split_punctuation(split_at_punctuation.as_deref()),
+            expand_ligatures,
+            need_strip,
+        })
     }
 }
 
