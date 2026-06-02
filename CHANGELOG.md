@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linux ARM64 (aarch64) support:** Pre-built wheels are now published for Linux ARM64 alongside x86_64. The release workflow cross-compiles via maturin with a `x86_64`/`aarch64` matrix, and CI tests run on `ubuntu-24.04-arm` across all supported Python versions.
 - **Pickle support:** All pure-data types (`Table`, `TableCell`, `CellGroup`, `TableCellValue`, `Edge`, `Objects`, `Rect`, `Line`, `Char`, `FillMode`, `TfSettings`, `WordsExtractSettings`) now implement `__reduce__` and can be serialized/deserialized via the Python `pickle` protocol. This enables passing extracted tables directly between processes with `multiprocessing` without manual conversion to plain Python types.
 
 ### Changed
 
 - Type stubs (`tablers.pyi`) are now auto-generated using [rylai](https://github.com/monchin/rylai) instead of being manually maintained. Run `pdm stub` to regenerate.
+- Build hooks (`scripts/pre-build.py`, `scripts/post-build.py`) now use a shared library list from `scripts/build_libs.json` instead of duplicating it in each file. The pre-build hook validates that the expected library exists and exits with an error if it is missing.
 
 ## [0.7.3] - 2026-03-21
 

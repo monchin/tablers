@@ -7,7 +7,7 @@ Before installing Tablers, ensure your system meets the following requirements:
 - **Python**: >= 3.10
 - **Operating System**:
     - Windows (x64)
-    - Linux (x64), glibc >= 2.28 (manylinux_2_28)
+    - Linux (x64 / ARM64), glibc >= 2.28 (manylinux_2_28)
     - macOS (ARM64 / Apple Silicon)
 
 ## Install with pip
@@ -115,3 +115,44 @@ ldd --version
 ### Architecture Issues on macOS
 
 Tablers currently only supports Apple Silicon (ARM64) architecture on macOS. If you're using an Intel Mac, consider building from source and download pdfium binaries from [this project](https://github.com/bblanchon/pdfium-binaries) and replace the pdfium binaries in the `python/tablers` directory.
+
+### Developing on Linux ARM64
+
+Tablers ships pre-built wheels for both x86_64 and ARM64 (aarch64) Linux, so installing via pip works on both architectures. However, **local development on Linux ARM64 requires an extra step**.
+
+The PDFium library for ARM64 is stored as `libpdfium-aarch64.so.1` in the source tree. At runtime the library is expected at `libpdfium.so.1`. Before building or testing locally on an ARM64 machine, run the pre-build hook to rename it:
+
+```bash
+# Run the pre-build hook (auto-detects ARM64 and renames the library)
+pdm run python scripts/pre-build.py
+
+# Build and test
+maturin develop --uv
+pdm test
+
+# Restore the original file names when done
+pdm run python scripts/post-build.py
+```
+
+The pre-build hook auto-detects the platform via `platform.system()` and `platform.machine()`. If the expected library file is missing, the hook will exit with an error. For cross-compilation (building for ARM64 on an x86_64 host), set the target explicitly:
+
+```bash
+export BUILD_TARGET=Linux
+export BUILD_ARCH=aarch64
+pdm run python scripts/pre-build.py
+```
+
+Alternatively, you can manually rename the file:
+
+```bash
+cd python/tablers
+mv libpdfium-aarch64.so.1 libpdfium.so.1
+```
+
+### Adding a New Platform
+
+To add support for a new platform or architecture:
+
+1. Place the PDFium binary in `python/tablers/` following the naming convention.
+2. Add the filename to the `all_libs` list in `scripts/build_libs.json`.
+3. Update the platform logic in `scripts/pre-build.py` and `scripts/post-build.py` if the new platform requires special handling (e.g., renaming).

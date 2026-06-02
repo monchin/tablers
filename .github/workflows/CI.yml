@@ -75,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v6
@@ -100,6 +100,9 @@ jobs:
       - name: Install dependencies
         run: pdm sync
 
+      - name: Run pre-build hook
+        run: pdm run python scripts/pre-build.py
+
       - name: Build with maturin
         run: maturin develop --uv
 
@@ -108,3 +111,7 @@ jobs:
 
       - name: Run Python tests
         run: pdm run pytest tests/python
+
+      - name: Run post-build hook
+        if: always()
+        run: pdm run python scripts/post-build.py

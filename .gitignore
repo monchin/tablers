@@ -11,6 +11,9 @@ __pycache__/
 # exclude pdfium dynamic library
 !*libpdfium.so
 
+# Build staging directory (pre-build / post-build hooks)
+scripts/_staging/
+
 # Distribution / packaging
 .Python
 .venv/

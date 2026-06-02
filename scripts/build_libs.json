@@ -1,0 +1,8 @@
+{
+    "all_libs": [
+        "pdfium.dll",
+        "libpdfium.dylib",
+        "libpdfium.so.1",
+        "libpdfium-aarch64.so.1"
+    ]
+}

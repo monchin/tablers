@@ -61,7 +61,7 @@ stub = "uvx rylai -o python/tablers/"
 
 [tool.ruff]
 line-length = 100
-include = ["python/**.py", "python/**.pyi", "scripts/**", "tests/**.py"]
+include = ["python/**.py", "python/**.pyi", "scripts/**.py", "tests/**.py"]
 
 [tool.ruff.format]
 docstring-code-format = true

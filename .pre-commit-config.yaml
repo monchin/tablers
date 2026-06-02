@@ -6,6 +6,8 @@ repos:
     name: check toml files
   - id: check-yaml
     name: check yaml files
+  - id: check-json
+    name: check json files
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
   rev: v0.15.15
