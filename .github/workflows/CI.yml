@@ -36,9 +36,8 @@ jobs:
 
       - name: Install tools
         run: |
-          uv tool install ruff
-          uv tool install ty
           uv tool install pdm
+          uv tool install prek
 
       - name: Install dependencies
         run: pdm sync
@@ -46,28 +45,8 @@ jobs:
       - name: Generate .pyi stub files
         run: pdm run stub
 
-      - name: Check Rust format
-        run: cargo fmt --check
-
-      - name: Check Python format
-        run: |
-          pdm run ruff check . --select I
-          pdm run ruff format . --check
-
-      - name: Run cargo check
-        run: cargo check
-
-      - name: Run cargo clippy
-        run: cargo clippy -- -D warnings
-
-      - name: Run ruff check
-        run: pdm run ruff check .
-
-      - name: Run ty check
-        run: pdm run ty check .
-
-      - name: Check Markdown format
-        uses: rvben/rumdl@v0
+      - name: Run pre-commit checks
+        run: prek run --all-files
 
   test:
     name: Test (${{ matrix.os }} / Python ${{ matrix.python-version }})
