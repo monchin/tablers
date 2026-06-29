@@ -83,15 +83,13 @@ def _normalize_color(color: T_color_spec) -> Color:
             ) from e
         return (rgb[0], rgb[1], rgb[2], 255)
     if len(color) == 3:
-        color_tuple = cast(tuple[int, int, int], color)
-        r, g, b = color_tuple
+        r, g, b = color
         _validate_color_component(r, "R")
         _validate_color_component(g, "G")
         _validate_color_component(b, "B")
         return (r, g, b, 255)
     if len(color) == 4:
-        color_tuple = cast(tuple[int, int, int, int], color)
-        r, g, b, a = color_tuple
+        r, g, b, a = color
         _validate_color_component(r, "R")
         _validate_color_component(g, "G")
         _validate_color_component(b, "B")
