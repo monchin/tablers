@@ -10,7 +10,7 @@ repos:
     name: check json files
 
 - repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.15.18
+  rev: v0.15.20
   hooks:
   - id: ruff-check
     args: [--fix]
@@ -19,14 +19,14 @@ repos:
   - id: ruff-format
 
 - repo: https://github.com/allganize/ty-pre-commit
-  rev: v0.0.51
+  rev: v0.0.55
   hooks:
   # Run the type checker.
   - id: ty-check
     exclude: .*test.*.py$
 
 - repo: https://github.com/rvben/rumdl-pre-commit
-  rev: v0.2.20
+  rev: v0.2.24
   hooks:
     - id: rumdl-fmt  # Auto-format (fixes what it can)
 
