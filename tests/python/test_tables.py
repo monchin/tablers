@@ -1152,6 +1152,79 @@ class TestTablesUnclosedBoundariesPdf:
         )
 
 
+class TestPartialOuterBoundaryPdf:
+    """Integration tests for extending an existing but incomplete outer boundary."""
+
+    def test_default_preserves_incomplete_boundary(
+        self, partial_outer_boundary_doc: Document
+    ) -> None:
+        """Default boundary closing must preserve the existing three-cell result."""
+        page = partial_outer_boundary_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 3
+        assert "Sensor" not in {cell.text for cell in tables[0].cells}
+
+    def test_partial_boundary_extension_recovers_missing_cell(
+        self, partial_outer_boundary_doc: Document
+    ) -> None:
+        """The opt-in extension should close the partial edge and recover its cell."""
+        page = partial_outer_boundary_doc.get_page(0)
+        settings = TfSettings(extend_partial_outer_boundaries=True)
+        tables = find_tables(page, extract_text=True, tf_settings=settings)
+
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 4
+        assert "Sensor" in {cell.text for cell in tables[0].cells}
+
+    def test_parent_boundary_setting_disables_partial_extension(
+        self, partial_outer_boundary_doc: Document
+    ) -> None:
+        """The subordinate option must not act when boundary closing is disabled."""
+        page = partial_outer_boundary_doc.get_page(0)
+        settings = TfSettings(
+            close_unclosed_boundaries=False,
+            extend_partial_outer_boundaries=True,
+        )
+        tables = find_tables(page, extract_text=True, tf_settings=settings)
+
+        assert len(tables) == 1
+        assert len(tables[0].cells) == 3
+        assert "Sensor" not in {cell.text for cell in tables[0].cells}
+
+
+class TestWordOverlapCellAssignmentPdf:
+    """Integration tests for assigning a border-crossing word to one cell."""
+
+    def test_default_preserves_character_center_assignment(
+        self, word_overlap_cell_assignment_doc: Document
+    ) -> None:
+        """The default policy should preserve the historical split-word output."""
+        page = word_overlap_cell_assignment_doc.get_page(0)
+        tables = find_tables(page, extract_text=True)
+
+        assert len(tables) == 1
+        assert [[cell.text for cell in row] for row in tables[0].to_list()] == [
+            ["P", "RESSURE"],
+            ["Bottom left", "Bottom right"],
+        ]
+
+    def test_word_overlap_keeps_border_spillover_with_word(
+        self, word_overlap_cell_assignment_doc: Document
+    ) -> None:
+        """Word-overlap assignment should place the complete word in its best-overlap cell."""
+        page = word_overlap_cell_assignment_doc.get_page(0)
+        settings = TfSettings(text_cell_assignment="word_overlap")
+        tables = find_tables(page, extract_text=True, tf_settings=settings)
+
+        assert len(tables) == 1
+        assert [[cell.text for cell in row] for row in tables[0].to_list()] == [
+            ["", "PRESSURE"],
+            ["Bottom left", "Bottom right"],
+        ]
+
+
 class TestNarrowUnclosedPolylineAsEdgePdf:
     """Tests for #30-narrow-unclosed-polyline-as-edge.pdf.
 

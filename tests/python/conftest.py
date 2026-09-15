@@ -247,6 +247,40 @@ def tables_unclosed_boundaries_doc(
 
 
 @pytest.fixture
+def partial_outer_boundary_pdf_path() -> Path:
+    """Return the partial-outer-boundary.pdf regression fixture path."""
+    return TEST_DATA_DIR / "partial-outer-boundary.pdf"
+
+
+@pytest.fixture
+def partial_outer_boundary_doc(
+    partial_outer_boundary_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open the partial outer-boundary regression fixture."""
+    doc = Document(path=partial_outer_boundary_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
+def word_overlap_cell_assignment_pdf_path() -> Path:
+    """Return the word-overlap-cell-assignment.pdf regression fixture path."""
+    return TEST_DATA_DIR / "word-overlap-cell-assignment.pdf"
+
+
+@pytest.fixture
+def word_overlap_cell_assignment_doc(
+    word_overlap_cell_assignment_pdf_path: Path,
+) -> Generator[Document, None, None]:
+    """Open the word-overlap cell-assignment regression fixture."""
+    doc = Document(path=word_overlap_cell_assignment_pdf_path)
+    yield doc
+    if not doc.is_closed():
+        doc.close()
+
+
+@pytest.fixture
 def edge_test_pdf_bytes(edge_test_pdf_path: Path) -> bytes:
     """Return the content of edge-test.pdf as bytes."""
     return edge_test_pdf_path.read_bytes()

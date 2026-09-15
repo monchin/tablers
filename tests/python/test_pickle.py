@@ -231,6 +231,8 @@ class TestTfSettingsPickle:
             min_rows=2,
             min_columns=3,
             text_split_at_punctuation=".,;",
+            text_cell_assignment="word_overlap",
+            extend_partial_outer_boundaries=True,
         )
         restored = pickle.loads(pickle.dumps(s))
         assert restored.vertical_strategy == "lines"
@@ -239,6 +241,8 @@ class TestTfSettingsPickle:
         assert restored.min_rows == 2
         assert restored.min_columns == 3
         assert restored.text_split_at_punctuation == ".,;"
+        assert restored.text_cell_assignment == "word_overlap"
+        assert restored.extend_partial_outer_boundaries is True
 
     def test_pickle_with_explicit_edges(self):
         h_edges = [Edge("h", 0, 0, 100, 0), Edge("h", 0, 50, 100, 50)]

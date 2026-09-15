@@ -229,6 +229,24 @@ class TestTfSettings:
         assert settings.snap_y_tolerance == 5.0
         assert settings.edge_min_length == 15.0
 
+    def test_robust_table_options_are_opt_in(self) -> None:
+        """Robust boundary and text assignment policies preserve legacy defaults."""
+        defaults = TfSettings()
+        assert defaults.extend_partial_outer_boundaries is False
+        assert defaults.text_cell_assignment == "char_center"
+
+        robust = TfSettings(
+            extend_partial_outer_boundaries=True,
+            text_cell_assignment="word_overlap",
+        )
+        assert robust.extend_partial_outer_boundaries is True
+        assert robust.text_cell_assignment == "word_overlap"
+
+    def test_invalid_text_cell_assignment_raises(self) -> None:
+        """TfSettings rejects unknown text-to-cell assignment policies."""
+        with pytest.raises(ValueError, match="Invalid text_cell_assignment"):
+            TfSettings(text_cell_assignment="nearest")
+
 
 class TestNonNegativeValidation:
     """Tests for non-negative value validation in settings."""

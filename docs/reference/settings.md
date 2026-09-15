@@ -52,6 +52,8 @@ settings = TfSettings(
 | `min_words_horizontal` | `int` | `1` | Minimum words required for horizontal text-based edge detection |
 | `exclude_background_colored_edges` | `bool` | `True` | Whether to exclude edges invisible against their immediate background (see below) |
 | `close_unclosed_boundaries` | `bool` | `True` | Whether to automatically detect and close tables whose outer edges are missing (see below) |
+| `extend_partial_outer_boundaries` | `bool` | `False` | Whether boundary closing also extends existing but incomplete outer edges |
+| `text_cell_assignment` | `str` | `"char_center"` | Assign text by historical character centers or whole-word overlap (`"word_overlap"`) |
 
 **Background-colored edge filtering** (`exclude_background_colored_edges`):
 
@@ -72,6 +74,10 @@ After the raw edges are collected, all h-edges and v-edges that mutually interse
 Once all virtual edges are synthesised, the full intersection-detection and cell-detection pipeline is re-run with the enhanced edge set.
 
 `intersection_x_tolerance` and `intersection_y_tolerance` are used as thresholds when deciding whether an edge truly extends beyond the span. The feature is **skipped entirely** when either strategy is `"text"`, because text-derived edges can extend across table boundaries in ways that would produce false-positive extra columns or rows.
+
+Set `extend_partial_outer_boundaries=True` to make boundary closing extend an outer edge that exists but stops before the table's final row or column. It has no effect when `close_unclosed_boundaries=False` and remains opt-in because incomplete artwork can otherwise create false-positive cells.
+
+Set `text_cell_assignment="word_overlap"` when glyphs from one word cross a cell border. Tablers forms words before cell assignment and places each word in the cell containing the greatest portion of its bounding box. The default `"char_center"` retains historical output.
 
 ### Explicit Edges
 

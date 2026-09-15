@@ -571,6 +571,7 @@ impl Table {
     /// * `chars` - Optional character array for text extraction.
     /// * `we_settings` - Optional word extraction settings.
     /// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
+    /// * `text_cell_assignment` - Policy used to assign source text to cells.
     ///
     /// # Returns
     ///
@@ -582,6 +583,7 @@ impl Table {
         chars: Option<&[Char]>,
         we_settings: Option<&WordsExtractSettings>,
         need_strip: bool,
+        text_cell_assignment: TextCellAssignment,
     ) -> Self {
         let bbox = get_table_bbox(cells_bbox);
         let cells = cells_bbox
@@ -599,7 +601,9 @@ impl Table {
         };
         if extract_text {
             match chars {
-                Some(chars) => slf.extract_text(chars, we_settings, need_strip),
+                Some(chars) => {
+                    slf.extract_text(chars, we_settings, need_strip, text_cell_assignment)
+                }
                 None => panic!("No chars provided"),
             };
         };
@@ -739,6 +743,158 @@ impl Table {
         h_mid >= x1 && h_mid < x2 && v_mid >= y1 && v_mid < y2
     }
 
+    /// Returns the axis-aligned overlap area between two bounding boxes.
+    ///
+    /// # Arguments
+    ///
+    /// * `left` - The first bounding box.
+    /// * `right` - The second bounding box.
+    ///
+    /// # Returns
+    ///
+    /// The shared area, or zero when the boxes do not overlap.
+    #[inline]
+    fn bbox_overlap_area(left: &BboxKey, right: &BboxKey) -> OrderedFloat<f32> {
+        let width = (left.2.min(right.2) - left.0.max(right.0)).max(OrderedFloat(0.0));
+        let height = (left.3.min(right.3) - left.1.max(right.1)).max(OrderedFloat(0.0));
+        width * height
+    }
+
+    /// Joins words in extraction order while preserving intentional word boundaries.
+    ///
+    /// # Arguments
+    ///
+    /// * `words` - Words in PDF extraction order.
+    /// * `x_tol` - Horizontal gap tolerance used by the historical policy.
+    /// * `y_tol` - Vertical gap tolerance used by the historical policy.
+    /// * `need_strip` - Whether to remove leading and trailing whitespace.
+    /// * `preserve_word_boundaries` - Whether distinct extracted words receive a space unless
+    ///   punctuation or a line-ending hyphen requires attachment.
+    ///
+    /// # Returns
+    ///
+    /// Cell text reconstructed from the supplied words.
+    fn words_to_text(
+        words: &[Word],
+        x_tol: f32,
+        y_tol: f32,
+        need_strip: bool,
+        preserve_word_boundaries: bool,
+    ) -> String {
+        let mut text = String::new();
+        for (index, word) in words.iter().enumerate() {
+            if index > 0 {
+                let previous = &words[index - 1];
+                let punctuation_attaches = word
+                    .text
+                    .starts_with(|character: char| ",.;:!?%)]}".contains(character));
+                let opening_attaches = previous
+                    .text
+                    .ends_with(|character: char| "([{".contains(character));
+                let line_hyphen_attaches = previous.text.len() > 1 && previous.text.ends_with('-');
+                if (preserve_word_boundaries
+                    && !punctuation_attaches
+                    && !opening_attaches
+                    && !line_hyphen_attaches)
+                    || (!preserve_word_boundaries
+                        && Self::word_gap_requires_space(previous, word, x_tol, y_tol))
+                {
+                    text.push(' ');
+                }
+            }
+            text.push_str(&word.text.replace("\r\n", "\n").replace('\r', "\n"));
+        }
+        if need_strip {
+            text.trim().to_string()
+        } else {
+            text
+        }
+    }
+
+    /// Extracts cell text using the historical character-center assignment policy.
+    ///
+    /// Characters are assigned to cells before word formation, preserving existing output.
+    fn extract_text_by_char_center(
+        &mut self,
+        chars: &[Char],
+        word_extractor: &WordExtractor,
+        x_tol: f32,
+        y_tol: f32,
+        need_strip: bool,
+    ) {
+        for cell in &mut self.cells {
+            let cell_chars: Vec<Char> = chars
+                .iter()
+                .filter(|char| Self::char_in_bbox(char, &cell.bbox))
+                .cloned()
+                .collect();
+            if !cell_chars.is_empty() {
+                let words = word_extractor.extract_words(&cell_chars);
+                cell.text = Self::words_to_text(&words, x_tol, y_tol, need_strip, false);
+            }
+        }
+    }
+
+    /// Extracts words first, then assigns each word to its greatest-overlap cell.
+    ///
+    /// A source token with at least two character centers in multiple cells is split along those
+    /// character groups. This preserves genuinely concatenated neighboring-cell values while a
+    /// one-character border spillover stays attached to the original word.
+    fn extract_text_by_word_overlap(
+        &mut self,
+        chars: &[Char],
+        word_extractor: &WordExtractor,
+        x_tol: f32,
+        y_tol: f32,
+        need_strip: bool,
+    ) {
+        let table_chars: Vec<Char> = chars
+            .iter()
+            .filter(|char| Self::char_in_bbox(char, &self.bbox))
+            .cloned()
+            .collect();
+        let mut cell_words = vec![Vec::new(); self.cells.len()];
+        for (word, word_chars) in word_extractor.iter_extract_tuples(&table_chars) {
+            let mut chars_by_cell = vec![Vec::new(); self.cells.len()];
+            for character in &word_chars {
+                if let Some(cell_index) = self
+                    .cells
+                    .iter()
+                    .position(|cell| Self::char_in_bbox(character, &cell.bbox))
+                {
+                    chars_by_cell[cell_index].push(character.clone());
+                }
+            }
+            let substantial_cell_count = chars_by_cell
+                .iter()
+                .filter(|cell_chars| cell_chars.len() >= 2)
+                .count();
+            if substantial_cell_count >= 2 {
+                for (cell_index, cell_chars) in chars_by_cell.into_iter().enumerate() {
+                    if !cell_chars.is_empty() {
+                        cell_words[cell_index].push(word_extractor.merge_chars(&cell_chars));
+                    }
+                }
+                continue;
+            }
+            let mut best: Option<(usize, OrderedFloat<f32>)> = None;
+            for (cell_index, cell) in self.cells.iter().enumerate() {
+                let overlap = Self::bbox_overlap_area(&word.bbox, &cell.bbox);
+                if overlap > OrderedFloat(0.0)
+                    && best.is_none_or(|(_, best_overlap)| overlap > best_overlap)
+                {
+                    best = Some((cell_index, overlap));
+                }
+            }
+            if let Some((cell_index, _)) = best {
+                cell_words[cell_index].push(word);
+            }
+        }
+        for (cell, words) in self.cells.iter_mut().zip(cell_words) {
+            cell.text = Self::words_to_text(&words, x_tol, y_tol, need_strip, true);
+        }
+    }
+
     /// Extracts text content for all cells in the table.
     ///
     /// # Arguments
@@ -746,45 +902,30 @@ impl Table {
     /// * `chars` - The characters from the page.
     /// * `settings` - Optional word extraction settings.
     /// * `need_strip` - Whether to strip leading/trailing whitespace from cell text.
+    /// * `text_cell_assignment` - Policy used to assign source text to cells.
     pub fn extract_text(
         &mut self,
         chars: &[Char],
         settings: Option<&WordsExtractSettings>,
         need_strip: bool,
+        text_cell_assignment: TextCellAssignment,
     ) {
         let default_settings = WordsExtractSettings::default();
         let base_settings = settings.unwrap_or(&default_settings);
         let word_settings = WordsExtractSettings {
-            keep_blank_chars: true, // keep_blank_chars should be true anyway
+            keep_blank_chars: text_cell_assignment == TextCellAssignment::CharCenter,
             ..base_settings.clone()
         };
         let word_extractor = WordExtractor::new(&word_settings);
         let x_tol = word_settings.x_tolerance.into_inner();
         let y_tol = word_settings.y_tolerance.into_inner();
 
-        for cell in &mut self.cells {
-            let cell_chars: Vec<Char> = chars
-                .iter()
-                .filter(|char| Self::char_in_bbox(char, &cell.bbox))
-                .cloned()
-                .collect();
-
-            if !cell_chars.is_empty() {
-                let words = word_extractor.extract_words(&cell_chars);
-                let mut text = String::new();
-                for (i, w) in words.iter().enumerate() {
-                    if i > 0 {
-                        let prev = &words[i - 1];
-                        if Self::word_gap_requires_space(prev, w, x_tol, y_tol) {
-                            text.push(' ');
-                        }
-                    }
-                    text.push_str(&w.text.replace("\r\n", "\n").replace('\r', "\n"));
-                }
-                if need_strip {
-                    text = text.trim().to_string();
-                }
-                cell.text = text;
+        match text_cell_assignment {
+            TextCellAssignment::CharCenter => {
+                self.extract_text_by_char_center(chars, &word_extractor, x_tol, y_tol, need_strip)
+            }
+            TextCellAssignment::WordOverlap => {
+                self.extract_text_by_word_overlap(chars, &word_extractor, x_tol, y_tol, need_strip)
             }
         }
         self.text_extracted = true;
@@ -2190,6 +2331,7 @@ fn compute_outer_frame_edges(
     v_edges: &[Edge],
     x_tol: OrderedFloat<f32>,
     y_tol: OrderedFloat<f32>,
+    extend_partial_outer_boundaries: bool,
 ) -> Vec<Edge> {
     let n_h = h_edges.len();
     let n_v = v_edges.len();
@@ -2244,17 +2386,53 @@ fn compute_outer_frame_edges(
         let y_v_min = v_idxs.iter().map(|&i| v_edges[i].y1).min().unwrap();
         let y_v_max = v_idxs.iter().map(|&i| v_edges[i].y2).max().unwrap();
 
-        if x_h_min < x_int_min - x_tol {
-            virtual_edges.push(virtual_v_edge(x_h_min, y_v_min, y_v_max));
+        if !extend_partial_outer_boundaries {
+            if x_h_min < x_int_min - x_tol {
+                virtual_edges.push(virtual_v_edge(x_h_min, y_v_min, y_v_max));
+            }
+            if x_h_max > x_int_max + x_tol {
+                virtual_edges.push(virtual_v_edge(x_h_max, y_v_min, y_v_max));
+            }
+            if y_v_min < y_int_min - y_tol {
+                virtual_edges.push(virtual_h_edge(x_h_min, y_v_min, x_h_max));
+            }
+            if y_v_max > y_int_max + y_tol {
+                virtual_edges.push(virtual_h_edge(x_h_min, y_v_max, x_h_max));
+            }
+            continue;
         }
-        if x_h_max > x_int_max + x_tol {
-            virtual_edges.push(virtual_v_edge(x_h_max, y_v_min, y_v_max));
+
+        let left_x = x_h_min.min(x_int_min);
+        let right_x = x_h_max.max(x_int_max);
+        let top_y = y_v_min.min(y_int_min);
+        let bottom_y = y_v_max.max(y_int_max);
+        let vertical_boundary_is_complete = |x: OrderedFloat<f32>| {
+            v_idxs.iter().any(|&index| {
+                let edge = &v_edges[index];
+                (edge.x1 - x).abs() <= x_tol.into_inner()
+                    && edge.y1 <= top_y + y_tol
+                    && edge.y2 >= bottom_y - y_tol
+            })
+        };
+        let horizontal_boundary_is_complete = |y: OrderedFloat<f32>| {
+            h_idxs.iter().any(|&index| {
+                let edge = &h_edges[index];
+                (edge.y1 - y).abs() <= y_tol.into_inner()
+                    && edge.x1 <= left_x + x_tol
+                    && edge.x2 >= right_x - x_tol
+            })
+        };
+        if !vertical_boundary_is_complete(left_x) {
+            virtual_edges.push(virtual_v_edge(left_x, top_y, bottom_y));
         }
-        if y_v_min < y_int_min - y_tol {
-            virtual_edges.push(virtual_h_edge(x_h_min, y_v_min, x_h_max));
+        if !vertical_boundary_is_complete(right_x) {
+            virtual_edges.push(virtual_v_edge(right_x, top_y, bottom_y));
         }
-        if y_v_max > y_int_max + y_tol {
-            virtual_edges.push(virtual_h_edge(x_h_min, y_v_max, x_h_max));
+        if !horizontal_boundary_is_complete(top_y) {
+            virtual_edges.push(virtual_h_edge(left_x, top_y, right_x));
+        }
+        if !horizontal_boundary_is_complete(bottom_y) {
+            virtual_edges.push(virtual_h_edge(left_x, bottom_y, right_x));
         }
     }
 
@@ -2358,7 +2536,13 @@ pub fn find_all_cells_bboxes(
         let h_edges = edges.get(&Orientation::Horizontal).unwrap();
         let v_edges = edges.get(&Orientation::Vertical).unwrap();
 
-        let virtual_edges = compute_outer_frame_edges(h_edges, v_edges, x_tol, y_tol);
+        let virtual_edges = compute_outer_frame_edges(
+            h_edges,
+            v_edges,
+            x_tol,
+            y_tol,
+            tf_settings.extend_partial_outer_boundaries,
+        );
         if !virtual_edges.is_empty() {
             for e in virtual_edges {
                 edges.entry(e.orientation).or_default().push(e);
@@ -2428,6 +2612,9 @@ pub fn find_tables_from_cells(
                 chars,
                 we_settings,
                 need_strip,
+                tf_settings.map_or(TextCellAssignment::CharCenter, |settings| {
+                    settings.text_cell_assignment
+                }),
             )
         })
         .collect()
@@ -2706,6 +2893,101 @@ mod tests {
 
         // Char center is (16.5, 16.5), which is outside the bbox
         assert!(!Table::char_in_bbox(&char, &bbox));
+    }
+
+    fn make_char(text: &str, x1: f32, x2: f32) -> Char {
+        Char {
+            unicode_char: Some(text.to_string()),
+            bbox: (of(x1), of(1.0), of(x2), of(9.0)),
+            rotation_degrees: of(0.0),
+            upright: true,
+        }
+    }
+
+    #[test]
+    fn test_word_overlap_keeps_border_crossing_word_in_one_cell() {
+        let cells = vec![
+            (of(0.0), of(0.0), of(10.0), of(10.0)),
+            (of(10.0), of(0.0), of(20.0), of(10.0)),
+        ];
+        let chars = vec![
+            make_char("P", 3.0, 5.0),
+            make_char("O", 5.0, 7.0),
+            make_char("C", 7.0, 9.0),
+            make_char(")", 9.0, 11.0),
+        ];
+
+        let table = Table::new(
+            0,
+            &cells,
+            true,
+            Some(&chars),
+            None,
+            true,
+            TextCellAssignment::WordOverlap,
+        );
+
+        assert_eq!(table.cells[0].text, "POC)");
+        assert_eq!(table.cells[1].text, "");
+    }
+
+    #[test]
+    fn test_word_overlap_splits_concatenated_neighboring_cell_tokens() {
+        let cells = vec![
+            (of(0.0), of(0.0), of(10.0), of(10.0)),
+            (of(10.0), of(0.0), of(20.0), of(10.0)),
+        ];
+        let chars = "ABCDWXYZ"
+            .chars()
+            .enumerate()
+            .map(|(index, character)| {
+                make_char(
+                    &character.to_string(),
+                    6.0 + index as f32,
+                    7.0 + index as f32,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let table = Table::new(
+            0,
+            &cells,
+            true,
+            Some(&chars),
+            None,
+            true,
+            TextCellAssignment::WordOverlap,
+        );
+
+        assert_eq!(table.cells[0].text, "ABCD");
+        assert_eq!(table.cells[1].text, "WXYZ");
+    }
+
+    #[test]
+    fn test_char_center_preserves_historical_border_split() {
+        let cells = vec![
+            (of(0.0), of(0.0), of(10.0), of(10.0)),
+            (of(10.0), of(0.0), of(20.0), of(10.0)),
+        ];
+        let chars = vec![
+            make_char("P", 5.0, 7.0),
+            make_char("O", 7.0, 9.0),
+            make_char("C", 9.0, 11.0),
+            make_char(")", 11.0, 13.0),
+        ];
+
+        let table = Table::new(
+            0,
+            &cells,
+            true,
+            Some(&chars),
+            None,
+            true,
+            TextCellAssignment::CharCenter,
+        );
+
+        assert_eq!(table.cells[0].text, "PO");
+        assert_eq!(table.cells[1].text, "C)");
     }
 
     fn make_word(x1: f32, y1: f32, x2: f32, y2: f32, rotation: f32) -> Word {
@@ -4835,7 +5117,7 @@ mod tests {
     fn test_outer_frame_no_intersection_returns_empty() {
         let h = vec![make_h_edge(0.0, 10.0, 40.0)];
         let v = vec![make_v_edge(60.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         assert!(result.is_empty());
     }
 
@@ -4853,8 +5135,32 @@ mod tests {
             make_v_edge(50.0, 0.0, 100.0),
             make_v_edge(100.0, 0.0, 100.0),
         ];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_outer_frame_extends_partial_existing_boundary_when_enabled() {
+        let h = vec![
+            make_h_edge(0.0, 0.0, 100.0),
+            make_h_edge(0.0, 50.0, 100.0),
+            make_h_edge(0.0, 100.0, 100.0),
+        ];
+        let v = vec![
+            make_v_edge(0.0, 0.0, 100.0),
+            make_v_edge(50.0, 0.0, 100.0),
+            make_v_edge(100.0, 0.0, 50.0),
+        ];
+
+        let disabled = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
+        let enabled = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), true);
+
+        assert!(disabled.is_empty());
+        assert_eq!(enabled.len(), 1);
+        assert_eq!(enabled[0].orientation, Orientation::Vertical);
+        assert_eq!(enabled[0].x1, of(100.0));
+        assert_eq!(enabled[0].y1, of(0.0));
+        assert_eq!(enabled[0].y2, of(100.0));
     }
 
     #[test]
@@ -4862,7 +5168,7 @@ mod tests {
         // h-edges extend left beyond the single v-edge → virtual v-edge on left.
         let h = vec![make_h_edge(0.0, 0.0, 50.0), make_h_edge(0.0, 50.0, 50.0)];
         let v = vec![make_v_edge(50.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let v_edges: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Vertical)
@@ -4879,7 +5185,7 @@ mod tests {
             make_h_edge(50.0, 50.0, 100.0),
         ];
         let v = vec![make_v_edge(50.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let v_edges: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Vertical)
@@ -4893,7 +5199,7 @@ mod tests {
         // v-edges extend above and below the single h-edge → two virtual h-edges.
         let h = vec![make_h_edge(0.0, 50.0, 100.0)];
         let v = vec![make_v_edge(0.0, 0.0, 100.0), make_v_edge(100.0, 0.0, 100.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let h_edges: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Horizontal)
@@ -4914,7 +5220,7 @@ mod tests {
             make_h_edge(200.0, 50.0, 250.0),
         ];
         let v = vec![make_v_edge(50.0, 0.0, 50.0), make_v_edge(250.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let v_virtual: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Vertical)
