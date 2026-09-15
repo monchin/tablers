@@ -24,7 +24,7 @@ jobs:
         run: uv tool install prek
 
       - name: Run prek auto-update
-        run: prek auto-update --cooldown-days 1
+        run: prek autoupdate --cooldown-days 1
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8
