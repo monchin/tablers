@@ -24,18 +24,11 @@ Notes
 The library automatically loads the appropriate Pdfium library
 based on the operating system (Windows, Linux, or macOS).
 
-**Thread Safety**: This library is NOT thread-safe. A global
-``PDFIUM_RT`` is created at import time and is bound to the
-importing thread. All ``Document`` operations must run on that
-same thread. Using ``Document`` from a different thread will
-raise a ``PanicException``. In multi-threaded environments,
-import and use this library within the same worker thread, or
-use ``multiprocessing`` instead of ``threading``.
-
-Although `pdfium-render <https://github.com/ajrcarey/pdfium-render#multi-threading>`_
-offers a ``thread_safe`` compile-time feature (mutex-based locking),
-enabling it would introduce performance overhead in single-threaded
-use, so tablers does not enable it.
+**Thread Safety**: Separate ``Document`` instances may be created and
+used concurrently on different threads. Each document and its pages
+must remain on the thread that created them. Pdfium access is protected
+by pdfium-render's process-wide mutex, so threads are safe but do not
+provide parallel Pdfium execution; use ``multiprocessing`` for that.
 
 **Pickle Support**: All pure-data objects (``Table``, ``TableCell``,
 ``Edge``, ``TfSettings``, ``WordsExtractSettings``, ``Objects``,
@@ -102,10 +95,10 @@ def get_default_pdfium_path() -> Path:
 
 def get_runtime(path: Path | str | None = None) -> PdfiumRuntime:
     """
-    Get a PdfiumRuntime instance, reusing the existing one if already initialized.
+    Create a PdfiumRuntime handle on the current thread.
 
-    If the Pdfium library has already been initialized (either from Python or Rust),
-    the existing instance is reused and the provided path is ignored.
+    Pdfium's native library remains process-global, while each call creates a cheap
+    unsendable PyO3 handle owned by the calling thread.
 
     Parameters
     ----------
@@ -128,9 +121,19 @@ def get_runtime(path: Path | str | None = None) -> PdfiumRuntime:
     return PdfiumRuntime(str(path))
 
 
-# Initialize the global runtime using the default path
-# This will reuse an existing instance if already initialized from Rust
-PDFIUM_RT = get_runtime()
+def _initialize_pdfium() -> None:
+    """Initialize process-global Pdfium without retaining a thread-bound PyO3 handle."""
+    _ = get_runtime()
+
+
+_initialize_pdfium()
+
+
+def __getattr__(name: str) -> PdfiumRuntime:
+    """Resolve the legacy PDFIUM_RT export on the requesting thread."""
+    if name == "PDFIUM_RT":
+        return get_runtime()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _unwrap_page(page: Page | Pyo3Page | None) -> Pyo3Page | None:
@@ -379,10 +382,9 @@ class Document:
     Either `path` or `bytes` must be provided, but not both.
     Always close the document when done to release resources.
 
-    **Thread Safety**: This class is NOT thread-safe. All
-    operations must be performed on the same thread that
-    imported the ``tablers`` module. Using it from a different
-    thread will raise a ``PanicException``.
+    **Thread Safety**: A document and its pages must remain on the
+    thread that created them. Different threads may safely create
+    and use their own documents concurrently.
     """
 
     _stream: bytes | None  # type hint only; instance value set in __init__
@@ -394,7 +396,7 @@ class Document:
         password: str | None = None,
     ):
         self.doc = Pyo3Doc(
-            PDFIUM_RT,
+            get_runtime(),
             path=str(path) if path is not None else None,
             bytes=bytes,
             password=password,

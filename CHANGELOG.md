@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Allow separate threads to create and use their own `Document` instances by creating each PyO3 runtime handle on the calling thread and explicitly enabling pdfium-render's mutex-backed `thread_safe` feature. Process-global Pdfium initializes without retaining a thread-bound handle, and the legacy `PDFIUM_RT` export resolves on its caller's thread. Documents and pages remain bound to their creating thread; Pdfium calls are serialized within a process.
+
 ## [0.8.0] - 2026-06-03
 
 ### Added

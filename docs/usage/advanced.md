@@ -428,43 +428,44 @@ Once all virtual edges are synthesised, the full intersection-detection and cell
 
 ## Thread Safety
 
-**`tablers` is not thread-safe.** The library creates a global `PDFIUM_RT` runtime at import time, which is bound to the importing thread. All `Document` operations must be performed on the same thread that imported `tablers`. Using `Document` from a different thread will raise a `PanicException`:
+Separate threads may safely create and use their own `Document` instances. A document and every `Page` obtained from it remain bound to the thread that created the document; do not pass those objects between threads. Pure-data extraction results such as `Table`, `TableCell`, and `Edge` may be passed between threads or processes.
 
-```text
-PanicException: assertion `left == right` failed: tablers::PdfiumRuntime is unsendable, but sent to another thread
-```
+### How Thread Safety Works
 
-### Why Not Thread-Safe?
+tablers is built on [pdfium-render](https://github.com/ajrcarey/pdfium-render), which in turn wraps Pdfium. Pdfium itself makes no thread-safety guarantee. tablers therefore explicitly enables pdfium-render's `thread_safe` feature, which protects the process-global Pdfium bindings with a mutex. Each `Document` creates a cheap PyO3 `PdfiumRuntime` handle on its calling thread while reusing the process-global native Pdfium instance. This avoids moving PyO3 objects marked `unsendable` between threads.
 
-tablers is built on [pdfium-render](https://github.com/ajrcarey/pdfium-render), which in turn wraps Pdfium. Pdfium itself is [explicitly not thread-safe](https://github.com/ajrcarey/pdfium-render#multi-threading) — the Pdfium authors recommend parallel processing over multi-threading. Although pdfium-render offers a `thread_safe` compile-time feature that locks access to Pdfium behind a mutex, enabling it would introduce performance overhead (mutex acquisition even in single-threaded use) and requires an explicit compile-time feature declaration. For these reasons, tablers does not enable thread safety and recommends `multiprocessing` for parallel workloads.
+The mutex makes multi-threaded access safe, not parallel: only one thread executes a Pdfium call at a time. Table detection work outside Pdfium may still run normally, but workloads seeking parallel PDF processing should use separate processes.
+
+The legacy `PDFIUM_RT` export resolves a fresh handle on the thread that accesses it. A handle captured with `from tablers import PDFIUM_RT` is still bound to that thread and must not be passed elsewhere; use `Document()` or resolve another handle on the destination worker instead.
 
 ### Multi-Threaded Environments
 
-In multi-threaded environments (e.g., FastAPI, Celery), make sure to import and use `tablers` within the same worker thread:
+In multi-threaded environments (for example FastAPI or application worker threads), create and fully consume each document within one worker. Importing `tablers` on the main thread is safe because `Document()` resolves a runtime handle local to the calling thread:
 
 ```python
-# ❌ Wrong: import on main thread, use on worker thread
 import threading
 from tablers import Document
 
 def worker():
-    with Document("example.pdf") as doc:  # PanicException!
-        pass
+    with Document("example.pdf") as doc:
+        page = doc.get_page(0)
+        print(page.width)
 
 threading.Thread(target=worker).start()
 ```
 
+Do not create a document on one thread and use it from another:
+
 ```python
-# ✅ Correct: import and use on the same worker thread
 import threading
+from tablers import Document
 
-def worker():
-    from tablers import Document, find_tables  # Import inside the worker thread
-    with Document("example.pdf") as doc:
-        for page in doc.pages():
-            tables = find_tables(page, extract_text=True)
+doc = Document("example.pdf")
 
-threading.Thread(target=worker).start()
+def wrong_worker():
+    print(doc.page_count)  # Document belongs to the main thread.
+
+threading.Thread(target=wrong_worker).start()
 ```
 
 ### Multiprocessing

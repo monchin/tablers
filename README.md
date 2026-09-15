@@ -64,7 +64,7 @@ For more details, please refer to the [tablers-benchmark](https://github.com/mon
 ## Note
 
 - This solution is primarily designed for text-based PDFs and does not support scanned PDFs.
-- **Thread Safety**: `tablers` is **not thread-safe**. The library creates a global PDFium runtime at import time, which is bound to the importing thread. All `Document` operations must be performed on the same thread that imported `tablers`. Using `Document` from a different thread will raise a `PanicException`. For multi-threaded environments, import and use `tablers` within the same worker thread. Use `multiprocessing` for parallel processing instead. See [Thread Safety](docs/usage/advanced.md#thread-safety) for details and code examples.
+- **Thread Safety**: Separate `Document` instances can be created and used concurrently on different threads. A document and its pages must remain on their creating thread. Pdfium calls are mutex-serialized, so use `multiprocessing` when true parallel extraction is required. See [Thread Safety](docs/usage/advanced.md#thread-safety) for details.
 
 ## Installation
 
