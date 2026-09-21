@@ -138,7 +138,6 @@ settings = TfSettings(
     # Detection strategy
     vertical_strategy="lines",
     horizontal_strategy="lines",
-
     # Tolerance settings
     snap_x_tolerance=5.0,
     snap_y_tolerance=5.0,
@@ -146,7 +145,6 @@ settings = TfSettings(
     join_y_tolerance=3.0,
     intersection_x_tolerance=3.0,
     intersection_y_tolerance=3.0,
-
     # Edge detection
     edge_min_length=10.0,
     edge_min_length_prefilter=5.0,
@@ -154,12 +152,10 @@ settings = TfSettings(
     min_words_horizontal=1,
     exclude_background_colored_edges=True,
     close_unclosed_boundaries=True,
-
     # Table filtering
     include_single_cell=False,
     min_rows=2,
     min_columns=2,
-
     # Text extraction
     text_x_tolerance=3.0,
     text_y_tolerance=3.0,
@@ -261,12 +257,7 @@ with Document("example.pdf") as doc:
 ### With find_tables_from_cells
 
 ```python
-from tablers import (
-    Document,
-    find_all_cells_bboxes,
-    find_tables_from_cells,
-    WordsExtractSettings
-)
+from tablers import Document, find_all_cells_bboxes, find_tables_from_cells, WordsExtractSettings
 
 we_settings = WordsExtractSettings(
     x_tolerance=5.0,

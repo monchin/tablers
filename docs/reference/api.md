@@ -711,11 +711,6 @@ with Document("example.pdf") as doc:
 **Example — method chaining:**
 
 ```python
-img = (
-    PageImage(page)
-    .draw_hline(200.0)
-    .draw_vline(300.0)
-    .debug_tablefinder()
-)
+img = PageImage(page).draw_hline(200.0).draw_vline(300.0).debug_tablefinder()
 img.save("debug.png", quantize=False)
 ```

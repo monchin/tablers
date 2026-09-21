@@ -90,6 +90,7 @@ After installation, you can verify it was successful:
 
 ```python
 import tablers
+
 print(tablers.__version__)
 ```
 

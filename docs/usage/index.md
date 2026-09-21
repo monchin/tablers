@@ -109,7 +109,7 @@ with Document("example.pdf") as doc:
         extract_text=True,
         min_rows=2,
         min_columns=3,
-        include_single_cell=False  # Exclude single-cell tables (default)
+        include_single_cell=False,  # Exclude single-cell tables (default)
     )
 ```
 
@@ -175,13 +175,15 @@ print(csv_content)
 with open("output.csv", "w", encoding="utf-8") as f:
     f.write(csv_content)
 
-# If you need to use pandas or polars, you can transform the table manually. 
+# If you need to use pandas or polars, you can transform the table manually.
 # Remember to install the required dependencies because tablers does not depend on them.
 import pandas as pd
 from io import StringIO
+
 df_pd = pd.read_csv(StringIO(csv_content))
 
 import polars as pl
+
 df_pl = pl.read_csv(StringIO(csv_content))
 ```
 

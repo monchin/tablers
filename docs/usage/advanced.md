@@ -10,11 +10,11 @@ Fine-tune the table detection algorithm with `TfSettings`:
 from tablers import Document, find_tables, TfSettings
 
 settings = TfSettings(
-    vertical_strategy="lines",       # "lines", "lines_strict", "text"
-    horizontal_strategy="lines",     # "lines", "lines_strict", "text"
-    snap_x_tolerance=5.0,            # X-axis snapping tolerance
-    snap_y_tolerance=5.0,            # Y-axis snapping tolerance
-    edge_min_length=10.0,            # Minimum edge length
+    vertical_strategy="lines",  # "lines", "lines_strict", "text"
+    horizontal_strategy="lines",  # "lines", "lines_strict", "text"
+    snap_x_tolerance=5.0,  # X-axis snapping tolerance
+    snap_y_tolerance=5.0,  # Y-axis snapping tolerance
+    edge_min_length=10.0,  # Minimum edge length
 )
 
 with Document("complex_table.pdf") as doc:
@@ -35,17 +35,14 @@ Tablers supports four strategies for detecting table edges:
 
 ```python
 # For tables with clear borders
-settings = TfSettings(
-    vertical_strategy="lines_strict",
-    horizontal_strategy="lines_strict"
-)
+settings = TfSettings(vertical_strategy="lines_strict", horizontal_strategy="lines_strict")
 
 # For tables without borders (text-based detection)
 settings = TfSettings(
     vertical_strategy="text",
     horizontal_strategy="text",
     min_words_vertical=3,
-    min_words_horizontal=1
+    min_words_horizontal=1,
 )
 ```
 
@@ -54,27 +51,17 @@ settings = TfSettings(
 Configure text extraction with `WordsExtractSettings`:
 
 ```python
-from tablers import (
-    Document, 
-    find_tables_from_cells, 
-    find_all_cells_bboxes, 
-    WordsExtractSettings
-)
+from tablers import Document, find_tables_from_cells, find_all_cells_bboxes, WordsExtractSettings
 
 we_settings = WordsExtractSettings(
-    x_tolerance=3.0,     # Horizontal tolerance for word grouping
-    y_tolerance=3.0,     # Vertical tolerance for word grouping
+    x_tolerance=3.0,  # Horizontal tolerance for word grouping
+    y_tolerance=3.0,  # Vertical tolerance for word grouping
 )
 
 with Document("example.pdf") as doc:
     page = doc.get_page(0)
     cells = find_all_cells_bboxes(page)
-    tables = find_tables_from_cells(
-        cells,
-        extract_text=True,
-        page=page,
-        we_settings=we_settings
-    )
+    tables = find_tables_from_cells(cells, extract_text=True, page=page, we_settings=we_settings)
 ```
 
 ### Text Extraction Options
@@ -107,16 +94,11 @@ with Document("example.pdf") as doc:
     # Step 2: Optionally filter or modify cell_bboxes here
     # For example, filter out small cells
     filtered_cells = [
-        bbox for bbox in cell_bboxes 
-        if (bbox[2] - bbox[0]) > 10 and (bbox[3] - bbox[1]) > 10
+        bbox for bbox in cell_bboxes if (bbox[2] - bbox[0]) > 10 and (bbox[3] - bbox[1]) > 10
     ]
 
     # Step 3: Construct tables from cells
-    tables = find_tables_from_cells(
-        filtered_cells,
-        extract_text=True,
-        page=page
-    )
+    tables = find_tables_from_cells(filtered_cells, extract_text=True, page=page)
 ```
 
 ## Working with Edges
@@ -133,7 +115,7 @@ with Document("example.pdf") as doc:
     print(f"Horizontal edges: {len(edges['h'])}")
     print(f"Vertical edges: {len(edges['v'])}")
 
-    for edge in edges['h'][:5]:  # First 5 horizontal edges
+    for edge in edges["h"][:5]:  # First 5 horizontal edges
         print(f"  ({edge.x1}, {edge.y1}) -> ({edge.x2}, {edge.y2})")
 ```
 
@@ -154,8 +136,9 @@ with Document("example.pdf") as doc:
     print(f"Found {len(intersections)} intersection points")
 
     for (x, y), crossing in sorted(intersections.items()):
-        print(f"  ({x:.1f}, {y:.1f}): "
-              f"{len(crossing['h'])} h-edge(s), {len(crossing['v'])} v-edge(s)")
+        print(
+            f"  ({x:.1f}, {y:.1f}): {len(crossing['h'])} h-edge(s), {len(crossing['v'])} v-edge(s)"
+        )
 ```
 
 You can pass the same tolerance settings as `get_edges`:
@@ -179,17 +162,17 @@ from tablers import Edge, TfSettings, find_all_cells_bboxes, find_tables_from_ce
 # Create edges for a 3x2 table grid
 # Horizontal edges (3 lines for 2 rows)
 h_edges = [
-    Edge("h", 0.0, 0.0, 150.0, 0.0),     # Top border
-    Edge("h", 0.0, 50.0, 150.0, 50.0),   # Middle line
-    Edge("h", 0.0, 100.0, 150.0, 100.0), # Bottom border
+    Edge("h", 0.0, 0.0, 150.0, 0.0),  # Top border
+    Edge("h", 0.0, 50.0, 150.0, 50.0),  # Middle line
+    Edge("h", 0.0, 100.0, 150.0, 100.0),  # Bottom border
 ]
 
 # Vertical edges (4 lines for 3 columns)
 v_edges = [
-    Edge("v", 0.0, 0.0, 0.0, 100.0),     # Left border
-    Edge("v", 50.0, 0.0, 50.0, 100.0),   # First divider
-    Edge("v", 100.0, 0.0, 100.0, 100.0), # Second divider
-    Edge("v", 150.0, 0.0, 150.0, 100.0), # Right border
+    Edge("v", 0.0, 0.0, 0.0, 100.0),  # Left border
+    Edge("v", 50.0, 0.0, 50.0, 100.0),  # First divider
+    Edge("v", 100.0, 0.0, 100.0, 100.0),  # Second divider
+    Edge("v", 150.0, 0.0, 150.0, 100.0),  # Right border
 ]
 
 settings = TfSettings(
@@ -221,7 +204,7 @@ custom_h_edges = [
 
 settings = TfSettings(
     horizontal_strategy="lines",  # Use PDF lines for horizontal
-    vertical_strategy="explicit", # Use only explicit vertical edges
+    vertical_strategy="explicit",  # Use only explicit vertical edges
     explicit_v_edges=[
         Edge("v", 100.0, 0.0, 100.0, 500.0),
         Edge("v", 300.0, 0.0, 300.0, 500.0),
@@ -260,6 +243,7 @@ For other PDF libraries, you can write a similar conversion function following t
 
 ```python
 from tablers import Edge
+
 
 def your_library_edge_to_tablers_edge(lib_edge) -> Edge:
     """Convert edges from your library to tablers Edge objects."""
@@ -378,7 +362,7 @@ Reduce noise by setting minimum edge length:
 
 ```python
 settings = TfSettings(
-    edge_min_length=10.0,           # Final minimum edge length
+    edge_min_length=10.0,  # Final minimum edge length
     edge_min_length_prefilter=5.0,  # Initial filtering before merge
 )
 ```
@@ -447,9 +431,11 @@ In multi-threaded environments (e.g., FastAPI, Celery), make sure to import and 
 import threading
 from tablers import Document
 
+
 def worker():
     with Document("example.pdf") as doc:  # PanicException!
         pass
+
 
 threading.Thread(target=worker).start()
 ```
@@ -458,11 +444,14 @@ threading.Thread(target=worker).start()
 # ✅ Correct: import and use on the same worker thread
 import threading
 
+
 def worker():
     from tablers import Document, find_tables  # Import inside the worker thread
+
     with Document("example.pdf") as doc:
         for page in doc.pages():
             tables = find_tables(page, extract_text=True)
+
 
 threading.Thread(target=worker).start()
 ```
@@ -476,10 +465,12 @@ All pure-data objects (`Table`, `TableCell`, `Edge`, `TfSettings`, etc.) support
 ```python
 from multiprocessing import Pool
 
+
 def process_page_range(args):
     """Each worker opens the document once and processes a contiguous range of pages."""
     pdf_path, start, end = args
     from tablers import Document, find_tables
+
     results = []
     with Document(pdf_path) as doc:
         for page_num in range(start, end):
@@ -490,6 +481,7 @@ def process_page_range(args):
             # stay in the process that created them.
             results.append(tables)
     return results
+
 
 if __name__ == "__main__":
     import os
@@ -504,8 +496,7 @@ if __name__ == "__main__":
     # Split pages into contiguous chunks, one per worker
     chunk_size = max(1, (page_count + num_workers - 1) // num_workers)
     ranges = [
-        (pdf_path, i, min(i + chunk_size, page_count))
-        for i in range(0, page_count, chunk_size)
+        (pdf_path, i, min(i + chunk_size, page_count)) for i in range(0, page_count, chunk_size)
     ]
 
     with Pool(num_workers) as pool:
@@ -608,10 +599,10 @@ with Document("example.pdf") as doc:
 ```python
 img = (
     PageImage(page)
-    .draw_hline(200.0)                        # horizontal guide line
-    .draw_vline(300.0)                        # vertical guide line
-    .draw_rect((50, 100, 250, 400))           # arbitrary bbox
-    .draw_circle((150.0, 250.0), radius=5)    # point of interest
+    .draw_hline(200.0)  # horizontal guide line
+    .draw_vline(300.0)  # vertical guide line
+    .draw_rect((50, 100, 250, 400))  # arbitrary bbox
+    .draw_circle((150.0, 250.0), radius=5)  # point of interest
 )
 img.save("annotated.png", quantize=False)
 ```
