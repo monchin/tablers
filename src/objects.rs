@@ -17,7 +17,7 @@ fn parse_fill_mode(name: &str) -> PyResult<PdfPathFillMode> {
 }
 
 /// PDF path fill rule: mirrors pdfium-render's PdfPathFillMode for Python exposure.
-#[pyclass(module = "tablers.tablers", from_py_object)]
+#[pyclass(module = "tablers.tablers", skip_from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 #[allow(clippy::upper_case_acronyms)]
@@ -28,6 +28,16 @@ pub enum FillMode {
     WINDING,
     /// Even-odd rule.
     EVEN_ODD,
+}
+
+// PyO3 0.28's from_py_object generates Clone::clone even for Copy types.
+impl<'a, 'py> FromPyObject<'a, 'py> for FillMode {
+    type Error = pyo3::pyclass::PyClassGuardError<'a, 'py>;
+
+    /// Copies the Python fill mode while preserving PyO3's type and borrow checks.
+    fn extract(obj: Borrowed<'a, 'py, PyAny>) -> Result<Self, Self::Error> {
+        Ok(*obj.extract::<pyo3::PyClassGuard<'_, Self>>()?)
+    }
 }
 
 impl From<PdfPathFillMode> for FillMode {
