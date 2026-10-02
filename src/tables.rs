@@ -2312,6 +2312,12 @@ impl UnionFind {
 /// any known v-edge; a virtual v-edge is created at `x_h_min` to close the
 /// left boundary.  The other three directions are handled symmetrically.
 ///
+/// With `extend_partial_outer_boundaries` enabled, the frame also includes
+/// existing outer edges that stop short of its full span. A virtual edge fills
+/// each incomplete side, using the same intersection tolerances as missing edges.
+/// Endpoints within tolerance reuse the existing boundary coordinate so that
+/// extending a partial edge does not create a narrow extra row or column.
+///
 /// Virtual h-edges span the full `[x_h_min, x_h_max]` range at the target y,
 /// and virtual v-edges span `[y_v_min, y_v_max]` at the target x.  Passing
 /// these virtual edges through `edges_to_intersections` then adds the missing
@@ -2331,6 +2337,7 @@ fn compute_outer_frame_edges(
     v_edges: &[Edge],
     x_tol: OrderedFloat<f32>,
     y_tol: OrderedFloat<f32>,
+    extend_partial_outer_boundaries: bool,
 ) -> Vec<Edge> {
     let n_h = h_edges.len();
     let n_v = v_edges.len();
@@ -2385,17 +2392,69 @@ fn compute_outer_frame_edges(
         let y_v_min = v_idxs.iter().map(|&i| v_edges[i].y1).min().unwrap();
         let y_v_max = v_idxs.iter().map(|&i| v_edges[i].y2).max().unwrap();
 
-        if x_h_min < x_int_min - x_tol {
-            virtual_edges.push(virtual_v_edge(x_h_min, y_v_min, y_v_max));
+        if !extend_partial_outer_boundaries {
+            if x_h_min < x_int_min - x_tol {
+                virtual_edges.push(virtual_v_edge(x_h_min, y_v_min, y_v_max));
+            }
+            if x_h_max > x_int_max + x_tol {
+                virtual_edges.push(virtual_v_edge(x_h_max, y_v_min, y_v_max));
+            }
+            if y_v_min < y_int_min - y_tol {
+                virtual_edges.push(virtual_h_edge(x_h_min, y_v_min, x_h_max));
+            }
+            if y_v_max > y_int_max + y_tol {
+                virtual_edges.push(virtual_h_edge(x_h_min, y_v_max, x_h_max));
+            }
+            continue;
         }
-        if x_h_max > x_int_max + x_tol {
-            virtual_edges.push(virtual_v_edge(x_h_max, y_v_min, y_v_max));
+
+        let left_x = if x_h_min < x_int_min - x_tol {
+            x_h_min
+        } else {
+            x_int_min
+        };
+        let right_x = if x_h_max > x_int_max + x_tol {
+            x_h_max
+        } else {
+            x_int_max
+        };
+        let top_y = if y_v_min < y_int_min - y_tol {
+            y_v_min
+        } else {
+            y_int_min
+        };
+        let bottom_y = if y_v_max > y_int_max + y_tol {
+            y_v_max
+        } else {
+            y_int_max
+        };
+        let vertical_boundary_is_complete = |x: OrderedFloat<f32>| {
+            v_idxs.iter().any(|&index| {
+                let edge = &v_edges[index];
+                (edge.x1 - x).abs() <= x_tol.into_inner()
+                    && edge.y1 <= top_y + y_tol
+                    && edge.y2 >= bottom_y - y_tol
+            })
+        };
+        let horizontal_boundary_is_complete = |y: OrderedFloat<f32>| {
+            h_idxs.iter().any(|&index| {
+                let edge = &h_edges[index];
+                (edge.y1 - y).abs() <= y_tol.into_inner()
+                    && edge.x1 <= left_x + x_tol
+                    && edge.x2 >= right_x - x_tol
+            })
+        };
+        if !vertical_boundary_is_complete(left_x) {
+            virtual_edges.push(virtual_v_edge(left_x, top_y, bottom_y));
         }
-        if y_v_min < y_int_min - y_tol {
-            virtual_edges.push(virtual_h_edge(x_h_min, y_v_min, x_h_max));
+        if !vertical_boundary_is_complete(right_x) {
+            virtual_edges.push(virtual_v_edge(right_x, top_y, bottom_y));
         }
-        if y_v_max > y_int_max + y_tol {
-            virtual_edges.push(virtual_h_edge(x_h_min, y_v_max, x_h_max));
+        if !horizontal_boundary_is_complete(top_y) {
+            virtual_edges.push(virtual_h_edge(left_x, top_y, right_x));
+        }
+        if !horizontal_boundary_is_complete(bottom_y) {
+            virtual_edges.push(virtual_h_edge(left_x, bottom_y, right_x));
         }
     }
 
@@ -2499,7 +2558,13 @@ pub fn find_all_cells_bboxes(
         let h_edges = edges.get(&Orientation::Horizontal).unwrap();
         let v_edges = edges.get(&Orientation::Vertical).unwrap();
 
-        let virtual_edges = compute_outer_frame_edges(h_edges, v_edges, x_tol, y_tol);
+        let virtual_edges = compute_outer_frame_edges(
+            h_edges,
+            v_edges,
+            x_tol,
+            y_tol,
+            tf_settings.extend_partial_outer_boundaries,
+        );
         if !virtual_edges.is_empty() {
             for e in virtual_edges {
                 edges.entry(e.orientation).or_default().push(e);
@@ -5074,7 +5139,7 @@ mod tests {
     fn test_outer_frame_no_intersection_returns_empty() {
         let h = vec![make_h_edge(0.0, 10.0, 40.0)];
         let v = vec![make_v_edge(60.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         assert!(result.is_empty());
     }
 
@@ -5092,8 +5157,32 @@ mod tests {
             make_v_edge(50.0, 0.0, 100.0),
             make_v_edge(100.0, 0.0, 100.0),
         ];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_outer_frame_extends_partial_existing_boundary_when_enabled() {
+        let h = vec![
+            make_h_edge(0.0, 0.0, 100.0),
+            make_h_edge(0.0, 50.0, 100.0),
+            make_h_edge(0.0, 100.0, 100.0),
+        ];
+        let v = vec![
+            make_v_edge(0.0, 0.0, 100.0),
+            make_v_edge(50.0, 0.0, 100.0),
+            make_v_edge(100.0, 0.0, 50.0),
+        ];
+
+        let disabled = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
+        let enabled = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), true);
+
+        assert!(disabled.is_empty());
+        assert_eq!(enabled.len(), 1);
+        assert_eq!(enabled[0].orientation, Orientation::Vertical);
+        assert_eq!(enabled[0].x1, of(100.0));
+        assert_eq!(enabled[0].y1, of(0.0));
+        assert_eq!(enabled[0].y2, of(100.0));
     }
 
     #[test]
@@ -5101,7 +5190,7 @@ mod tests {
         // h-edges extend left beyond the single v-edge → virtual v-edge on left.
         let h = vec![make_h_edge(0.0, 0.0, 50.0), make_h_edge(0.0, 50.0, 50.0)];
         let v = vec![make_v_edge(50.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let v_edges: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Vertical)
@@ -5118,7 +5207,7 @@ mod tests {
             make_h_edge(50.0, 50.0, 100.0),
         ];
         let v = vec![make_v_edge(50.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let v_edges: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Vertical)
@@ -5132,7 +5221,7 @@ mod tests {
         // v-edges extend above and below the single h-edge → two virtual h-edges.
         let h = vec![make_h_edge(0.0, 50.0, 100.0)];
         let v = vec![make_v_edge(0.0, 0.0, 100.0), make_v_edge(100.0, 0.0, 100.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let h_edges: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Horizontal)
@@ -5153,7 +5242,7 @@ mod tests {
             make_h_edge(200.0, 50.0, 250.0),
         ];
         let v = vec![make_v_edge(50.0, 0.0, 50.0), make_v_edge(250.0, 0.0, 50.0)];
-        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0));
+        let result = compute_outer_frame_edges(&h, &v, of(2.0), of(2.0), false);
         let v_virtual: Vec<_> = result
             .iter()
             .filter(|e| e.orientation == Orientation::Vertical)
