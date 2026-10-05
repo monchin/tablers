@@ -229,6 +229,16 @@ class TestTfSettings:
         assert settings.snap_y_tolerance == 5.0
         assert settings.edge_min_length == 15.0
 
+    def test_partial_boundary_extension_is_opt_in(self) -> None:
+        """Partial boundary extension preserves the historical disabled default."""
+        defaults = TfSettings()
+        assert defaults.extend_partial_outer_boundaries is False
+
+        robust = TfSettings(
+            extend_partial_outer_boundaries=True,
+        )
+        assert robust.extend_partial_outer_boundaries is True
+
     def test_word_assignment_is_opt_in(self) -> None:
         """Word assignment preserves the historical character-center default."""
         defaults = TfSettings()

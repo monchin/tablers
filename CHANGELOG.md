@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add `extend_partial_outer_boundaries` to `TfSettings`. When enabled with `close_unclosed_boundaries`, existing incomplete outer edges are extended across the detected table frame. The option defaults to `False` to avoid introducing false-positive cells from incomplete artwork.
 - Add `text_cell_assignment` to `TfSettings`. The opt-in `"word_overlap"` policy groups glyphs into words before assigning them to the cell with the greatest overlap; the default `"char_center"` preserves existing output.
 
 ### Fixed

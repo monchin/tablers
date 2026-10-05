@@ -231,6 +231,7 @@ class TestTfSettingsPickle:
             min_rows=2,
             min_columns=3,
             text_split_at_punctuation=".,;",
+            extend_partial_outer_boundaries=True,
             text_cell_assignment="word_overlap",
         )
         restored = pickle.loads(pickle.dumps(s))
@@ -240,6 +241,7 @@ class TestTfSettingsPickle:
         assert restored.min_rows == 2
         assert restored.min_columns == 3
         assert restored.text_split_at_punctuation == ".,;"
+        assert restored.extend_partial_outer_boundaries is True
         assert restored.text_cell_assignment == "word_overlap"
 
     def test_pickle_with_explicit_edges(self):

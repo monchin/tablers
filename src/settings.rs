@@ -233,6 +233,9 @@ pub struct TfSettings {
     /// for deciding whether an edge truly extends beyond the component span.
     /// The feature is skipped entirely when either strategy is `Text`.
     pub close_unclosed_boundaries: bool,
+    /// Whether partial existing outer edges should be extended across the complete frame.
+    /// Has no effect when `close_unclosed_boundaries` is disabled.
+    pub extend_partial_outer_boundaries: bool,
 }
 impl Default for TfSettings {
     /// Creates a TfSettings instance with default values.
@@ -259,6 +262,7 @@ impl Default for TfSettings {
             explicit_v_edges: None,
             exclude_background_colored_edges: true,
             close_unclosed_boundaries: true,
+            extend_partial_outer_boundaries: false,
         }
     }
 }
@@ -491,6 +495,9 @@ impl TfSettings {
                     "close_unclosed_boundaries" => {
                         settings.close_unclosed_boundaries = value.extract::<bool>().unwrap()
                     }
+                    "extend_partial_outer_boundaries" => {
+                        settings.extend_partial_outer_boundaries = value.extract::<bool>().unwrap()
+                    }
                     "exclude_white_edges" => {
                         let py = value.py();
                         let category = py.get_type::<pyo3::exceptions::PyDeprecationWarning>();
@@ -659,6 +666,12 @@ impl TfSettings {
         self.close_unclosed_boundaries
     }
 
+    /// Returns whether boundary closing extends incomplete existing outer edges.
+    #[getter]
+    fn extend_partial_outer_boundaries(&self) -> bool {
+        self.extend_partial_outer_boundaries
+    }
+
     // Setters
     #[setter]
     fn set_vertical_strategy(&mut self, value: &str) {
@@ -824,6 +837,12 @@ impl TfSettings {
         self.close_unclosed_boundaries = value;
     }
 
+    /// Sets whether boundary closing extends incomplete existing outer edges.
+    #[setter]
+    fn set_extend_partial_outer_boundaries(&mut self, value: bool) {
+        self.extend_partial_outer_boundaries = value;
+    }
+
     // Dataclass-like methods
     fn __repr__(&self) -> String {
         format!(
@@ -840,7 +859,7 @@ impl TfSettings {
              text_expand_ligatures={}, text_cell_assignment='{}', \
              explicit_h_edges={}, explicit_v_edges={}, \
              exclude_background_colored_edges={}, \
-             close_unclosed_boundaries={})",
+             close_unclosed_boundaries={}, extend_partial_outer_boundaries={})",
             Self::strategy_enum_to_str(self.vertical_strategy),
             Self::strategy_enum_to_str(self.horizontal_strategy),
             self.snap_x_tolerance,
@@ -873,6 +892,7 @@ impl TfSettings {
                 .map_or("None".to_string(), |v| format!("[{} edges]", v.len())),
             self.exclude_background_colored_edges,
             self.close_unclosed_boundaries,
+            self.extend_partial_outer_boundaries,
         )
     }
 
@@ -908,6 +928,7 @@ impl TfSettings {
                     == other.explicit_v_edges.as_ref().map(|v| v.len())
                 && self.exclude_background_colored_edges == other.exclude_background_colored_edges
                 && self.close_unclosed_boundaries == other.close_unclosed_boundaries
+                && self.extend_partial_outer_boundaries == other.extend_partial_outer_boundaries
         } else {
             false
         }
@@ -952,6 +973,7 @@ impl TfSettings {
             self.exclude_background_colored_edges,
             self.close_unclosed_boundaries,
             Self::text_cell_assignment_enum_to_str(self.text_cell_assignment).to_string(),
+            self.extend_partial_outer_boundaries,
         );
         Ok((cls.getattr("_from_pickle")?, (part1, part2))
             .into_pyobject(py)?
@@ -988,6 +1010,7 @@ impl TfSettings {
             bool,
             bool,
             String,
+            bool,
         ),
     ) -> PyResult<Self> {
         let (
@@ -1014,6 +1037,7 @@ impl TfSettings {
             exclude_background_colored_edges,
             close_unclosed_boundaries,
             text_cell_assignment,
+            extend_partial_outer_boundaries,
         ) = part2;
         let ts = text_settings_state;
         Ok(TfSettings {
@@ -1058,6 +1082,7 @@ impl TfSettings {
             explicit_v_edges,
             exclude_background_colored_edges,
             close_unclosed_boundaries,
+            extend_partial_outer_boundaries,
         })
     }
 }
