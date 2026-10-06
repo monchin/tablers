@@ -181,7 +181,23 @@ jobs:
             --repository pypi \
             --dest final_dist
 
-      # Wheels are published to PyPI only; GitHub Release carries changelog only.
+      # Append only the "New Contributors" section from GitHub's
+      # auto-generated notes (avatars + first-contribution PRs).
+      # The "What's Changed" PR list is dropped: the changelog section
+      # extracted above stays the single source of release content.
+      # Appends nothing when the release has no first-time contributors.
+      - name: Append new contributors to release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="${{ github.ref_name }}" \
+            --jq .body > generated_notes.md
+          awk '/^## New Contributors/ && !found { print ""; found=1 } found' \
+            generated_notes.md >> release_notes.md
+
+      # Wheels are published to PyPI only; GitHub Release body is assembled
+      # from the changelog section plus the new-contributors section above.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
