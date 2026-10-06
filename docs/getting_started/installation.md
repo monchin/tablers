@@ -8,7 +8,7 @@ Before installing Tablers, ensure your system meets the following requirements:
 - **Operating System**:
     - Windows (x64)
     - Linux (x64 / ARM64), glibc >= 2.28 (manylinux_2_28)
-    - macOS (ARM64 / Apple Silicon)
+    - macOS (x64 / ARM64), macOS >= 12 (Monterey)
 
 ## Install with pip
 
@@ -115,16 +115,23 @@ ldd --version
 
 ### Architecture Issues on macOS
 
-Tablers currently only supports Apple Silicon (ARM64) architecture on macOS. If you're using an Intel Mac, consider building from source and download pdfium binaries from [this project](https://github.com/bblanchon/pdfium-binaries) and replace the pdfium binaries in the `python/tablers` directory.
+Tablers ships pre-built wheels for both Apple Silicon (ARM64) and Intel (x86_64) Macs, so installing via pip works on both architectures. The bundled PDFium binaries require macOS >= 12 (Monterey); on older versions the library will fail to load at runtime.
 
-### Developing on Linux ARM64
+### Developing on macOS x86_64 or Linux ARM64
 
-Tablers ships pre-built wheels for both x86_64 and ARM64 (aarch64) Linux, so installing via pip works on both architectures. However, **local development on Linux ARM64 requires an extra step**.
+Tablers ships pre-built wheels for all supported platforms, so installing via pip just works. However, **local development on a non-default architecture for its OS — Linux ARM64 or macOS x86_64 (Intel) — requires an extra step**.
 
-The PDFium library for ARM64 is stored as `libpdfium-aarch64.so.1` in the source tree. At runtime the library is expected at `libpdfium.so.1`. Before building or testing locally on an ARM64 machine, run the pre-build hook to rename it:
+The PDFium library for these targets is stored under an arch-suffixed name in the source tree, while at runtime the library is expected under the canonical name of its OS:
+
+| Target            | Stored as                 | Runtime name      |
+| ----------------- | ------------------------- | ----------------- |
+| Linux aarch64     | `libpdfium-aarch64.so.1`  | `libpdfium.so.1`  |
+| macOS x86_64      | `libpdfium-x86_64.dylib`  | `libpdfium.dylib` |
+
+Before building or testing locally on such a machine, run the pre-build hook to rename the library:
 
 ```bash
-# Run the pre-build hook (auto-detects ARM64 and renames the library)
+# Run the pre-build hook (auto-detects the arch and renames the library)
 pdm run python scripts/pre-build.py
 
 # Build and test
@@ -135,19 +142,12 @@ pdm test
 pdm run python scripts/post-build.py
 ```
 
-The pre-build hook auto-detects the platform via `platform.system()` and `platform.machine()`. If the expected library file is missing, the hook will exit with an error. For cross-compilation (building for ARM64 on an x86_64 host), set the target explicitly:
+The pre-build hook auto-detects the platform via `platform.system()` and `platform.machine()`. If the expected library file is missing, the hook will exit with an error. For cross-compilation (building for another arch than the host), set the target explicitly:
 
 ```bash
-export BUILD_TARGET=Linux
-export BUILD_ARCH=aarch64
+export BUILD_TARGET=Linux    # or Darwin
+export BUILD_ARCH=aarch64    # or x86_64
 pdm run python scripts/pre-build.py
-```
-
-Alternatively, you can manually rename the file:
-
-```bash
-cd python/tablers
-mv libpdfium-aarch64.so.1 libpdfium.so.1
 ```
 
 ### Adding a New Platform
