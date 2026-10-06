@@ -197,6 +197,30 @@ def find_tables_from_cells(
 
 ---
 
+### get_default_pdfium_path
+
+Get the default path to the bundled Pdfium library for the current operating system.
+
+```python
+def get_default_pdfium_path() -> Path
+```
+
+**Parameters:** None.
+
+**Returns:** `Path` - The path to the bundled Pdfium dynamic library for the current OS.
+
+**Raises:** `RuntimeError` - If the current operating system is not supported.
+
+**Example:**
+
+```python
+from tablers import get_default_pdfium_path
+
+print(get_default_pdfium_path())  # e.g. .../site-packages/tablers/libpdfium.dylib
+```
+
+---
+
 ### get_edges
 
 Extract edges (lines and rectangle borders) from a PDF page or from explicit edges.
@@ -254,6 +278,39 @@ def get_intersections_from_edges(
     intersections = get_intersections_from_edges(edges["h"], edges["v"])
     ```
     See [Inspecting Intersections](../usage/advanced.md#inspecting-intersections) for more details.
+
+---
+
+### get_runtime
+
+Create a Pdfium runtime handle on the calling thread. This is the replacement for the module-level `PDFIUM_RT` attribute, which was removed in 0.9.0.
+
+```python
+def get_runtime(path: Path | str | None = None) -> PdfiumRuntime
+```
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `path` | `Optional[Union[Path, str]]` | `None` | Path to the Pdfium dynamic library. If not provided, the bundled library path (see [get_default_pdfium_path](#get_default_pdfium_path)) is used. A custom path only takes effect on the first call; later calls reuse the process-global Pdfium instance |
+
+**Returns:** `PdfiumRuntime` - A PdfiumRuntime handle owned by the calling thread.
+
+!!! warning "Thread affinity"
+    The native Pdfium library is process-global, but the returned handle is a cheap unsendable PyO3 object bound to the calling thread. Do not pass it between threads — call `get_runtime()` on each thread that needs a handle. See [Thread Safety](../usage/advanced.md#thread-safety) for details.
+
+**Example:**
+
+```python
+import tablers
+
+# Default: use the bundled Pdfium library
+runtime = tablers.get_runtime()
+
+# Or point to a custom Pdfium library (only used on first initialization)
+runtime = tablers.get_runtime("/custom/path/to/pdfium.dll")
+```
 
 ---
 

@@ -53,7 +53,7 @@ settings = TfSettings(
 | `exclude_background_colored_edges` | `bool` | `True` | Whether to exclude edges invisible against their immediate background (see below) |
 | `close_unclosed_boundaries` | `bool` | `True` | Whether to automatically detect and close tables whose outer edges are missing (see below) |
 | `extend_partial_outer_boundaries` | `bool` | `False` | Whether boundary closing also extends existing but incomplete outer edges |
-| `text_cell_assignment` | `str` | `"char_center"` | Assign text by historical character centers or whole-word overlap (`"word_overlap"`) |
+| `text_cell_assignment` | `Literal["char_center", "word_overlap"]` | `"char_center"` | Assign text by historical character centers or whole-word overlap (`"word_overlap"`) |
 
 **Background-colored edge filtering** (`exclude_background_colored_edges`):
 

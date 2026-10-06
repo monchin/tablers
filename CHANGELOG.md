@@ -7,20 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-06
+
 ### Added
 
-- **macOS x86_64 (Intel) support:** Pre-built wheels are now published for Intel Macs alongside Apple Silicon. The bundled PDFium binary for x86_64 comes from the same [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) build (146.0.7665) as the ARM64 one. The release workflow builds natively on `macos-15-intel`, and CI runs the full test suite on the same runner. (#69)
-- Add `extend_partial_outer_boundaries` to `TfSettings`. When enabled with `close_unclosed_boundaries`, existing incomplete outer edges are extended across the detected table frame. The option defaults to `False` to avoid introducing false-positive cells from incomplete artwork.
-- Add `text_cell_assignment` to `TfSettings`. The opt-in `"word_overlap"` policy groups glyphs into words before assigning them to the cell with the greatest overlap; the default `"char_center"` preserves existing output.
+- **macOS x86_64 (Intel) support:** Pre-built wheels are now published for Intel Macs alongside Apple Silicon. The bundled PDFium binary for x86_64 comes from the same [pdfium-binaries](https://github.com/bblanchon/pdfium-binaries) build (146.0.7665) as the ARM64 one. The release workflow builds natively on `macos-15-intel`, and CI runs the full test suite on the same runner. (#70)
+- Add `extend_partial_outer_boundaries` to `TfSettings`. When enabled with `close_unclosed_boundaries`, existing incomplete outer edges are extended across the detected table frame. The option defaults to `False` to avoid introducing false-positive cells from incomplete artwork. (#65)
+- Add `text_cell_assignment` to `TfSettings`. The opt-in `"word_overlap"` policy groups glyphs into words before assigning them to the cell with the greatest overlap; the default `"char_center"` preserves existing output. (#64)
 
 ### Fixed
 
-- macOS wheels now declare a `macosx_12_0` platform tag, matching the minimum deployment target (macOS 12) of the bundled PDFium binaries. Previously the tag claimed `macosx_11_0` compatibility, which could let the wheel install on systems where PDFium fails to load.
-- Allow separate threads to create and use their own `Document` instances by creating each PyO3 runtime handle on the calling thread and explicitly enabling pdfium-render's mutex-backed `thread_safe` feature. Process-global Pdfium initializes without retaining a thread-bound handle. Documents and pages remain bound to their creating thread; Pdfium calls are serialized within a process.
+- macOS wheels now declare a `macosx_12_0` platform tag, matching the minimum deployment target (macOS 12) of the bundled PDFium binaries. Previously the tag claimed `macosx_11_0` compatibility, which could let the wheel install on systems where PDFium fails to load. (#70)
+- Allow separate threads to create and use their own `Document` instances by creating each PyO3 runtime handle on the calling thread and explicitly enabling pdfium-render's mutex-backed `thread_safe` feature. Process-global Pdfium initializes without retaining a thread-bound handle. Documents and pages remain bound to their creating thread; Pdfium calls are serialized within a process. (#62)
 
 ### Removed
 
-- Remove the module-level `PDFIUM_RT` attribute. Low-level callers importing it directly should use `get_runtime()` on the thread that needs the handle instead.
+- Remove the module-level `PDFIUM_RT` attribute. Low-level callers importing it directly should use `get_runtime()` on the thread that needs the handle instead. (#62)
 
 ## [0.8.0] - 2026-06-03
 
@@ -201,7 +203,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - lines / lines_strict / text strategies for extracting tables in a pdf page
 
-[Unreleased]: https://github.com/monchin/tablers/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/monchin/tablers/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/monchin/tablers/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/monchin/tablers/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/monchin/tablers/releases/tag/v0.7.3
 [0.7.2]: https://github.com/monchin/tablers/releases/tag/v0.7.2
