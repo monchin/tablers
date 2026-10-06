@@ -127,8 +127,8 @@ def get_edges(page, **kwargs) -> Dict[str, List[Edge]]
 ### 3. **Cross-Platform**
 
 - Windows (x64)
-- Linux (x64, glibc >= 2.28)
-- macOS (ARM64)
+- Linux (x64, aarch64; glibc >= 2.28)
+- macOS (ARM64, x86_64; macOS >= 12)
 - Bundled Pdfium binaries for each platform
 
 ### 4. **Developer-Friendly**
